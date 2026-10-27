@@ -1,0 +1,10 @@
+[project]
+name = "flights-archive"
+version = "0.1.0"
+description = "Archives the Ben Gurion flight board from data.gov.il"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+testpaths = ["tests"]
+addopts = "-q"

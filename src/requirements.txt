@@ -1,0 +1,3 @@
+# Bundled into the Lambda package so S3 conditional writes (IfNoneMatch) don't
+# depend on whichever boto3 version the runtime happens to ship.
+boto3==1.43.119

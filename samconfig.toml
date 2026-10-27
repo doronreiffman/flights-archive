@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "flights-archive"
+region = "il-central-1"
+
+[default.build.parameters]
+use_container = false
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true

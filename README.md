@@ -1,0 +1,78 @@
+# flights-archive
+
+Archives the Ben Gurion airport flight board that the Israel Airports Authority publishes on data.gov.il (dataset `flydata`), so the history survives after the board drops each flight, about a day after it flies.
+
+Source: Israel Airports Authority, data.gov.il dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`. Used under the [data.gov.il terms of use](https://data.gov.il/he/terms-of-use), which allow reuse, including commercial, with the source cited.
+
+## What it does
+
+Every 2 minutes a Lambda function in il-central-1 (Tel Aviv):
+
+1. Asks `resource_show` when the board last changed. That's a small request.
+2. Downloads the full board through `datastore_search` only if that timestamp moved, if the last full download is 30+ minutes old, or for up to 10 minutes after the timestamp moved without the data changing yet.
+3. Stores the reply bytes untouched, gzipped, only if their SHA-256 differs from the last stored snapshot.
+
+The board refreshes about every 15 minutes, so that's roughly 4 downloads an hour.
+
+Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. The board fits in one page; if a run ever stores fewer pages than its `pages` metadata says, treat that snapshot as incomplete. Object Lock (governance mode, 10 years by default) plus a write-once condition mean the collector can't overwrite or delete a snapshot. A small `state/collector.json` remembers the last timestamp and hash.
+
+## Rules the code enforces
+
+- **One identified client.** Every request sends the `USER_AGENT` you set, which must name the project and a contact address.
+- **Stop if blocked, and stay stopped.** A 401, 403 or 429, or an HTML page served where JSON belongs, raises `BlockedError`, pings healthchecks.io's `/fail`, stores nothing, and sets a latch in the state file. Every later run refuses to call data.gov.il until a person clears it. Don't switch to a browser User-Agent, another IP or anything else that works around a block: the data.gov.il license excludes data obtained by circumventing technical protection. Find out why, ask data.gov.il if needed, then unblock (below).
+- **Outages aren't blocks.** 5xx errors, including HTML error pages, fail that run and alert, and the next run tries again.
+- **Validate before writing.** Zero rows, a missing field, a total that doesn't match the rows, or the board changing mid-download all raise and store nothing.
+- **No retries.** Neither the scheduler nor Lambda retries a failed run; the next scheduled run is the retry.
+- **Never touch iaa.gov.il.** Its terms forbid copying without written consent.
+
+## Deploy
+
+You need a personal AWS account (nothing from an employer) with il-central-1 enabled, AWS CLI 2.32 or newer, the AWS SAM CLI, and Python 3.13 on your Mac for `sam build` (`brew install python@3.13`, or use `sam build --use-container` with Docker).
+
+1. Sign in: `aws login --profile flights`. Then check that `aws sts get-caller-identity --profile flights-sam` shows your personal account. The `flights-sam` profile hands the `aws login` session to SAM.
+2. Create a healthchecks.io check (period 2 minutes, grace 15 minutes) and copy its ping URL.
+3. Email data.gov.il about the collector, with the User-Agent you'll use.
+4. Build and deploy. The parameters stay on your command line, not in a file you might commit:
+
+   ```bash
+   sam build
+   sam deploy --profile flights-sam --region il-central-1 --parameter-overrides \
+     UserAgent='flights-archive/0.1 (+https://github.com/<you>/flights-archive; <email>)' \
+     HealthcheckUrl='https://hc-ping.com/<uuid>' \
+     AlertEmail='<email>'
+   ```
+
+   Review the change set and confirm. Then confirm the SNS subscription email AWS sends you.
+5. After 10 minutes, `aws s3 ls s3://<bucket>/raw/ --recursive --profile flights-sam` should list a snapshot, and healthchecks.io should show pings. The bucket name is in the stack outputs.
+6. Prove the alerts work with a drill, which fails on purpose without calling data.gov.il:
+
+   ```bash
+   aws lambda invoke --function-name <CollectorFunctionName> --payload '{"drill": true}' \
+     --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
+   ```
+
+   Within about 5 minutes you should get the alarm email, and healthchecks.io should show a failure. The next scheduled run clears it.
+
+## If it's blocked
+
+The alarm email and the `/fail` ping say `BLOCKED`. The collector has stopped calling data.gov.il. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
+
+```bash
+aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock": true}' \
+  --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
+```
+
+## Develop
+
+```bash
+python3.13 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest --cov=collector
+cfn-lint template.yaml
+```
+
+The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
+
+## Cost
+
+About $1 to $2 for the first year: roughly 3,000 to 4,400 snapshots and 0.3 to 0.7 GB a month, plus a few cents of S3 requests. Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.

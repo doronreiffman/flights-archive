@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Archives the Ben Gurion flight board (data.gov.il flydata) every 2 minutes into a write-once S3 bucket.
+
+Parameters:
+  UserAgent:
+    Type: String
+    Description: Names the project and a contact, e.g. "flights-archive/0.1 (+https://github.com/you/repo; you@example.org)"
+    MinLength: 10
+  HealthcheckUrl:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: healthchecks.io ping URL, e.g. https://hc-ping.com/<uuid>
+  AlertEmail:
+    Type: String
+    Description: Gets an email when the collector errors.
+  RetentionDays:
+    Type: Number
+    Default: 3650
+    MinValue: 1
+    Description: Object Lock (governance mode) retention for each snapshot.
+
+Resources:
+  ArchiveBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ObjectLockEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-state-versions
+            Status: Enabled
+            Prefix: state/
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+
+  CollectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: collector.handler.handler
+      Runtime: python3.13
+      MemorySize: 256
+      # 10 s status check + 45 s download + S3 + 10 s ping, and still under the 2-min schedule
+      Timeout: 100
+      # Scheduler invokes asynchronously; Lambda would otherwise retry a failed run twice.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      LoggingConfig:
+        LogGroup: !Ref CollectorLogs
+      Environment:
+        Variables:
+          BUCKET: !Ref ArchiveBucket
+          USER_AGENT: !Ref UserAgent
+          HEALTHCHECK_URL: !Ref HealthcheckUrl
+          RETENTION_DAYS: !Ref RetentionDays
+      Policies:
+        - Statement:
+            - Sid: WriteSnapshotsOnly
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectRetention
+              Resource: !Sub "${ArchiveBucket.Arn}/raw/*"
+            - Sid: ReadWriteState
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub "${ArchiveBucket.Arn}/state/*"
+            # Without ListBucket, S3 answers a missing state file with 403 instead of 404,
+            # and an s3:prefix condition doesn't apply to GetObject, so this stays unconditional.
+            - Sid: ListBucketSoMissingKeyIs404
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ArchiveBucket.Arn
+      Events:
+        EveryTwoMinutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(2 minutes)
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+
+  # Created before the function, under its own name, so the first scheduled run
+  # can't race CloudFormation by auto-creating /aws/lambda/<name>.
+  CollectorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${AWS::StackName}/collector"
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: The flight-board collector raised an error. Check the logs; a BLOCKED error means stop and ask.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CollectorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+Outputs:
+  ArchiveBucketName:
+    Value: !Ref ArchiveBucket
+  CollectorFunctionName:
+    Value: !Ref CollectorFunction

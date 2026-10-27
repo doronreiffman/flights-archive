@@ -1,0 +1,4 @@
+-r src/requirements.txt
+pytest==9.*
+pytest-cov
+cfn-lint==1.58.0
