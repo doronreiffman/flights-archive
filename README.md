@@ -32,7 +32,7 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
 1. Sign in: `aws login --profile flights`. Then check that `aws sts get-caller-identity --profile flights-sam` shows your personal account. The `flights-sam` profile hands the `aws login` session to SAM.
 2. Create a healthchecks.io check (period 2 minutes, grace 15 minutes) and copy its ping URL.
 3. Email data.gov.il about the collector, with the User-Agent you'll use.
-4. Build and deploy. The parameters stay on your command line, not in a file you might commit:
+4. Build and deploy with the schedule switched off (`ScheduleState` defaults to `DISABLED`). The parameters stay on your command line, not in a file you might commit:
 
    ```bash
    sam build
@@ -42,8 +42,17 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
      AlertEmail='<email>'
    ```
 
-   Review the change set and confirm. Then confirm the SNS subscription email AWS sends you.
-5. After 10 minutes, `aws s3 ls s3://<bucket>/raw/ --recursive --profile flights-sam` should list a snapshot, and healthchecks.io should show pings. The bucket name is in the stack outputs.
+   Review the change set and confirm. Then confirm the SNS subscription email AWS sends you. The function and bucket names are in the stack outputs.
+5. Run it once by hand. That's one request to data.gov.il, the same as a manual check:
+
+   ```bash
+   aws lambda invoke --function-name <CollectorFunctionName> --payload '{}' \
+     --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
+   cat out.json
+   aws s3 ls s3://<bucket>/raw/ --recursive --profile flights-sam
+   ```
+
+   `out.json` should say `"action": "stored"` with about 2,000 to 2,800 rows, and the listing should show one snapshot.
 6. Prove the alerts work with a drill, which fails on purpose without calling data.gov.il:
 
    ```bash
@@ -51,7 +60,8 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
      --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
    ```
 
-   Within about 5 minutes you should get the alarm email, and healthchecks.io should show a failure. The next scheduled run clears it.
+   Within about 5 minutes you should get the alarm email, and healthchecks.io should show a failure. Run step 5 again to clear it.
+7. Go live: deploy again with the same parameters plus `ScheduleState=ENABLED`. After 10 minutes, healthchecks.io should show a ping every 2 minutes and new snapshots should appear about every 15.
 
 ## If it's blocked
 

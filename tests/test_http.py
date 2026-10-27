@@ -29,7 +29,11 @@ def server():
         def log_message(self, *args):
             pass
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    class QuietServer(ThreadingHTTPServer):
+        def handle_error(self, request, client_address):
+            pass  # the timeout test hangs up on purpose; don't print the broken pipe
+
+    httpd = QuietServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_port}", seen

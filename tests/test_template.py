@@ -28,6 +28,14 @@ def test_no_retries_anywhere(resources):
     assert event["Properties"]["RetryPolicy"] == {"MaximumRetryAttempts": 0}
 
 
+def test_schedule_starts_switched_off(resources):
+    template, _ = decode(str(TEMPLATE))
+    param = template["Parameters"]["ScheduleState"]
+    assert param["Default"] == "DISABLED" and sorted(param["AllowedValues"]) == ["DISABLED", "ENABLED"]
+    event = resources["CollectorFunction"]["Properties"]["Events"]["EveryTwoMinutes"]["Properties"]
+    assert event["State"] == {"Ref": "ScheduleState"}
+
+
 def test_timeout_fits_inside_the_schedule(resources):
     assert 60 <= resources["CollectorFunction"]["Properties"]["Timeout"] < 120
 
