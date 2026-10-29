@@ -32,7 +32,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     receipts = args.receipts or args.raw.parent / "receipts"
     if not any(receipts.rglob("*.json")):
-        print(f"no receipts under {receipts}: every snapshot is legacy")
+        print(f"no receipts under {receipts}: snapshots from before receipts began are legacy, "
+              "and any later one stops the build")
     counts = build(args.raw, args.out, receipts)
     for table, n in counts.items():
         print(f"{table}: {n} rows -> {args.out / table}.parquet")

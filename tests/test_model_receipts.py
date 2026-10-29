@@ -174,7 +174,8 @@ def test_cli_says_when_there_are_no_receipts(tmp_path, capsys):
     raw = tmp_path / "raw"
     write_snapshot(raw, at(6), [row()])
     assert build.main(["--raw", str(raw), "--out", str(tmp_path / "model")]) == 0
-    assert f"no receipts under {tmp_path / 'receipts'}: every snapshot is legacy" in capsys.readouterr().out
+    assert (f"no receipts under {tmp_path / 'receipts'}: snapshots from before receipts began are legacy, "
+            "and any later one stops the build") in capsys.readouterr().out
 
 
 def test_a_known_orphan_newer_than_every_receipt_is_dropped(raw, rec, monkeypatch):
@@ -238,4 +239,22 @@ def test_the_legacy_cutover_is_the_first_receipt_of_either_kind(raw, rec):
     y = write_snapshot(raw, at(6, 45), [row(status="BOARDING")])
     write_receipt(rec, y)
     with pytest.raises(ValueError, match=rf"no receipt.*{x}"):
+        run(raw, rec)
+
+
+def test_without_receipts_a_snapshot_from_after_receipts_began_stops_the_build(raw, rec):
+    """A fresh clone, a deleted receipts/ or a raw-only sync must not quietly trust boards that should have receipts."""
+    write_snapshot(raw, at(6), [row()])
+    late = write_snapshot(raw, datetime(2026, 10, 30, 6, 0), [row(status="DELAYED")])
+    with pytest.raises(ValueError, match=rf"no receipt.*{late}"):
+        run(raw, rec)
+
+
+def test_a_missing_first_receipt_does_not_make_later_snapshots_legacy(raw, rec):
+    """Receipts began 2026-10-29 17:02:50Z: a snapshot after that with no receipt is never legacy, whatever the
+    earliest local receipt says."""
+    a = write_snapshot(raw, datetime(2026, 10, 29, 17, 16, 45), [row()])
+    b = write_snapshot(raw, datetime(2026, 10, 29, 17, 32, 45), [row(status="DELAYED")])
+    write_receipt(rec, b)
+    with pytest.raises(ValueError, match=rf"no receipt.*{a}"):
         run(raw, rec)

@@ -67,7 +67,7 @@ Outcome sentence:
 | landed | Board showed LANDED (last seen HH:MM). |
 | canceled | (the cancellation sentence covers it); if it was shown with another status in between: Board showed CANCELED again (last seen HH:MM). |
 | open | Still on the board when we last stored it (HH:MM). |
-| gap | Left the board during a pause in our collection; what happened is unknown. |
+| gap | Left the board while no new board was stored for over an hour (our collection paused, or the board stopped changing); what happened is unknown. |
 | vanished | Left the board N h before its scheduled time without a final status; not necessarily cancelled, it may have been retimed. |
 | dropped | Left the board without a final status; last seen HH:MM, within an hour of its scheduled time or later. |
 
@@ -124,6 +124,10 @@ Accepted: wording fixed for first sightings, `dropped`, `vanished`, negative lea
 ## Code review (2026-10-29, Opus; Fable was over its limit)
 
 Fixed: anchors carry the first scheduled date (a retime past midnight beside the next day's flight of the same time stopped the whole build); the lead time uses both ends of the bracket, so "less than an hour" and "after" are said only when both ends support them, with "before" and "around" otherwise; the censored sentence no longer assumes a pause in collection; "partial" and the methodology now say only what the code checks (some flight numbers may be missing); a flight cancelled again says so; the vanished statistic from the early sample is gone; "last stored" instead of "last check"; the number alone is a search key ("991"); `<out>.building` and `<out>.old` are touched only with the marker, and the swap moves the old site aside first; tests and mutation entries for the five behaviours no test caught (the retimed label, the between threshold, pauses only on the days they touch, partial on the index, the footer's last-seen time); the clock-change test runs under an Israeli zone.
+
+## Handoff review (2026-10-29, Opus; the owner's Fable waiver covers q7)
+
+Fixed: the `gap` outcome, the index heading and the methodology no longer blame our collection for a stretch the board may have caused ("pause in our collection" joins the banned phrases); the model stops when a snapshot from after receipts began has none (`RECEIPTS_SINCE`); the swap's docstring says a crash can leave neither site for a moment.
 
 ## Deviations
 

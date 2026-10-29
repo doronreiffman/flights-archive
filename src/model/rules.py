@@ -29,9 +29,14 @@ GAP_HOURS = 1
 MAX_REPLY_BYTES = 32 * 1024 * 1024
 # Receipts (docs/receipts.md). A snapshot newer than every receipt is waiting for its receipt. The collector
 # writes a receipt at least every 30 minutes (a 32-minute worst case on the 2-minute schedule) and a run lasts
-# at most 100 s, so a snapshot further than this past the newest receipt means receipts/ is behind raw/.
+# at most 100 s, so an ordinary sync stays inside this; a very slow raw sync (a first sync, or one after weeks
+# away) can pass it, and running scripts/sync.sh again clears it.
 PENDING_GRACE_MINUTES = 35
 RECEIPT_VERSIONS = (1,)
+# When the first receipt was written (receipts/date=2026-10-29/170250Z-c8bbbcbb6376.json). A snapshot from
+# then on is never legacy, whatever the local copy holds: a fresh clone or a raw-only sync stops the build
+# instead of quietly trusting boards that should have receipts.
+RECEIPTS_SINCE = "2026-10-29 17:02:50"
 # Snapshots with pages but no receipt in S3, checked by a person, that no later run stored again; they are
 # dropped. Any other unreceipted snapshot stops the build.
 KNOWN_ORPHANS: frozenset[str] = frozenset()
@@ -210,7 +215,8 @@ def convert_times_and_dedupe(con) -> None:
         SELECT n.* EXCLUDE (next_sha, next_id), st.receipt_rows, st.receipt_pages, b.newest_receipt,
                CASE WHEN st.snapshot_id IS NOT NULL THEN 'receipted'
                     WHEN n.snapshot_id IN ({orphans}) THEN 'orphan'
-                    WHEN b.first_receipt IS NULL OR n.fetched_at < b.first_receipt THEN 'legacy'
+                    WHEN (b.first_receipt IS NULL OR n.fetched_at < b.first_receipt)
+                         AND n.fetched_at < TIMESTAMP '{RECEIPTS_SINCE}' THEN 'legacy'
                     -- A failed receipt write leaves state as it was, so the next run stores the same board again.
                     WHEN n.next_sha = n.sha AND n.next_id IN (SELECT snapshot_id FROM st) THEN 'superseded'
                     WHEN n.fetched_at > b.newest_receipt THEN 'pending'

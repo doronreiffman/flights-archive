@@ -91,7 +91,7 @@ def test_no_cancellation_sentence_without_a_canceled_sighting():
     ("departed", "Board showed DEPARTED (last seen 15:02)."),
     ("landed", "Board showed LANDED (last seen 15:02)."),
     ("open", "Still on the board when we last stored it (15:02)."),
-    ("gap", "Left the board during a pause in our collection; what happened is unknown."),
+    ("gap", "Left the board while no new board was stored for over an hour (our collection paused, or the board stopped changing); what happened is unknown."),
     ("vanished", "Left the board 6 h before its scheduled time without a final status; not necessarily cancelled, it may have been retimed."),
     ("dropped", "Left the board without a final status; last seen 15:02, within an hour of its scheduled time or later."),
     ("canceled", None),

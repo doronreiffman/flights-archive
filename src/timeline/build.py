@@ -98,8 +98,9 @@ def refuse_foreign(out_dir: Path) -> None:
 
 
 def write_site(files: dict[str, str], out_dir: Path) -> None:
-    """Build beside out_dir, then swap: the old site moves aside before the new one moves in, so a crash
-    leaves either the old site or the new one in place (plus a marked leftover the next build clears)."""
+    """Build beside out_dir, then swap: the old site moves aside, then the new one moves in. A crash leaves the
+    old site, the new one, or (only between the two renames) neither; every leftover carries the marker, and
+    the next build clears it."""
     refuse_foreign(out_dir)
     tmp, old = _siblings(out_dir)
     for leftover in (tmp, old):

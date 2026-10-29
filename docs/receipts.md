@@ -83,11 +83,11 @@ IAM: the existing write-once statement (`s3:PutObject`, `s3:PutObjectRetention`)
   - `superseded`: no receipt, and the next snapshot has the same hash and a stored receipt: a failed receipt write leaves state as it was, so the next run stores the same board again. Dropped automatically.
 - The build stops, naming the snapshots, when the local copy cannot be trusted. A silent drop could move a flight's first CANCELED sighting by a refresh without flagging it, so each of these is an error rather than a filter:
   - a snapshot with no receipt between the first and newest receipt that is not in `KNOWN_ORPHANS` ("re-run scripts/sync.sh; if it persists, check the collector logs at that time");
-  - a pending snapshot more than `PENDING_GRACE_MINUTES` (35) after the newest receipt: receipts/ was synced earlier than raw/, or receipt writes are failing. The collector writes a receipt at least every 30 minutes (32 in the worst case on the 2-minute schedule) and a run lasts at most 100 s, so a sync that catches a store mid-way never trips it;
+  - a pending snapshot more than `PENDING_GRACE_MINUTES` (35) after the newest receipt: receipts/ was synced earlier than raw/, or receipt writes are failing. The collector writes a receipt at least every 30 minutes (32 in the worst case on the 2-minute schedule) and a run lasts at most 100 s, so an ordinary sync that catches a store mid-way stays inside it; a very slow raw sync (a first sync, or one after weeks away) can trip it, and running `scripts/sync.sh` again clears it;
   - a stored receipt whose row or page count differs from the files (the archive cannot produce this: it means a cut-off sync or a collector bug);
   - a stored receipt whose snapshot has no files locally ("re-sync raw/").
 - R2's repeat check runs over kept snapshots only (today: over complete ones).
-- No receipts at all: every snapshot is `legacy`, and the build prints that.
+- No receipts at all: snapshots from before the first receipt (2026-10-29 17:02:50Z, `RECEIPTS_SINCE`) are `legacy`; any later snapshot stops the build, so a fresh clone or a raw-only sync cannot quietly trust boards that should have receipts.
 - Report: receipt counts by action, snapshot counts by receipt status.
 - Not in this change (suggested follow-up, owner's call): treat `unchanged` receipts as sightings, so a stalled board is not a collection hole and cancellation brackets narrow. That changes R4, R7 and R8. One part of it is a precondition for q7: before the timeline publishes coverage gaps, gaps must come from all receipts, stored and unchanged, or a stall on data.gov.il's side shows up as our own collection hole.
 

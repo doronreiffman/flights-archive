@@ -90,7 +90,8 @@ def outcome_sentence(f: dict, page_date: date) -> str | None:
         case "open":
             return f"Still on the board when we last stored it ({last})."
         case "gap":
-            return "Left the board during a pause in our collection; what happened is unknown."
+            return ("Left the board while no new board was stored for over an hour "
+                    "(our collection paused, or the board stopped changing); what happened is unknown.")
         case "vanished":
             hours = int((f["sched_utc_final"] - f["last_seen_at"]).total_seconds() // 3600)
             return (f"Left the board {hours} h before its scheduled time without a final status; "
@@ -247,7 +248,7 @@ def index_page(days: list[dict], gaps: list[tuple], first_check: datetime, last_
             f"<p>Boards stored from {e(fmt_utc(first_check, None))} to {e(fmt_utc(last_check, None))} (Israel time). "
             "Counts are flight numbers listed on the board; a flight sold under several numbers counts once per number.</p>",
             "<table><thead><tr><th>Day</th><th>Flight numbers listed</th><th></th></tr></thead><tbody>",
-            rows, "</tbody></table>", "<h2>Pauses in collection</h2>"]
+            rows, "</tbody></table>", "<h2>Stretches with no new board stored</h2>"]
     body += [f"<p>{e(gap_sentence(a, b, None))}</p>" for a, b in gaps] or ["<p>None over an hour.</p>"]
     return layout(SITE_NAME, "\n".join(body), "", attribution)
 
@@ -263,7 +264,7 @@ def methodology_page(attribution: str, gap_hours: float, retime_hours: float) ->
 <h2>Cancellations</h2>
 <p>We report when the board first showed CANCELED, and the stored board before it that did not: the change happened between the two. That is when the cancellation appeared on the public board, not when the airline decided it. A lead time is given only as far as both ends support it. When we had not seen the flight for more than {gap_hours:g} hour before the CANCELED sighting, or it was already CANCELED the first time we saw it, we give no lead time.</p>
 <h2>How a timeline ends</h2>
-<p>The board's final words, DEPARTED or LANDED, are its status, not measured times. A flight that left the board early without a final status was not necessarily cancelled: it may have been moved to a new time that we could not link. A flight that left the board during a pause in our collection has an unknown ending.</p>
+<p>The board's final words, DEPARTED or LANDED, are its status, not measured times. A flight that left the board early without a final status was not necessarily cancelled: it may have been moved to a new time that we could not link. A flight that left the board while no new board was stored for over an hour has an unknown ending.</p>
 <h2>Listed together</h2>
 <p>Several flight numbers often share one slot: same direction, airport, scheduled and estimated time, terminal and check-in counters. We show them as listed together. The board does not say which airline flies the aircraft, and arrivals with no counters to compare can occasionally group two different flights.</p>
 <h2>Estimated times</h2>
