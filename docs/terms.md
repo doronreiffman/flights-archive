@@ -26,7 +26,7 @@ Hebrew as on the page; the English is ours.
 ## What it asks of us (our reading)
 
 - Cite the source (clause 6): every page carries `ATTRIBUTION` (`src/model/report.py`), naming the Israel Airports Authority and data.gov.il; all 9 pages of the 2026-10-29 build do.
-- No implied official status or endorsement (clause 8): every page says "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." (`UNOFFICIAL`, `src/timeline/pages.py`).
+- No implied official status or endorsement (clause 8): every page says "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." (`UNOFFICIAL`, `src/timeline/pages.py`). `scripts/publish.sh` refuses a site where any page lacks it or the source line, so a build made before the current wording cannot go out.
 - No misleading presentation (clause 4): we read the wording rules in `docs/timeline.md` as how we meet it. A page saying "cancelled at" where we only know when the board first showed CANCELED would be misleading. `tests/test_timeline_build.py` checks the six banned phrases and the "listed together" and "flight numbers listed" wording on a synthetic test build, and `scripts/publish.sh` runs the banned-phrase check (`src/timeline/check.py`) on the real site before every upload.
 - Privacy (clause 5): the board holds no personal data (the fields in CLAUDE.md, "The data"), and we cross-reference it with nothing.
 - No emblems or logos (clause 9): the timeline's anti-goals already forbid logos.

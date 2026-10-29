@@ -9,6 +9,9 @@ import shutil
 
 import pytest
 
+from model.report import ATTRIBUTION
+from timeline.pages import UNOFFICIAL
+
 SCRIPT = Path(__file__).parent.parent / "scripts" / "publish.sh"
 OURS = "arn:aws:iam::137953273942:user/doron-admin"
 SITE_BUCKET = "flights-archive-site-sitebucket-abc123"
@@ -19,8 +22,9 @@ AWS_FLAGS = ["--profile", "flights-sam", "--region", "il-central-1"]
 def make_site(tmp_path, page="<p>First observed CANCELED on the public board</p>", marker=True, name="site"):
     site = tmp_path / name
     (site / "day").mkdir(parents=True)
-    (site / "index.html").write_text("<p>index</p>")
-    (site / "day" / "2026-10-28.html").write_text(page)
+    footer = f"<footer><p>{ATTRIBUTION}</p><p>{UNOFFICIAL}</p></footer>"
+    (site / "index.html").write_text("<p>index</p>" + footer)
+    (site / "day" / "2026-10-28.html").write_text(page + footer)
     (site / "style.css").write_text("p{}")
     (site / "search.js").write_text("// search")
     (site / ".DS_Store").write_text("finder")

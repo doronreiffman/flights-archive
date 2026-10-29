@@ -36,7 +36,7 @@ case "$SITE" in
     exit 1 ;;
 esac
 if ! PYTHONPATH=src "$PYTHON" -m timeline.check "$SITE"; then
-  echo "the banned-phrase check failed; nothing uploaded" >&2
+  echo "the pre-upload check failed; nothing uploaded" >&2
   exit 1
 fi
 

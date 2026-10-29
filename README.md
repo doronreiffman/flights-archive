@@ -102,7 +102,7 @@ PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
 .venv/bin/python -m http.server -d site 8000   # then open http://localhost:8000
 ```
 
-Publishing (not deployed yet): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker and the banned phrases. Both write to AWS, so each runs on the owner's go; design, takedown and cost in `docs/publishing.md`.
+Publishing (not deployed yet): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases, and the source and unofficial lines on every page. Both write to AWS, so each runs on the owner's go; design, takedown and cost in `docs/publishing.md`.
 
 ## Cost
 

@@ -24,6 +24,10 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 - **Recovery path untested.** One account, one region, a retained bucket, no restore drill. Round-2 review: write a runbook and test an import of archived objects; a cross-region mirror of archived objects (not of source requests) later, under $1 a month. Owner's call when.
 - **Latch policy on a single 429 / 403.** The reviewer suggests requiring two or three consecutive blocks before latching, since one transient 429 halts collection until a manual unblock and the resulting hole breaks R4 and R8. Current code latches on the first. Owner's call; the conservative reading of the license argues for keeping it.
 
+## Site (q15)
+
+- **CloudFront needs account verification.** The first deploy of stack `flights-archive-site` (2026-10-29 20:50Z) failed on `SiteDistribution`: "Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support" (request 3d8d62f4-c0fb-4a48-8d70-1ab0e7e085b4). Rolled back; every resource DELETE_COMPLETE, no bucket left; the stack record sits in ROLLBACK_COMPLETE. Next: the owner opens an AWS Support case. On AWS's confirmation: delete the stack record and redeploy (inside the owner's deploy go of 2026-10-29), then the first upload on the owner's go, given with the terms page's update date reread that day (`docs/terms.md`).
+
 ## Repo hygiene (before the repo goes public)
 
 - **The User-Agent's repo URL returns 404 while the repo is private.** The live User-Agent (deployed 2026-10-29) names `https://github.com/doronreiffman/flights-archive`, so data.gov.il cannot follow the link. Either make the repo public (raw data is not in git; check `docs/` and the history first) or point the User-Agent at another contact page and redeploy. Owner's call.
