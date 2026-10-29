@@ -4,7 +4,6 @@ Ordered, most important first. One line per item: id (never reused), what, point
 
 ## Queue
 
-- [q6] Acquisition receipts: the collector writes a small receipt object after every full fetch (stored or unchanged) and writes it last, so "the board was checked and unchanged at T" and "this multi-page prefix is complete" become archive facts, not log lines. First in line (owner, 2026-10-29). State: OPEN_ISSUES.md, "Acquisition receipts (q6)".
 - [q7] Static history timeline: a page where a date and marketed flight number show the flight's status and schedule changes, coverage gaps, first observed CANCELED, with methodology and attribution; raw data stays private. First product (owner, 2026-10-29), ahead of dashboard, rankings, forecasts and MCP. Scope still to be cut with the owner; source is change 3 of `reviews/review-2026-10-29-round-2.md` (local only).
 - [q5] Make the model build incremental (date-partitioned `rows/` Parquet, trailing-window rebuild of observations and flights), the precondition for any nightly run. Deferred behind q6 and q7 (owner, 2026-10-29): a 6-day rebuild takes 13 s, far under the 5-minute trigger, and the rules are still moving. State: `docs/data-model.md` "Nightly run", step 1.
 - [q2] Nightly model build: second Lambda per `docs/data-model.md` "Nightly run", step 2; needs q5 first and the owner's go, nothing deployed. State: same section.
@@ -13,6 +12,7 @@ Ordered, most important first. One line per item: id (never reused), what, point
 
 ## Done / Dropped
 
+- [q6] Acquisition receipts (2026-10-29): write-once receipt after every full download, model trusts only receipted or legacy snapshots, `scripts/sync.sh`; design and code reviewed by Opus (Fable gate waived by the owner). Deployed 17:01Z; first receipt `receipts/date=2026-10-29/170250Z-c8bbbcbb6376.json` (the legacy cutover), locked to 2036. Proof: 4f2da20, 3e3b836.
 - [q11] Model build ran out of memory on real data (2026-10-29, found while checking q6): the JSON reader reserved 512 MB per file; capped at the collector's 32 MB reply limit. Proof: 3369e2c.
 - [q1] Data model v1 (2026-10-29): `src/model/`, 55 tests + 28 mutation checks, independent review folded in, `docs/data-model.md`, `docs/data-quality-2026-10-29.md`. Proof: e73eff5.
 - [q8] Outside review round 1 follow-ups (2026-10-29): User-Agent enforced, 20 s status check, quieter alerting, stronger collector tests; deployed 14:22Z. Proof: 9c2d4a4, 2491fd3.
