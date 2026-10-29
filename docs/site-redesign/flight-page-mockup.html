@@ -1,0 +1,59 @@
+<style>
+  .pg { --ink:#18181a; --muted:#6e6e73; --line:#e8e8ea; --soft:#f5f5f7; --accent:#0a66c2; --red:#d1352b; --redsoft:#fdecea; --green:#1f7a3a; --greensoft:#e6f4ea;
+        background:#fff; color:var(--ink); font:16px/1.55 -apple-system,"SF Pro Text",system-ui,"Segoe UI",sans-serif;
+        max-width:640px; margin:0 auto; padding:32px 36px 28px; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); text-align:left; }
+  .pg .back { font-size:14px; color:var(--accent); text-decoration:none; }
+  .pg h1 { font-size:30px; line-height:1.15; letter-spacing:-.02em; margin:14px 0 4px; font-weight:700; color:var(--ink); }
+  .pg .who { color:var(--muted); margin:0 0 18px; }
+  .pg .sum { font-size:17px; margin:0 0 26px; }
+  .pg .day { border-top:1px solid var(--line); padding:14px 0; }
+  .pg .row { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .pg .date { font-weight:650; min-width:118px; }
+  .pg .sched { color:var(--muted); flex:1; }
+  .pg .pill { font-size:12px; font-weight:700; letter-spacing:.03em; padding:2px 10px; border-radius:999px; }
+  .pg .p-red { background:var(--redsoft); color:var(--red); }
+  .pg .p-green { background:var(--greensoft); color:var(--green); }
+  .pg .p-grey { background:var(--soft); color:var(--muted); }
+  .pg .warn { font-size:14px; color:var(--red); margin:4px 0 0 130px; }
+  .pg .tl { margin:12px 0 2px 130px; padding-left:18px; border-left:2px solid #d2d2d7; font-size:15px; }
+  .pg .tl div { position:relative; margin:0 0 10px; }
+  .pg .tl div:last-child { margin:0; }
+  .pg .tl div::before { content:""; position:absolute; left:-25px; top:7px; width:10px; height:10px; border-radius:50%; background:#fff; border:2px solid #86868b; }
+  .pg .tl div.x::before { background:var(--red); border-color:var(--red); }
+  .pg .tl b { font-variant-numeric:tabular-nums; font-weight:650; margin-right:6px; }
+  .pg .more { font-size:14px; color:var(--accent); margin:6px 0 0 130px; }
+  .pg .foot { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:14px; margin-top:18px; }
+  .pg .foot a { color:var(--accent); }
+</style>
+
+<h2>Flight page</h2>
+<p class="subtitle">What you'd land on after searching "TO 3459" or clicking it in the cancellations table. Real data; 29 October is shown opened.</p>
+
+<div class="pg">
+  <a class="back" href="#">← Cancelled flights at Tel Aviv airport</a>
+  <h1>TO 3459, Tel Aviv to Paris</h1>
+  <p class="who">Transavia France · lands at Paris Orly</p>
+
+  <p class="sum">Since 27 October: departed once, cancelled once, one upcoming.</p>
+
+  <div class="day">
+    <div class="row"><span class="date">Sun 1 Nov</span><span class="sched">scheduled to leave 18:30</span><span class="pill p-grey">UPCOMING</span></div>
+  </div>
+
+  <div class="day">
+    <div class="row"><span class="date">Thu 29 Oct</span><span class="sched">scheduled to leave 17:10</span><span class="pill p-red">CANCELLED</span></div>
+    <div class="warn">No warning: cancelled 2 hours after it was scheduled to leave.</div>
+    <div class="tl">
+      <div><b>17:32</b>Expected to leave at 17:38 instead</div>
+      <div><b>18:32</b>Expected to leave at 18:45 instead</div>
+      <div class="x"><b>19:32</b>Cancelled (sometime after 19:16)</div>
+    </div>
+  </div>
+
+  <div class="day">
+    <div class="row"><span class="date">Tue 27 Oct</span><span class="sched">scheduled to leave 16:45</span><span class="pill p-green">DEPARTED</span></div>
+    <div class="more">Show details</div>
+  </div>
+
+  <div class="foot">Times are Israel time. Flight data from the Israel Airports Authority, via data.gov.il. Not an official site. · <a href="#">How this works</a></div>
+</div>

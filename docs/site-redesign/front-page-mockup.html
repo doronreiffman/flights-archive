@@ -1,0 +1,83 @@
+<style>
+  .pg { --ink:#18181a; --muted:#6e6e73; --line:#e8e8ea; --soft:#f5f5f7; --accent:#0a66c2; --red:#d1352b; --redsoft:#fdecea;
+        background:#fff; color:var(--ink); font:16px/1.55 -apple-system,"SF Pro Text",system-ui,"Segoe UI",sans-serif;
+        max-width:640px; margin:0 auto; padding:40px 36px 28px; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); text-align:left; }
+  .pg h1 { font-size:32px; line-height:1.15; letter-spacing:-.02em; margin:0 0 12px; font-weight:700; color:var(--ink); }
+  .pg .lede { font-size:17px; color:#3a3a3c; margin:0 0 22px; }
+  .pg .big { font-size:17px; margin:0 0 26px; }
+  .pg .big b { color:var(--red); }
+  .pg .search { display:flex; gap:8px; margin:0 0 34px; }
+  .pg .search .in { flex:1; border:1px solid #c7c7cc; border-radius:10px; padding:12px 14px; color:#8e8e93; }
+  .pg .search .go { background:var(--accent); color:#fff; border-radius:10px; padding:12px 18px; font-weight:600; }
+  .pg h2 { font-size:20px; font-weight:650; margin:0 0 10px; color:var(--ink); }
+  .pg section { margin-bottom:34px; }
+  .pg table { width:100%; border-collapse:collapse; font-size:15px; }
+  .pg td { padding:10px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  .pg td.d { color:var(--muted); white-space:nowrap; width:92px; }
+  .pg td.f { font-weight:650; white-space:nowrap; width:78px; }
+  .pg .why { display:block; color:var(--muted); font-size:14px; margin-top:2px; }
+  .pg .open { background:var(--soft); border-radius:12px; padding:16px 18px; margin-top:10px; font-size:15px; }
+  .pg .open p { margin:0 0 6px; }
+  .pg .open p:last-child { margin:0; }
+  .pg svg text { font:12px -apple-system,system-ui,sans-serif; fill:#6e6e73; }
+  .pg .foot { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:14px; }
+  .pg .foot a { color:var(--accent); }
+  .pg tr.hd td { color:var(--muted); font-size:13px; border-top:0; padding-bottom:4px; }
+  .pg td.w { width:150px; }
+  .pg td.w.late { color:var(--red); }
+  .pg td.w.unk { color:var(--muted); }
+</style>
+
+<h2>Plain version</h2>
+<p class="subtitle">Real data from tonight. The grey box under the table is what you'd see after clicking TO 3459.</p>
+
+<div class="pg">
+  <h1>Cancelled flights at Tel Aviv airport</h1>
+  <p class="lede">A record of flights in and out of Ben Gurion Airport since 27 October 2026, and which ones were cancelled.</p>
+
+  <p class="big">So far: <b>20 of 951 flights</b> were listed as cancelled. That's about 1 in 50.</p>
+
+  <div class="search"><div class="in">Flight number or city, e.g. LY 001 or Paris</div><div class="go">Search</div></div>
+
+  <section>
+    <h2>Recent cancellations</h2>
+    <table>
+      <tr class="hd"><td class="d">Date</td><td class="f">Flight</td><td>Route</td><td class="w">Warning</td></tr>
+      <tr><td class="d">Fri 30 Oct</td><td class="f">IZ 992</td><td>New York to Tel Aviv, scheduled to land 13:50</td><td class="w">at least 23 hours</td></tr>
+      <tr><td class="d">Thu 29 Oct</td><td class="f">LY 5410</td><td>Tbilisi to Tel Aviv, scheduled to land 21:55</td><td class="w">at least 7 hours</td></tr>
+      <tr><td class="d">Thu 29 Oct</td><td class="f">TO 3459</td><td>Tel Aviv to Paris, scheduled to leave 17:10</td><td class="w late">none: cancelled 2 hours after it was scheduled to leave</td></tr>
+      <tr><td class="d">Thu 29 Oct</td><td class="f">LY 5409</td><td>Tel Aviv to Tbilisi, scheduled to leave 15:45</td><td class="w">at least 1 hour</td></tr>
+      <tr><td class="d">Thu 29 Oct</td><td class="f">ASY 991</td><td>Tel Aviv to New York, scheduled to leave 13:30</td><td class="w unk">unknown: no records for that time</td></tr>
+    </table>
+    <div class="open">
+      <p><b>TO 3459, Tel Aviv to Paris, Thursday 29 October</b></p>
+      <p>Scheduled to leave at 17:10.</p>
+      <p>By 17:32 the airport had changed the expected time to 17:38.</p>
+      <p>By 18:32 it had changed it again, to 18:45.</p>
+      <p>Between 19:16 and 19:32 it was listed as cancelled.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Flights each day</h2>
+    <svg viewBox="0 0 568 160" width="100%" role="img" aria-label="Flights each day, cancelled in red">
+      <line x1="0" y1="130" x2="568" y2="130" stroke="#e8e8ea"/>
+      <rect x="10"  y="43.4"  width="60" height="86.6" rx="4" fill="#0a66c2"/>
+      <rect x="90"  y="38.0"  width="60" height="92.0" rx="4" fill="#0a66c2"/>
+      <rect x="170" y="26.0"  width="60" height="104" rx="4" fill="#0a66c2"/>
+      <rect x="250" y="58.1"  width="60" height="71.9" rx="4" fill="#0a66c2" opacity=".35"/>
+      <rect x="330" y="89.9"  width="60" height="40.1" rx="4" fill="#0a66c2" opacity=".35"/>
+      <rect x="410" y="29.7"  width="60" height="100.3" rx="4" fill="#0a66c2" opacity=".35"/>
+      <g text-anchor="middle">
+        <text x="40" y="38">348</text><text x="120" y="32">370</text><text x="200" y="20">418</text>
+        <text x="280" y="52">289</text><text x="360" y="84">161</text><text x="440" y="24">403</text>
+        <text x="40" y="148">Tue 27</text><text x="120" y="148">Wed 28</text><text x="200" y="148">Thu 29</text>
+        <text x="280" y="148">Fri 30</text><text x="360" y="148">Sat 31</text><text x="440" y="148">Sun 1</text>
+      </g>
+      <g text-anchor="middle" font-weight="700"><text x="40" y="122" style="fill:#fff">4 cancelled</text><text x="120" y="122" style="fill:#fff">8 cancelled</text><text x="200" y="122" style="fill:#fff">7 cancelled</text><text x="280" y="122" style="fill:#0a66c2">1 cancelled</text></g>
+      <text x="490" y="84" style="font-size:11px">pale: still</text><text x="490" y="98" style="font-size:11px">to come</text>
+    </svg>
+  </section>
+
+  <div class="foot">Flight data from the Israel Airports Authority, via data.gov.il. Not an official site. · <a href="#">How this works</a> · Built by [your name]</div>
+</div>
