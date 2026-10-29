@@ -7,6 +7,10 @@ from pathlib import Path
 
 import duckdb
 
+# Cited wherever the data is shown (CLAUDE.md); the timeline pages use the same text.
+ATTRIBUTION = ("Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
+               "resource e83f763b-b7d7-479e-b172-ae981ddc6de5).")
+
 
 def _rows(con, sql: str) -> list[tuple]:
     return con.execute(sql).fetchall()
@@ -22,8 +26,7 @@ def report(model_dir: Path) -> str:
     con = duckdb.connect()
     for t in ("snapshots", "snapshot_runs", "observations", "flights", "receipts"):
         con.execute(f"CREATE VIEW {t} AS SELECT * FROM '{model_dir / t}.parquet'")
-    s = ["Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
-         "resource e83f763b-b7d7-479e-b172-ae981ddc6de5). Built by flights-archive from archived snapshots.\n"]
+    s = [f"{ATTRIBUTION} Built by flights-archive from archived snapshots.\n"]
     cov = _rows(con, """SELECT count(*), min(fetched_at), max(fetched_at), min(rows), max(rows), sum(identical_repeats),
                         sum(duplicate_rows), sum(key_conflicts), sum(unparsed_sched), sum(missing_est) FROM snapshots""")[0]
     s.append("## Coverage\n")

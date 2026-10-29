@@ -80,18 +80,27 @@ aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock":
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest --cov=collector --cov=model
+pytest --cov=collector --cov=model --cov=timeline
 cfn-lint template.yaml
 python scripts/mutation_check.py
 ```
 
-The mutation check breaks each rule in turn and expects a test to fail; it is about 75 short pytest runs, a few minutes. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
+The mutation check breaks each rule in turn and expects a test to fail; it is about 110 short pytest runs, several minutes. One timeline test runs the search box's JavaScript under Node and is skipped where Node is missing. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
 
 The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
 
 ## Model
 
 `src/model/` turns the raw snapshots into Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time), plus `receipts` and `snapshot_runs`. It trusts only snapshots with a receipt, or from before receipts existed, and stops when the local copy looks out of step; `sh scripts/sync.sh` copies receipts, then snapshots, into `data/`. The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
+
+## Timeline
+
+`src/timeline/` turns the model into a static site: one page per scheduled day, and a timeline per flight number of what the public board showed and when it was first seen. The wording never claims more than the board showed (no cancellation times, delays or operators), and every page cites the source and says it is unofficial. Design and limits: `docs/timeline.md`. Local only for now; publishing waits for a reading of the data.gov.il terms.
+
+```bash
+PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
+.venv/bin/python -m http.server -d site 8000   # then open http://localhost:8000
+```
 
 ## Cost
 

@@ -16,6 +16,9 @@ HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
+PAGES = ("src/timeline/pages.py", ["tests/test_timeline_pages.py", "tests/test_timeline_build.py"])
+SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
+SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -107,6 +110,33 @@ COLLECTOR_MUTATIONS = {
     "receipts not writable": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/receipts/*"\n', ""),
     "raw synced before receipts": (SYNC, 'aws s3 sync "s3://$BUCKET/receipts/" data/receipts/ --profile "$PROFILE" --region "$REGION"\naws s3 sync "s3://$BUCKET/raw/" data/raw/ --profile "$PROFILE" --region "$REGION"', 'aws s3 sync "s3://$BUCKET/raw/" data/raw/ --profile "$PROFILE" --region "$REGION"\naws s3 sync "s3://$BUCKET/receipts/" data/receipts/ --profile "$PROFILE" --region "$REGION"'),
     "sync identity not checked": (SYNC, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
+    "Israel time from a naive conversion": (PAGES, "return utc_naive.replace(tzinfo=timezone.utc).astimezone(ISRAEL)", "return utc_naive.astimezone(ISRAEL)"),
+    "dates never shown": (PAGES, 'return f"{local:%H:%M}" if local.date() == page_date else', 'return f"{local:%H:%M}" if True else'),
+    "search keys keep leading zeros only": (PAGES, 'keys = [code + number, code + (number.lstrip("0") or "0"),', "keys = [code + number, code + number,"),
+    "anchor from the final scheduled time": (PAGES, 'f["direction"], f["sched_local_first"], f["airport"])}" \'', 'f["direction"], f["sched_local_final"], f["airport"])}" \''),
+    "lead time rounded to nearest": (PAGES, 'else f"at least {int(minutes // 60)} h"', 'else f"at least {round(minutes / 60)} h"'),
+    "negative lead told as before": (PAGES, '"after its scheduled time" if lead < 0 else', '"after its scheduled time" if lead < -60 else'),
+    "first sighting not singled out": (PAGES, '    if f["canceled_at_first_sight"]:', "    if False:"),
+    "later status not mentioned": (PAGES, '    if f["uncanceled"]:', "    if False:"),
+    "long pause not shown as between": (PAGES, "    if prev is not None and (seen - prev).total_seconds() > gap_hours * 3600:", "    if False:"),
+    "old value read from the new row": (PAGES, 'lines = [f"{label}: {_value(c, prev, page_date)} →', 'lines = [f"{label}: {_value(c, obs, page_date)} →'),
+    "first row not labelled": (PAGES, 'what = "first seen by us: " +', 'what = "first listed: " +'),
+    "Hebrew not marked right to left": (PAGES, """return f'<span lang="he" dir="rtl">{e(value)}</span>' if value else \"\"""", """return f'<span>{e(value)}</span>' if value else \"\""""),
+    "board text not escaped": (PAGES, 'return html.escape("" if value is None else str(value))', 'return "" if value is None else str(value)'),
+    "noindex dropped": (PAGES, """        '<meta name="robots" content="noindex">\\n'\n""", ""),
+    "unofficial line dropped": (PAGES, 'f"<footer><p>{e(attribution)}</p><p>{e(UNOFFICIAL)}</p></footer>\\n"', 'f"<footer><p>{e(attribution)}</p></footer>\\n"'),
+    "codeshare partners not listed": (PAGES, "    if partners:", "    if False:"),
+    "same-number listings not noted": (PAGES, "    for o in same_number:", "    for o in ():"),
+    "pauses left off day pages": (PAGES, '    head += [f"<p>{e(gap_sentence(a, b, day))}</p>" for a, b in gaps]\n', ""),
+    "partial only at the end": (SITE, "partial = first_check > start + BOARD_KEEPS or last_check < end - BOARD_AHEAD", "partial = last_check < end - BOARD_AHEAD"),
+    "partial only at the start": (SITE, "partial = first_check > start + BOARD_KEEPS or last_check < end - BOARD_AHEAD", "partial = first_check > start + BOARD_KEEPS"),
+    "undated flights not refused": (SITE, "    if undated:", "    if False:"),
+    "anchor clash not refused": (SITE, "        if len(set(anchors)) != len(anchors):", "        if False:"),
+    "foreign folder replaced": (SITE, "    if out_dir.exists() and not (out_dir / MARKER).exists():", "    if False:"),
+    "pauses only over six hours": (SITE, 'if (s["gap_before_s"] or 0) > GAP_HOURS * 3600]', 'if (s["gap_before_s"] or 0) > 6 * 3600]'),
+    "day by first scheduled time": (SITE, 'by_day.setdefault(f["sched_local_final"].date(), []).append(f)', 'by_day.setdefault(f["sched_local_first"].date(), []).append(f)'),
+    "search matches anywhere in a key": (SEARCH, 'keys.split(" ").some((key) => key.startsWith(q))', "keys.includes(q)"),
+    "search keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
