@@ -1,6 +1,6 @@
 # flights-archive
 
-Personal portfolio project. Archives the Ben Gurion flight board from data.gov.il (Israel Airports Authority, dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`) and turns it into reliability stats, scored cancellation forecasts, an MCP server + agent with evals, and a dashboard. README.md covers what the collector does, how to deploy it and what it costs.
+Personal portfolio project. Archives the Ben Gurion flight board from data.gov.il (Israel Airports Authority, dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`) and turns it into a searchable history of each flight's board changes first, then statistics, scored cancellation forecasts and an agent once the data supports them. README.md covers what the collector does, how to deploy it and what it costs.
 
 ## Hard rules
 
@@ -17,10 +17,9 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 ## Current state (2026-10-29)
 
-- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. 68 tests, CI on GitHub.
+- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. CI runs the tests and `scripts/mutation_check.py` on every push; baseline 146 tests, 51 mutations, all caught.
 - Snapshots: first 2026-10-27 18:04Z, a few more from a 10-minute accidental run that evening, continuous since 2026-10-29.
 - Data model v1 runs locally: `src/model/` builds snapshots, observations and flights Parquet tables from `data/raw/` (an `s3 sync`, gitignored). Rules, their UNSURE marks and the nightly-Lambda proposal (not deployed) are in `docs/data-model.md`; before touching a rule, read it.
-- Next: stats, forecasts, MCP server + agent, dashboard.
 
 ## The data (measured on 61 snapshots, Oct 12–27)
 
@@ -32,7 +31,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 - Codeshares: 50–56% of rows share time + direction + airport + CHPTOL + terminal + counters (e.g. EY 607 / LY 9614). No operating-carrier field. That heuristic can wrongly merge arrivals with empty counters.
 - Exact duplicate rows occur (LY 9951, 7 snapshots).
 - CHPTOL: the datastore's field notes call it "AnticipatedTimeLocal". Departures run a median +20 min over CHSTOL, arrivals land a median 7 min early. Gate or runway time is unconfirmed: publish no delay stats until it is.
-- Positioning: others already rank airlines (tlvflights.com since Dec 2025). We lead with how far ahead cancellations are announced (within the 72 h the feed sees), per-flight forecasts with a published Brier score and calibration (skill against a historical-rate baseline), an openly licensed dataset, and the agent.
+- Positioning: others already rank airlines (tlvflights.com since Dec 2025). We lead with how far ahead cancellations are announced (within the 72 h the feed sees), per-flight forecasts with a published Brier score and calibration (skill against a historical-rate baseline) once enough uncensored cancellations exist, derived data (raw stays private until the data.gov.il terms are re-read for redistribution), and later an agent with evals. Claims discipline: "first observed CANCELED on the public board", never "cancelled at"; no operator, actual-cancellation or delay claims without evidence.
 
 ## Working notes
 
