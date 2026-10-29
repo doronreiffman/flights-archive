@@ -32,7 +32,8 @@ RESOURCE_ID = "e83f763b-b7d7-479e-b172-ae981ddc6de5"
 SOURCE = f"data.gov.il flydata resource {RESOURCE_ID} (Israel Airports Authority)"
 FULL_FETCH_EVERY = timedelta(minutes=30)
 PENDING_WINDOW = timedelta(minutes=10)
-SHOW_TIMEOUT = 10.0
+# 20 s: data.gov.il answered resource_show slower than 10 s twice right after its 13:01Z refresh on 2026-10-29.
+SHOW_TIMEOUT = 20.0
 SEARCH_TIMEOUT = 45.0
 MAX_PAGES = 20
 

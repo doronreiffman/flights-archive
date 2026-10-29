@@ -62,7 +62,7 @@ Resources:
       Handler: collector.handler.handler
       Runtime: python3.13
       MemorySize: 256
-      # 10 s status check + 45 s download + S3 + 10 s ping, and still under the 2-min schedule
+      # 20 s status check + 45 s download + S3 + 10 s ping, and still under the 2-min schedule
       Timeout: 100
       # Scheduler invokes asynchronously; Lambda would otherwise retry a failed run twice.
       EventInvokeConfig:

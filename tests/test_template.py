@@ -40,6 +40,16 @@ def test_timeout_fits_inside_the_schedule(resources):
     assert 60 <= resources["CollectorFunction"]["Properties"]["Timeout"] < 120
 
 
+def test_timeout_covers_the_slowest_honest_run(resources):
+    """Status check + download + ping + 15 s for S3 and startup must fit, or a slow data.gov.il
+    becomes a Lambda timeout instead of a clean CollectorError. The status check needs 20 s:
+    10 s timed out twice right after the board's 13:01Z refresh on 2026-10-29."""
+    from collector import core
+    assert core.SHOW_TIMEOUT >= 20
+    budget = core.SHOW_TIMEOUT + core.SEARCH_TIMEOUT + 10 + 15
+    assert budget <= resources["CollectorFunction"]["Properties"]["Timeout"]
+
+
 def test_bucket_is_locked_private_and_versioned(resources):
     bucket = resources["ArchiveBucket"]
     props = bucket["Properties"]
