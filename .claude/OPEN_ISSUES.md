@@ -17,12 +17,10 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 
 ## Collector
 
-- **One deploy pending, owner's go needed.** Four changes are in code and tests but not live: status-check timeout 10 s to 20 s (`SHOW_TIMEOUT`, after four timeouts in about fifty runs on 2026-10-29, all right after a board refresh); no `/fail` ping on transient errors (healthchecks.io's grace period decides); the error alarm needs errors in two consecutive 5-minute windows; and the User-Agent parameter now rejects a value without a URL and an email. The live `USER_AGENT` is truncated to `flights-archive/0.1` because the README's deploy command lacked inner quotes, so the live collector has been identifying itself without a contact since go-live; the README command is fixed. Deploy: `sam build`, then the README's step 4 command with `ScheduleState=ENABLED`, then confirm the live value with `aws lambda get-function-configuration`.
 - **Latch policy on a single 429 / 403.** The reviewer suggests requiring two or three consecutive blocks before latching, since one transient 429 halts collection until a manual unblock and the resulting hole breaks R4 and R8. Current code latches on the first. Owner's call; the conservative reading of the license argues for keeping it.
 
 ## Repo hygiene (before the repo goes public)
 
-- **Commit author email is the literal placeholder `<email for public commits>`** on every commit (`.git/config` `user.email`). Owner picks an address (GitHub's noreply form `<id>+doronreiffman@users.noreply.github.com` keeps the real one private), then the history is rewritten with it; rewriting needs the owner's explicit confirmation.
-- **`gh` active account is the employer's**, which also serves git pushes; `gh auth switch -u doronreiffman` is the owner's to run. Until then nothing can be pushed from this machine.
+- **Seven commits carry the placeholder email `<email for public commits>`.** Future commits use 83887818+doronreiffman@users.noreply.github.com (`.git/config`, set 2026-10-29). Rewriting the seven and force-pushing the private remote needs the owner's explicit confirmation.
 - **Employer profile names in CLAUDE.md** were put there on the owner's instruction; they are names only, but the reviewer suggests moving them to an untracked `CLAUDE.local.md` before publishing. Owner's call.
 - **The User-Agent's repo URL returns 404 while the repo is private.** Either make the repo public or use another contact URL; owner's call.
