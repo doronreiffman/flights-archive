@@ -34,7 +34,7 @@ def report(model_dir: Path) -> str:
     by = dict(_rows(con, "SELECT receipt, count(*) FROM snapshot_runs GROUP BY 1"))
     s.append(f"Receipts: {rc[0]} stored, {rc[1]} unchanged. "
              f"Snapshots by receipt: receipted {by.get('receipted', 0)}, legacy {by.get('legacy', 0)}, "
-             f"pending {by.get('pending', 0)}, orphan {by.get('orphan', 0)}.")
+             f"pending {by.get('pending', 0)}, orphan {by.get('orphan', 0)}, superseded {by.get('superseded', 0)}.")
     gaps = _rows(con, "SELECT fetched_at, round(gap_before_s / 3600.0, 1) FROM snapshots WHERE gap_before_s > 3600 ORDER BY 1")
     s.append("\nCollection gaps over an hour (snapshot, hours since the previous one):\n")
     s.append(_table(["snapshot", "gap h"], gaps) if gaps else "none")

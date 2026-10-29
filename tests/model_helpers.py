@@ -68,7 +68,8 @@ def write_receipt(receipts: Path, snapshot_id: str, *, action: str = "stored", w
     prefix = f"raw/date={day}/{stem}"
     doc = {
         "receipt_version": version, "action": action,
-        "run_started_at": f"{when:%Y-%m-%dT%H:%M:%S}+00:00", "downloaded_at": f"{when:%Y-%m-%dT%H:%M:%S}.5+00:00",
+        # Real receipts carry microseconds; the snapshot path keeps whole seconds.
+        "run_started_at": f"{when:%Y-%m-%dT%H:%M:%S}.250117+00:00", "downloaded_at": f"{when:%Y-%m-%dT%H:%M:%S}.981004+00:00",
         "code_sha256": "c" * 64, "source": "test", "resource_last_modified": f"{when:%Y-%m-%dT%H:%M:%S}",
         "snapshot": prefix, "snapshot_sha256": sha12 + "0" * 52, "rows": rows,
         "pages": [{"key": f"{prefix}/page-{i:03d}.json.gz", "rows": rows, "sha256": "0" * 64, "latency_ms": 1}

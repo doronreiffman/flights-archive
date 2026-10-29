@@ -27,12 +27,13 @@ GAP_HOURS = 1
 # The largest reply the model reads. DuckDB reserves a read buffer per gzipped file from this, so 256 MB ran
 # out of memory at 17 files; the collector refuses any reply past 32 MB (core.MAX_BODY_BYTES).
 MAX_REPLY_BYTES = 32 * 1024 * 1024
-# Receipts (docs/receipts.md). A snapshot newer than every receipt is waiting for its receipt; one this
-# long after the newest receipt means receipts/ was synced earlier than raw/.
-PENDING_GRACE_MINUTES = 5
+# Receipts (docs/receipts.md). A snapshot newer than every receipt is waiting for its receipt. The collector
+# writes a receipt at least every 30 minutes (a 32-minute worst case on the 2-minute schedule) and a run lasts
+# at most 100 s, so a snapshot further than this past the newest receipt means receipts/ is behind raw/.
+PENDING_GRACE_MINUTES = 35
 RECEIPT_VERSIONS = (1,)
-# Snapshots with pages but no receipt that a person has checked against the collector logs (a receipt
-# write that failed); they are dropped. Any other unreceipted snapshot stops the build.
+# Snapshots with pages but no receipt in S3, checked by a person, that no later run stored again; they are
+# dropped. Any other unreceipted snapshot stops the build.
 KNOWN_ORPHANS: frozenset[str] = frozenset()
 
 # Board field -> model column. Names come from the datastore's field notes, except the
@@ -171,13 +172,14 @@ def _check_receipts(con) -> None:
     stale = ids(f"""SELECT snapshot_id FROM snapshot_files
                     WHERE receipt = 'pending' AND fetched_at > newest_receipt + INTERVAL {PENDING_GRACE_MINUTES} MINUTE ORDER BY 1""")
     if stale:
-        raise ValueError(f"receipts/ is older than raw/: {len(stale)} snapshots come more than {PENDING_GRACE_MINUTES} min "
-                         f"after the newest receipt (first: {stale[0]}). Run scripts/sync.sh.")
+        raise ValueError(f"{len(stale)} snapshots come more than {PENDING_GRACE_MINUTES} min after the newest receipt "
+                         f"(first: {stale[0]}): receipts/ was synced earlier than raw/, or the collector's receipt writes "
+                         "are failing. Run scripts/sync.sh; if it persists, look at receipts/ in S3 for those times.")
     unreceipted = ids("SELECT snapshot_id FROM snapshot_files WHERE receipt = 'unreceipted' ORDER BY 1")
     if unreceipted:
         raise ValueError(f"{len(unreceipted)} snapshots have pages but no receipt: {unreceipted[:10]}. Re-run scripts/sync.sh; "
-                         "if it persists, check the collector logs at those times and list confirmed orphans in "
-                         "KNOWN_ORPHANS (src/model/rules.py).")
+                         "if it persists, the receipt is missing in S3 too (aws s3 ls receipts/ for that date): list "
+                         "those snapshots in KNOWN_ORPHANS (src/model/rules.py).")
 
 
 def convert_times_and_dedupe(con) -> None:
@@ -189,8 +191,8 @@ def convert_times_and_dedupe(con) -> None:
     hold fewer rows than the reply's own `total` is an interrupted multi-page store; it is dropped
     and listed in snapshot_runs with incomplete = true.
 
-    Receipts decide trust first: `receipted` and `legacy` snapshots are kept, `pending` and `orphan`
-    ones dropped, and anything else stops the build (_check_receipts).
+    Receipts decide trust first: `receipted` and `legacy` snapshots are kept, `orphan`, `superseded` and
+    `pending` ones dropped, and anything else stops the build (_check_receipts).
     """
     fields = ", ".join(COLUMNS.values())
     key = ", ".join(KEY)
@@ -201,16 +203,19 @@ def convert_times_and_dedupe(con) -> None:
                           count(*) < max(declared_total) AS incomplete,
                           count(*) AS file_rows, count(DISTINCT page) AS file_pages
                    FROM raw_rows GROUP BY snapshot_id),
-             b AS (SELECT min(date_trunc('second', run_started_at)) AS first_receipt,
-                          max(date_trunc('second', run_started_at)) AS newest_receipt FROM receipts),
+             n AS (SELECT *, lead(sha) OVER w AS next_sha, lead(snapshot_id) OVER w AS next_id FROM s
+                   WINDOW w AS (ORDER BY fetched_at, snapshot_id)),
+             b AS (SELECT min(run_started_at) AS first_receipt, max(run_started_at) AS newest_receipt FROM receipts),
              st AS (SELECT snapshot_id, rows AS receipt_rows, pages AS receipt_pages FROM receipts WHERE action = 'stored')
-        SELECT s.*, st.receipt_rows, st.receipt_pages, b.newest_receipt,
+        SELECT n.* EXCLUDE (next_sha, next_id), st.receipt_rows, st.receipt_pages, b.newest_receipt,
                CASE WHEN st.snapshot_id IS NOT NULL THEN 'receipted'
-                    WHEN b.first_receipt IS NULL OR s.fetched_at < b.first_receipt THEN 'legacy'
-                    WHEN s.fetched_at > b.newest_receipt THEN 'pending'
-                    WHEN s.snapshot_id IN ({orphans}) THEN 'orphan'
+                    WHEN n.snapshot_id IN ({orphans}) THEN 'orphan'
+                    WHEN b.first_receipt IS NULL OR n.fetched_at < b.first_receipt THEN 'legacy'
+                    -- A failed receipt write leaves state as it was, so the next run stores the same board again.
+                    WHEN n.next_sha = n.sha AND n.next_id IN (SELECT snapshot_id FROM st) THEN 'superseded'
+                    WHEN n.fetched_at > b.newest_receipt THEN 'pending'
                     ELSE 'unreceipted' END AS receipt
-        FROM s CROSS JOIN b LEFT JOIN st USING (snapshot_id)
+        FROM n CROSS JOIN b LEFT JOIN st USING (snapshot_id)
     """)
     _check_receipts(con)
     con.execute("""

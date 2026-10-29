@@ -15,7 +15,7 @@ Every 2 minutes a Lambda function in il-central-1 (Tel Aviv):
 
 The board refreshes about every 15 minutes, so that's roughly 4 downloads an hour.
 
-Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. Receipts land at `receipts/date=YYYY-MM-DD/HHMMSSZ-<sha12>.json`, written after the pages, so a receipt means every page it names is in the archive; it also keeps `last_modified` and the hashes where a local sync can see them (sync drops object metadata). Snapshots stored before receipts existed (before the first receipt) have none. Object Lock (governance mode, 10 years by default) plus a write-once condition mean the collector can't overwrite or delete a snapshot or a receipt. A small `state/collector.json` remembers the last timestamp, hash and snapshot key. Design: `docs/receipts.md`.
+Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. Receipts land at `receipts/date=YYYY-MM-DD/HHMMSSZ-<sha12>.json`, written after the pages, so a receipt means every page it names is in the archive; it also keeps `last_modified` and the hashes where a local sync can see them (sync drops object metadata). Snapshots stored before receipts existed (before the first receipt) have none. Object Lock (governance mode, 10 years by default) keeps every version of a snapshot or receipt, and the collector's writes carry a write-once condition, so it never replaces one (the code enforces that condition, not IAM). A small `state/collector.json` remembers the last timestamp, hash and snapshot key. Design: `docs/receipts.md`.
 
 ## Rules the code enforces
 
@@ -34,6 +34,8 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
 2. Create a healthchecks.io check (period 2 minutes, grace 15 minutes) and copy its ping URL.
 3. Email data.gov.il about the collector, with the User-Agent you'll use.
 4. Build and deploy with the schedule switched off (`ScheduleState` defaults to `DISABLED`). The parameters stay on your command line, not in a file you might commit:
+
+   Deploy from a clean, committed tree (`git status --porcelain src/` prints nothing): every receipt records a fingerprint of the collector's code, and only a committed tree lets you find the commit behind it. The run summary in the logs shows the same fingerprint.
 
    ```bash
    sam build

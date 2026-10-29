@@ -94,7 +94,7 @@ def run(cfg: Config, fetch: core.Fetcher, store: core.Store, now: datetime,
         # outage, and the alarm needs errors in two consecutive windows. One slow reply stays quiet.
         log.error("collector failed: %s", err)
         raise
-    summary = asdict(outcome)
+    summary = asdict(outcome) | {"code_sha256": core.CODE_SHA256}  # which code wrote this run's receipt
     log.info(json.dumps(summary))
     pinger(cfg.healthcheck_url, json.dumps(summary))
     return summary

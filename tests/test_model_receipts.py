@@ -72,8 +72,9 @@ def test_without_receipts_every_snapshot_is_legacy(raw, rec, make_dir):
     assert statuses(con) == {a: "legacy", b: "legacy"} and one(con, "SELECT count(*) n FROM receipts")["n"] == 0
 
 
-@pytest.mark.parametrize("minutes", [4, 5])
+@pytest.mark.parametrize("minutes", [15, 35])
 def test_a_snapshot_newer_than_every_receipt_is_pending_and_dropped(raw, rec, minutes):
+    """Receipts come at least every 30 minutes, so a sync can catch a store up to then without stopping."""
     a = write_snapshot(raw, at(6), [row()])
     write_receipt(rec, a)
     b = write_snapshot(raw, at(6, minutes), [row(status="DELAYED")])
@@ -84,16 +85,16 @@ def test_a_snapshot_newer_than_every_receipt_is_pending_and_dropped(raw, rec, mi
 def test_pending_counts_from_the_newest_receipt_of_either_kind(raw, rec):
     a = write_snapshot(raw, at(6), [row()])
     write_receipt(rec, a)
-    write_receipt(rec, a, action="unchanged", when=at(6, 30))
-    b = write_snapshot(raw, at(6, 33), [row(status="DELAYED")])
+    write_receipt(rec, a, action="unchanged", when=at(6, 45))
+    b = write_snapshot(raw, at(6, 50), [row(status="DELAYED")])
     assert statuses(run(raw, rec))[b] == "pending"
 
 
 def test_receipts_older_than_raw_stop_the_build(raw, rec):
     a = write_snapshot(raw, at(6), [row()])
     write_receipt(rec, a)
-    write_snapshot(raw, at(6, 6), [row(status="DELAYED")])
-    with pytest.raises(ValueError, match=r"receipts/ is older than raw/.*scripts/sync.sh"):
+    write_snapshot(raw, at(6, 36), [row(status="DELAYED")])
+    with pytest.raises(ValueError, match=r"more than 35 min after the newest receipt.*scripts/sync.sh"):
         run(raw, rec)
 
 
@@ -165,7 +166,7 @@ def test_cli_reads_receipts_beside_raw_and_the_report_counts_them(tmp_path, caps
     assert "receipts: 2 rows" in capsys.readouterr().out and (out / "receipts.parquet").exists()
     text = report.report(out)
     assert "Receipts: 1 stored, 1 unchanged." in text
-    assert "Snapshots by receipt: receipted 1, legacy 1, pending 0, orphan 0." in text
+    assert "Snapshots by receipt: receipted 1, legacy 1, pending 0, orphan 0, superseded 0." in text
     assert old.startswith("2026-10-27")
 
 
@@ -174,3 +175,67 @@ def test_cli_says_when_there_are_no_receipts(tmp_path, capsys):
     write_snapshot(raw, at(6), [row()])
     assert build.main(["--raw", str(raw), "--out", str(tmp_path / "model")]) == 0
     assert f"no receipts under {tmp_path / 'receipts'}: every snapshot is legacy" in capsys.readouterr().out
+
+
+def test_a_known_orphan_newer_than_every_receipt_is_dropped(raw, rec, monkeypatch):
+    """A receipt write failed and no run has written a receipt since (blocked, or switched off)."""
+    a = write_snapshot(raw, at(6), [row()])
+    write_receipt(rec, a)
+    b = write_snapshot(raw, at(7), [row(status="DELAYED")])
+    monkeypatch.setattr(rules, "KNOWN_ORPHANS", frozenset({b}))
+    con = run(raw, rec)
+    assert statuses(con) == {a: "receipted", b: "orphan"} and kept(con) == [a]
+
+
+def test_an_orphan_stored_again_with_a_receipt_by_the_next_run_is_dropped(raw, rec):
+    """A failed receipt write leaves state as it was, so the next run stores the same board again, with a receipt."""
+    a = write_snapshot(raw, at(6), [row()])
+    o = write_snapshot(raw, at(6, 15), [row(status="DELAYED")], sha="d" * 12)
+    o2 = write_snapshot(raw, at(6, 17), [row(status="DELAYED")], sha="d" * 12)
+    write_receipt(rec, a)
+    write_receipt(rec, o2)
+    con = run(raw, rec)
+    assert statuses(con) == {a: "receipted", o: "superseded", o2: "receipted"} and kept(con) == [a, o2]
+
+
+def test_an_interrupted_multi_page_orphan_stored_again_is_dropped(raw, rec):
+    a = write_snapshot(raw, at(6), [row()])
+    o = write_snapshot(raw, at(6, 15), [row(flight_no=str(n)) for n in range(4)], pages=2, sha="d" * 12)
+    (raw / "date=2026-10-27" / f"{o.split('/')[1]}" / "page-001.json.gz").unlink()
+    o2 = write_snapshot(raw, at(6, 17), [row(flight_no=str(n)) for n in range(4)], pages=2, sha="d" * 12)
+    write_receipt(rec, a)
+    write_receipt(rec, o2, rows=4, pages=2)
+    assert statuses(run(raw, rec))[o] == "superseded"
+
+
+def test_an_orphan_whose_next_snapshot_holds_other_content_stops_the_build(raw, rec):
+    a = write_snapshot(raw, at(6), [row()])
+    o = write_snapshot(raw, at(6, 15), [row(status="DELAYED")], sha="d" * 12)
+    c = write_snapshot(raw, at(6, 17), [row(status="BOARDING")], sha="e" * 12)
+    write_receipt(rec, a)
+    write_receipt(rec, c)
+    with pytest.raises(ValueError, match=rf"no receipt.*{o}"):
+        run(raw, rec)
+
+
+def test_an_orphan_is_superseded_only_by_a_receipted_copy(raw, rec, monkeypatch):
+    a = write_snapshot(raw, at(6), [row()])
+    o = write_snapshot(raw, at(6, 15), [row(status="DELAYED")], sha="d" * 12)
+    o2 = write_snapshot(raw, at(6, 17), [row(status="DELAYED")], sha="d" * 12)
+    c = write_snapshot(raw, at(6, 30), [row(status="BOARDING")])
+    write_receipt(rec, a)
+    write_receipt(rec, c)
+    monkeypatch.setattr(rules, "KNOWN_ORPHANS", frozenset({o2}))
+    with pytest.raises(ValueError, match=rf"no receipt.*{o}"):
+        run(raw, rec)
+
+
+def test_the_legacy_cutover_is_the_first_receipt_of_either_kind(raw, rec):
+    """An orphan after an unchanged receipt is not legacy, even when no stored receipt comes before it."""
+    old = write_snapshot(raw, at(6), [row()])
+    write_receipt(rec, old, action="unchanged", when=at(6, 30))
+    x = write_snapshot(raw, at(6, 35), [row(status="DELAYED")])
+    y = write_snapshot(raw, at(6, 45), [row(status="BOARDING")])
+    write_receipt(rec, y)
+    with pytest.raises(ValueError, match=rf"no receipt.*{x}"):
+        run(raw, rec)

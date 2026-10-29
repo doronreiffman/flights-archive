@@ -252,6 +252,8 @@ def _receipt(action: str, now: datetime, downloaded_at: datetime, last_modified:
         "downloaded_at": downloaded_at.isoformat(),
         "code_sha256": CODE_SHA256,
         "source": SOURCE,
+        # resource_show's last_modified at the start of the run, before the download. The board can move it
+        # before its data (PENDING_WINDOW), so an unchanged receipt then pairs a new timestamp with old content.
         "resource_last_modified": last_modified,
         "snapshot": prefix,
         "snapshot_sha256": digest,

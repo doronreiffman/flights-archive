@@ -8,7 +8,7 @@ Three facts exist today only in logs or in the mutable state file:
 
 - "The board was downloaded at T and was identical to snapshot S" (an `unchanged` run leaves a log line and an overwritten `state/collector.json`).
 - "Snapshot S is complete" (the model infers it from the reply's own `total`).
-- The board's `last_modified` for S (kept only in S3 object metadata, which `aws s3 sync` drops).
+- The board's `last_modified` as the run saw it (kept only in S3 object metadata, which `aws s3 sync` drops).
 
 A receipt makes each of them a write-once archive object. Measured 2026-10-29 12:29Z to 15:20Z: 85 runs, 13 full downloads (all new boards, stored), 0 unchanged, 72 timestamp-only checks. So today receipts mostly carry completeness and `last_modified`; `unchanged` receipts start to matter when the board stalls (the 30-minute safety download then finds the same content), which the current model would misread as a collection hole.
 
@@ -40,6 +40,7 @@ Contents, version 1 (JSON, sorted keys, UTF-8, `application/json`):
 ```
 
 - `action` is `stored` or `unchanged`.
+- `resource_last_modified` is what `resource_show` reported at the start of the run, before the download (re-checked unchanged after a multi-page download, not after a single page). It is not proof of which refresh the content came from: the board can move its timestamp before its data (that is why the collector keeps a pending window), so an `unchanged` receipt in that window pairs the new timestamp with the old content.
 - `run_started_at` is the run's clock at invocation, the same instant as the snapshot path and the key. It comes before the status check and the download, so it can even precede `resource_last_modified`; `downloaded_at` is the clock right after the last page arrived.
 - `code_sha256` fingerprints the code that wrote the receipt: SHA-256 over the collector package's `.py` files, sorted by name, each contributing its name, a NUL byte and the SHA-256 of its bytes. No deploy step is needed, and running the same function over any commit's `src/collector/` finds the commit. If a collector bug ever writes wrong receipts, this is the only way to tell which ones.
 - No HTTP status: anything but 200 raises before a receipt exists.
@@ -52,7 +53,7 @@ Stored: pages, then receipt, then state. Unchanged: receipt, then state. Each st
 
 | Fails at | Left in the archive | Next run | Model |
 |---|---|---|---|
-| a page | earlier pages, no receipt | downloads and stores again under a new key | stops on the orphan until a person checks the logs and lists it in `KNOWN_ORPHANS`; then drops it |
+| a page | earlier pages, no receipt | downloads and stores again under a new key (state was not updated) | `superseded`: dropped automatically when the next snapshot has the same hash and a receipt, the usual case; otherwise the build stops until a person lists it in `KNOWN_ORPHANS` |
 | the receipt (stored) | all pages, no receipt | same | same |
 | the receipt (unchanged) | nothing new | downloads again (state untouched, so the 30-minute check is still due) | nothing to do |
 | the receipt, but it landed (the AWS library retries a write after a read timeout; the retry gets 412 from the write-once check) | pages and receipt, state not written | stores again, or writes another `unchanged` receipt | keeps one copy, drops the identical repeat (R2) |
@@ -60,7 +61,7 @@ Stored: pages, then receipt, then state. Unchanged: receipt, then state. Each st
 
 ## Write-once
 
-Same protection as `raw/`: `IfNoneMatch="*"` (S3 refuses to replace an existing key) and Object Lock governance retention for `RetentionDays` (3,650 days), SHA-256 checksum on upload. The collector can never correct a receipt (only the account admin can bypass governance mode), which is why each one carries `receipt_version` and `code_sha256` from the first.
+Same protection as `raw/`: `IfNoneMatch="*"` (S3 refuses to replace an existing key) and Object Lock governance retention for `RetentionDays` (3,650 days), SHA-256 checksum on upload. What enforces write-once is the collector's code, which always sends `IfNoneMatch` (pinned by a test and a mutation check); its IAM role may write any key under `raw/` and `receipts/`. A write without that header would not destroy anything, since Object Lock keeps every earlier version, but it would put a newer version on top, which `aws s3 sync` and the model would read. A receipt cannot be corrected by the collector, and only the account admin can bypass governance mode, which is why each one carries `receipt_version` and `code_sha256` from the first.
 
 IAM: the existing write-once statement (`s3:PutObject`, `s3:PutObjectRetention`) grows from `raw/*` to `raw/*` and `receipts/*`, and its Sid becomes `WriteOnceArchive`. The action set is unchanged; `tests/test_template.py` pins the two resources. The collector never reads receipts, so no read permission is added.
 
@@ -78,10 +79,11 @@ IAM: the existing write-once statement (`s3:PutObject`, `s3:PutObjectRetention`)
   - `receipted`: a stored receipt names this snapshot, and its row and page counts match the files. Kept.
   - `legacy`: no receipt, fetched before the first receipt in the archive. Kept under today's checks (declared `total`).
   - `pending`: no receipt, fetched after the newest local receipt. Dropped: its receipt is not written or not synced yet.
-  - `orphan`: no receipt, fetched between the first and newest receipt, and listed in `KNOWN_ORPHANS` in `rules.py` after a person checked it. Dropped.
+  - `orphan`: no receipt, listed in `KNOWN_ORPHANS` in `rules.py` after a person checked S3. Dropped. Checked first, so it also clears an orphan newer than every receipt.
+  - `superseded`: no receipt, and the next snapshot has the same hash and a stored receipt: a failed receipt write leaves state as it was, so the next run stores the same board again. Dropped automatically.
 - The build stops, naming the snapshots, when the local copy cannot be trusted. A silent drop could move a flight's first CANCELED sighting by a refresh without flagging it, so each of these is an error rather than a filter:
   - a snapshot with no receipt between the first and newest receipt that is not in `KNOWN_ORPHANS` ("re-run scripts/sync.sh; if it persists, check the collector logs at that time");
-  - a pending snapshot more than 5 minutes after the newest receipt ("receipts/ is older than raw/; run scripts/sync.sh");
+  - a pending snapshot more than `PENDING_GRACE_MINUTES` (35) after the newest receipt: receipts/ was synced earlier than raw/, or receipt writes are failing. The collector writes a receipt at least every 30 minutes (32 in the worst case on the 2-minute schedule) and a run lasts at most 100 s, so a sync that catches a store mid-way never trips it;
   - a stored receipt whose row or page count differs from the files (the archive cannot produce this: it means a cut-off sync or a collector bug);
   - a stored receipt whose snapshot has no files locally ("re-sync raw/").
 - R2's repeat check runs over kept snapshots only (today: over complete ones).
@@ -123,6 +125,10 @@ Total about $0.02 a month (ceiling $0.13). Lambda time is unchanged in practice 
 ## Design review (2026-10-29, Opus; Fable was over its limit and reviews the code before it ships)
 
 Accepted: stops instead of silent drops, the sync script, `pending` vs `orphan`; `run_started_at` and `downloaded_at` instead of one misleading `fetched_at`; `code_sha256`; no HTTP status; the retried-write row in the failure table; the sha12 check on `last_key`; the sha12 in the receipt key; the Sid rename and "the collector cannot" wording; gaps from all receipts before q7 publishes them. Declined: S3 version ids in receipts and IAM condition keys (see Rejected).
+
+## Code review (2026-10-29, Opus; the owner waived the Fable gate this time)
+
+Verdict: the collector side (write order, failures, receipt key and contents, the unchanged guard, IAM, locking, the fingerprint) safe to deploy. Fixed: a known orphan newer than every receipt could never be cleared (`KNOWN_ORPHANS` is now checked first); the 5-minute grace stopped ordinary syncs (now 35, from the receipt spacing); orphans from a failed receipt write are dropped automatically as `superseded`; `resource_last_modified` defined precisely before it is locked in; the write-once wording now says the code, not IAM, enforces it; the run summary logs `code_sha256`, and deploys come from a clean tree; model tests use receipt times with microseconds. Not done: an IAM condition requiring `If-None-Match` (the condition key is not checked against AWS's documentation; a suggestion for later), a sync-time marker for the grace check (the wider grace removes the race it was for).
 
 ## Deviations
 
