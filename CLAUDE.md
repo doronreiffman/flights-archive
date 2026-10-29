@@ -18,7 +18,8 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 - Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, about 25 s after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. 68 tests, CI on GitHub.
 - Snapshots: first 2026-10-27 18:04Z, a few more from a 10-minute accidental run that evening, continuous since 2026-10-29.
-- Next: the data model (observations + flights Parquet tables built from the raw snapshots), then stats, forecasts, MCP server + agent, dashboard.
+- Data model v1 runs locally: `src/model/` builds snapshots, observations and flights Parquet tables from `data/raw/` (an `s3 sync`, gitignored). Rules, their UNSURE marks and the nightly-Lambda proposal (not deployed) are in `docs/data-model.md`; before touching a rule, read it.
+- Next: stats, forecasts, MCP server + agent, dashboard.
 
 ## The data (measured on 61 snapshots, Oct 12–27)
 
@@ -29,7 +30,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 - `_id` is a row number reset every refresh. Natural key: (airline, flight no., CHSTOL, A/D). A rescheduled flight gets a new CHSTOL: 40 of 56 rows that "vanished" were retimes (same flight no., new time within about 12 h); the other 16 left the board days ahead and may be unflagged cancellations.
 - Codeshares: 50–56% of rows share time + direction + airport + CHPTOL + terminal + counters (e.g. EY 607 / LY 9614). No operating-carrier field. That heuristic can wrongly merge arrivals with empty counters.
 - Exact duplicate rows occur (LY 9951, 7 snapshots).
-- CHPTOL minus CHSTOL: departures median +21 min (66% over 15), arrivals +1 min. Likely takeoff / actual time, not gate. Unconfirmed: publish no delay stats until it is.
+- CHPTOL: the datastore's field notes call it "AnticipatedTimeLocal". Departures run a median +20 min over CHSTOL, arrivals land a median 7 min early. Gate or runway time is unconfirmed: publish no delay stats until it is.
 - Positioning: others already rank airlines (tlvflights.com since Dec 2025). We lead with how far ahead cancellations are announced (within the 72 h the feed sees), per-flight forecasts with a published Brier score and calibration (skill against a historical-rate baseline), an openly licensed dataset, and the agent.
 
 ## Working notes

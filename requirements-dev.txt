@@ -2,3 +2,4 @@
 pytest==9.*
 pytest-cov
 cfn-lint==1.58.0
+duckdb==1.5.6
