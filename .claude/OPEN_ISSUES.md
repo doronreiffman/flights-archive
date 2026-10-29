@@ -30,7 +30,7 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 
 ## Repo hygiene (before the repo goes public)
 
-- **The User-Agent's repo URL returns 404 while the repo is private.** The live User-Agent (deployed 2026-10-29) names `https://github.com/doronreiffman/flights-archive`, so data.gov.il cannot follow the link. Either make the repo public (raw data is not in git; check `docs/` and the history first) or point the User-Agent at another contact page and redeploy. Owner's call.
+- **The User-Agent's repo URL returns 404 while the repo is private.** The live User-Agent (deployed 2026-10-29) names `https://github.com/doronreiffman/flights-archive`, so data.gov.il cannot follow the link. The owner chose to make the repo public (q16, 2026-10-29); the history is checked and rewritten, and the GitHub steps wait on the owner's go.
 
 ## Governance
 
