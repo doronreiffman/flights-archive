@@ -57,9 +57,32 @@ def write_snapshot(raw: Path, fetched_at: datetime, rows: list[dict], ids: bool 
     return f"{fetched_at:%Y-%m-%d}/{fetched_at:%H%M%S}Z-{sha}"
 
 
-def build(raw: Path):
+def write_receipt(receipts: Path, snapshot_id: str, *, action: str = "stored", when: datetime | None = None,
+                  rows: int = 1, pages: int = 1, version: int = 1) -> str:
+    """Write one receipt in the collector's layout (docs/receipts.md) for a snapshot id from write_snapshot.
+
+    A stored receipt runs at its snapshot's own time; give `when` for an unchanged check later on."""
+    day, stem = snapshot_id.split("/")
+    sha12 = stem.split("-")[1]
+    when = when or datetime.strptime(f"{day} {stem[:6]}", "%Y-%m-%d %H%M%S")
+    prefix = f"raw/date={day}/{stem}"
+    doc = {
+        "receipt_version": version, "action": action,
+        "run_started_at": f"{when:%Y-%m-%dT%H:%M:%S}+00:00", "downloaded_at": f"{when:%Y-%m-%dT%H:%M:%S}.5+00:00",
+        "code_sha256": "c" * 64, "source": "test", "resource_last_modified": f"{when:%Y-%m-%dT%H:%M:%S}",
+        "snapshot": prefix, "snapshot_sha256": sha12 + "0" * 52, "rows": rows,
+        "pages": [{"key": f"{prefix}/page-{i:03d}.json.gz", "rows": rows, "sha256": "0" * 64, "latency_ms": 1}
+                  for i in range(pages)],
+    }
+    path = receipts / f"date={when:%Y-%m-%d}" / f"{when:%H%M%S}Z-{sha12}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc))
+    return str(path)
+
+
+def build(raw: Path, receipts: Path | None = None):
     con = rules.connect()
-    rules.build_all(con, str(raw / "**" / "*.json.gz"))
+    rules.build_all(con, str(raw / "**" / "*.json.gz"), None if receipts is None else str(receipts / "**" / "*.json"))
     return con
 
 

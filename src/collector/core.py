@@ -7,6 +7,9 @@ Each run:
    still waiting for its data (PENDING_WINDOW).
 3. Stores the reply bytes untouched (gzipped) only if their content hash
    differs from the last stored snapshot.
+4. After every full download, stored or unchanged, writes a receipt under
+   receipts/ (after the pages, before the state file) naming the stored pages
+   that hold this content. docs/receipts.md has the design.
 
 Anything unexpected raises instead of writing. A reply that looks like a
 firewall block raises BlockedError and latches the collector off: every
@@ -26,6 +29,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Protocol
 
 API = "https://data.gov.il/api/3/action"
@@ -70,6 +74,7 @@ class Store(Protocol):
     def read_state(self) -> dict | None: ...
     def write_state(self, state: dict) -> None: ...
     def put_snapshot(self, key: str, body: bytes, metadata: dict[str, str], now: datetime) -> None: ...
+    def put_receipt(self, key: str, body: bytes, now: datetime) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -87,6 +92,7 @@ class Outcome:
     rows: int = 0
     sha256: str | None = None
     keys: list[str] = field(default_factory=list)
+    receipt: str | None = None
 
 
 def check_user_agent(user_agent: str) -> str:
@@ -218,7 +224,47 @@ def _parse_time(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
-def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000) -> Outcome:
+RECEIPT_VERSION = 1
+
+
+def code_fingerprint(directory: Path) -> str:
+    """SHA-256 over the .py files in a directory, sorted by name: each adds its name, a NUL byte and the
+    SHA-256 of its bytes. Run it over any commit's src/collector/ to find the code that wrote a receipt."""
+    h = hashlib.sha256()
+    for path in sorted(directory.glob("*.py"), key=lambda p: p.name):
+        h.update(path.name.encode() + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+    return h.hexdigest()
+
+
+CODE_SHA256 = code_fingerprint(Path(__file__).parent)
+
+
+def _receipt(action: str, now: datetime, downloaded_at: datetime, last_modified: str, prefix: str, digest: str,
+             pages: list[Page]) -> bytes:
+    """The archive's record of one full download: what was fetched, when, by which code, and which stored pages hold it.
+
+    Written after the pages and before the state, and never overwritten, so a receipt means every page it
+    names is in the archive. For "unchanged", the pages are the snapshot stored earlier with the same hash."""
+    return json.dumps({
+        "receipt_version": RECEIPT_VERSION,
+        "action": action,
+        "run_started_at": now.isoformat(),
+        "downloaded_at": downloaded_at.isoformat(),
+        "code_sha256": CODE_SHA256,
+        "source": SOURCE,
+        "resource_last_modified": last_modified,
+        "snapshot": prefix,
+        "snapshot_sha256": digest,
+        "rows": sum(p.rows for p in pages),
+        "pages": [{"key": f"{prefix}/page-{i:03d}.json.gz", "rows": p.rows, "sha256": hashlib.sha256(p.body).hexdigest(),
+                   "latency_ms": p.elapsed_ms} for i, p in enumerate(pages)],
+    }, sort_keys=True).encode()
+
+
+def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000,
+             clock: Callable[[], datetime] | None = None) -> Outcome:
+    """One scheduled run. `now` is the run's start (it names the snapshot and the receipt);
+    `clock` reads the time again once the download is done (default: the real UTC clock)."""
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise ValueError("now must be timezone-aware UTC")
     state = store.read_state() or {}
@@ -229,7 +275,7 @@ def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000
             "Nothing was requested. A person must check, then clear the latch (see README)."
         )
     try:
-        return _collect(fetch, store, now, state, page_size)
+        return _collect(fetch, store, now, state, page_size, clock or utcnow)
     except BlockedError as err:
         try:
             store.write_state({**state, "blocked": {"at": now.isoformat(), "reason": str(err)[:500]}})
@@ -239,7 +285,8 @@ def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000
         raise
 
 
-def _collect(fetch: Fetcher, store: Store, now: datetime, state: dict, page_size: int) -> Outcome:
+def _collect(fetch: Fetcher, store: Store, now: datetime, state: dict, page_size: int,
+             clock: Callable[[], datetime]) -> Outcome:
     last_modified = resource_last_modified(fetch)
     last_full = _parse_time(state.get("last_full_fetch"))
     pending_since = _parse_time(state.get("pending_since"))
@@ -250,6 +297,7 @@ def _collect(fetch: Fetcher, store: Store, now: datetime, state: dict, page_size
         return Outcome(action="skipped", last_modified=last_modified)
 
     pages = fetch_board(fetch, page_size)
+    downloaded_at = clock()
     if len(pages) > 1 and resource_last_modified(fetch) != last_modified:
         raise CollectorError("the board changed while paging; the next run will retry")
     digest = snapshot_sha256(pages)
@@ -261,14 +309,19 @@ def _collect(fetch: Fetcher, store: Store, now: datetime, state: dict, page_size
         "last_key": state.get("last_key"),
         "pending_since": None,
     }
-    if digest == state.get("sha256"):
+    receipt_key = f"receipts/date={now:%Y-%m-%d}/{now:%H%M%S}Z-{digest[:12]}.json"
+    # An "unchanged" receipt names the snapshot already holding this content. State that cannot
+    # point at it (no key, or a key for other content) gets a fresh copy instead.
+    stored_prefix = (state.get("last_key") or "").rsplit("/", 1)[0]
+    if digest == state.get("sha256") and stored_prefix.endswith(f"Z-{digest[:12]}"):
         # The timestamp can move before the data does; keep downloading for a while.
         if moved:
             new_state["pending_since"] = now.isoformat()
         elif pending:
             new_state["pending_since"] = state["pending_since"]
+        store.put_receipt(receipt_key, _receipt("unchanged", now, downloaded_at, last_modified, stored_prefix, digest, pages), now)
         store.write_state(new_state)
-        return Outcome(action="unchanged", last_modified=last_modified, rows=rows, sha256=digest)
+        return Outcome(action="unchanged", last_modified=last_modified, rows=rows, sha256=digest, receipt=receipt_key)
 
     prefix = f"raw/date={now:%Y-%m-%d}/{now:%H%M%S}Z-{digest[:12]}"
     keys = []
@@ -288,9 +341,10 @@ def _collect(fetch: Fetcher, store: Store, now: datetime, state: dict, page_size
         }
         store.put_snapshot(key, gzip.compress(page.body, mtime=0), metadata, now)
         keys.append(key)
+    store.put_receipt(receipt_key, _receipt("stored", now, downloaded_at, last_modified, prefix, digest, pages), now)
     new_state.update(sha256=digest, last_key=keys[0])
     store.write_state(new_state)
-    return Outcome(action="stored", last_modified=last_modified, rows=rows, sha256=digest, keys=keys)
+    return Outcome(action="stored", last_modified=last_modified, rows=rows, sha256=digest, keys=keys, receipt=receipt_key)
 
 
 def clear_block(store: Store) -> bool:

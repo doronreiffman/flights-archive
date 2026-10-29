@@ -20,7 +20,7 @@ def _table(headers: list[str], rows: list[tuple]) -> str:
 
 def report(model_dir: Path) -> str:
     con = duckdb.connect()
-    for t in ("snapshots", "snapshot_runs", "observations", "flights"):
+    for t in ("snapshots", "snapshot_runs", "observations", "flights", "receipts"):
         con.execute(f"CREATE VIEW {t} AS SELECT * FROM '{model_dir / t}.parquet'")
     s = ["Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
          "resource e83f763b-b7d7-479e-b172-ae981ddc6de5). Built by flights-archive from archived snapshots.\n"]
@@ -30,6 +30,11 @@ def report(model_dir: Path) -> str:
     s.append(_table(["snapshots", "first", "last", "rows min", "rows max", "stored twice", "duplicate rows", "key conflicts", "unparsed sched", "missing est"], [cov]))
     dropped = _rows(con, "SELECT count(*) FILTER (WHERE incomplete), count(*) FILTER (WHERE repeat) FROM snapshot_runs")[0]
     s.append(f"\nSnapshots dropped: {dropped[0]} incomplete (fewer rows than the reply's total), {dropped[1]} identical to the previous one.")
+    rc = _rows(con, "SELECT count(*) FILTER (WHERE action = 'stored'), count(*) FILTER (WHERE action = 'unchanged') FROM receipts")[0]
+    by = dict(_rows(con, "SELECT receipt, count(*) FROM snapshot_runs GROUP BY 1"))
+    s.append(f"Receipts: {rc[0]} stored, {rc[1]} unchanged. "
+             f"Snapshots by receipt: receipted {by.get('receipted', 0)}, legacy {by.get('legacy', 0)}, "
+             f"pending {by.get('pending', 0)}, orphan {by.get('orphan', 0)}.")
     gaps = _rows(con, "SELECT fetched_at, round(gap_before_s / 3600.0, 1) FROM snapshots WHERE gap_before_s > 3600 ORDER BY 1")
     s.append("\nCollection gaps over an hour (snapshot, hours since the previous one):\n")
     s.append(_table(["snapshot", "gap h"], gaps) if gaps else "none")

@@ -10,7 +10,7 @@ STATE_KEY = "state/collector.json"
 
 
 class S3Store:
-    """Raw snapshots under raw/, write-once and Object Lock protected; state under state/."""
+    """Raw snapshots under raw/ and receipts under receipts/, write-once and Object Lock protected; state under state/."""
 
     def __init__(self, client, bucket: str, retention_days: int, lock_mode: str = "GOVERNANCE"):
         if retention_days < 1:
@@ -38,14 +38,19 @@ class S3Store:
         )
 
     def put_snapshot(self, key: str, body: bytes, metadata: dict[str, str], now: datetime) -> None:
+        self._put_locked(key, body, now, ContentType="application/gzip", Metadata=metadata)
+
+    def put_receipt(self, key: str, body: bytes, now: datetime) -> None:
+        self._put_locked(key, body, now, ContentType="application/json")
+
+    def _put_locked(self, key: str, body: bytes, now: datetime, **extra) -> None:
         # IfNoneMatch="*" makes S3 refuse to replace an existing key; Object Lock keeps
         # every version from being deleted or overwritten until the retention date.
         self.client.put_object(
             Bucket=self.bucket,
             Key=key,
             Body=body,
-            ContentType="application/gzip",
-            Metadata=metadata,
+            **extra,
             IfNoneMatch="*",
             ObjectLockMode=self.lock_mode,
             ObjectLockRetainUntilDate=now + self.retention,
@@ -59,6 +64,7 @@ class MemoryStore:
     def __init__(self, state: dict | None = None):
         self.state = state
         self.objects: dict[str, tuple[bytes, dict[str, str]]] = {}
+        self.receipts: dict[str, bytes] = {}
         self.state_writes = 0
 
     def read_state(self) -> dict | None:
@@ -72,3 +78,8 @@ class MemoryStore:
         if key in self.objects:
             raise FileExistsError(key)
         self.objects[key] = (body, dict(metadata))
+
+    def put_receipt(self, key: str, body: bytes, now: datetime) -> None:
+        if key in self.receipts:
+            raise FileExistsError(key)
+        self.receipts[key] = body

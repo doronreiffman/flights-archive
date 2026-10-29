@@ -11,10 +11,11 @@ Every 2 minutes a Lambda function in il-central-1 (Tel Aviv):
 1. Asks `resource_show` when the board last changed. That's a small request.
 2. Downloads the full board through `datastore_search` only if that timestamp moved, if the last full download is 30+ minutes old, or for up to 10 minutes after the timestamp moved without the data changing yet.
 3. Stores the reply bytes untouched, gzipped, only if their SHA-256 differs from the last stored snapshot.
+4. After every full download, stored or unchanged, writes a small receipt: when the run started and finished, the board's `last_modified`, rows, page hashes, which code wrote it, and the stored snapshot that holds this content.
 
 The board refreshes about every 15 minutes, so that's roughly 4 downloads an hour.
 
-Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. The board fits in one page; if a run ever stores fewer pages than its `pages` metadata says, treat that snapshot as incomplete. Object Lock (governance mode, 10 years by default) plus a write-once condition mean the collector can't overwrite or delete a snapshot. A small `state/collector.json` remembers the last timestamp and hash.
+Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. Receipts land at `receipts/date=YYYY-MM-DD/HHMMSSZ-<sha12>.json`, written after the pages, so a receipt means every page it names is in the archive; it also keeps `last_modified` and the hashes where a local sync can see them (sync drops object metadata). Snapshots stored before receipts existed (before the first receipt) have none. Object Lock (governance mode, 10 years by default) plus a write-once condition mean the collector can't overwrite or delete a snapshot or a receipt. A small `state/collector.json` remembers the last timestamp, hash and snapshot key. Design: `docs/receipts.md`.
 
 ## Rules the code enforces
 
@@ -82,14 +83,14 @@ cfn-lint template.yaml
 python scripts/mutation_check.py
 ```
 
-The mutation check breaks each rule in turn and expects a test to fail; it is about 50 short pytest runs, a few minutes. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
+The mutation check breaks each rule in turn and expects a test to fail; it is about 75 short pytest runs, a few minutes. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
 
 The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
 
 ## Model
 
-`src/model/` turns the raw snapshots into three Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time). The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
+`src/model/` turns the raw snapshots into Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time), plus `receipts` and `snapshot_runs`. It trusts only snapshots with a receipt, or from before receipts existed, and stops when the local copy looks out of step; `sh scripts/sync.sh` copies receipts, then snapshots, into `data/`. The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
 
 ## Cost
 
-About $1 to $2 for the first year: roughly 3,000 to 4,400 snapshots and 0.3 to 0.7 GB a month, plus a few cents of S3 requests. Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.
+About $1 to $2 for the first year: roughly 3,000 to 4,400 snapshots and 0.3 to 0.7 GB a month, plus a few cents of S3 requests. Receipts add about 3,300 small writes a month, about $0.02 at il-central-1 prices (AWS Price List, 2026-10-29). Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.

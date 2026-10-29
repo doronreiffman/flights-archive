@@ -1,5 +1,6 @@
 import gzip
 import hashlib
+import json
 import re
 from datetime import timedelta, timezone
 
@@ -62,7 +63,7 @@ def test_downloads_when_timestamp_changes(records, now):
 def test_safety_download_every_30_min_keeps_the_hash(records, now):
     api = FakeAPI(records)
     first = core.run_once(api, MemoryStore(), now - timedelta(minutes=30))
-    store = MemoryStore(stored_state(api, now, minutes_ago=30, sha=first.sha256))
+    store = MemoryStore(stored_state(api, now, minutes_ago=30, sha=first.sha256, last_key=first.keys[0]))
     out = core.run_once(api, store, now)
     assert out.action == "unchanged" and len(api.searches()) == 2
     assert store.objects == {}
@@ -316,3 +317,186 @@ def test_interrupted_multi_page_store_leaves_no_state(records, now):
     with pytest.raises(RuntimeError):
         core.run_once(FakeAPI(records), store, now, page_size=10)
     assert len(store.objects) == 1 and store.state is None  # page-000 stays (write-once); the next run re-stores
+
+
+# --- receipts -----------------------------------------------------------------
+
+class OrderedStore(MemoryStore):
+    """Records the order of writes, so a test can check the receipt lands after the pages and before the state."""
+
+    def __init__(self, state=None):
+        super().__init__(state)
+        self.writes: list[str] = []
+
+    def put_snapshot(self, key, body, metadata, now):
+        super().put_snapshot(key, body, metadata, now)
+        self.writes.append("page")
+
+    def put_receipt(self, key, body, now):
+        super().put_receipt(key, body, now)
+        self.writes.append("receipt")
+
+    def write_state(self, state):
+        super().write_state(state)
+        self.writes.append("state")
+
+
+def receipt(store, key):
+    return json.loads(store.receipts[key])
+
+
+def clock_at(when):
+    return lambda: when
+
+
+def test_stored_run_writes_a_receipt_after_the_pages(records, now):
+    api, store = FakeAPI(records), OrderedStore()
+    out = core.run_once(api, store, now, clock=clock_at(now + timedelta(seconds=3)))
+
+    sha = hashlib.sha256(api.reply(api.searches()[0])).hexdigest()
+    prefix = f"raw/date=2026-10-30/080000Z-{sha[:12]}"
+    assert out.receipt == f"receipts/date=2026-10-30/080000Z-{sha[:12]}.json"
+    assert store.writes == ["page", "receipt", "state"]
+    assert receipt(store, out.receipt) == {
+        "receipt_version": 1,
+        "action": "stored",
+        "run_started_at": "2026-10-30T08:00:00+00:00",
+        "downloaded_at": "2026-10-30T08:00:03+00:00",
+        "code_sha256": core.CODE_SHA256,
+        "source": core.SOURCE,
+        "resource_last_modified": "2026-10-27T15:45:25.246426",
+        "snapshot": prefix,
+        "snapshot_sha256": sha,
+        "rows": 38,
+        "pages": [{"key": f"{prefix}/page-000.json.gz", "rows": 38, "sha256": sha, "latency_ms": 5}],
+    }
+
+
+def test_multi_page_receipt_names_every_page_in_order(records, now):
+    api, store = FakeAPI(records), OrderedStore()
+    out = core.run_once(api, store, now, page_size=10)
+    assert store.writes == ["page", "page", "page", "page", "receipt", "state"]
+    r = receipt(store, out.receipt)
+    assert [p["key"] for p in r["pages"]] == out.keys
+    assert [p["key"][-16:] for p in r["pages"]] == [f"page-00{i}.json.gz" for i in range(4)]
+    assert [p["rows"] for p in r["pages"]] == [10, 10, 10, 8] and r["rows"] == 38
+    bodies = [gzip.decompress(store.objects[k][0]) for k in out.keys]
+    assert [p["sha256"] for p in r["pages"]] == [hashlib.sha256(b).hexdigest() for b in bodies]
+
+
+def test_unchanged_run_writes_a_receipt_naming_the_snapshot_already_stored(records, now):
+    api = FakeAPI(records)
+    store = OrderedStore()
+    first = core.run_once(api, store, now)
+    store.writes.clear()
+
+    later = now + timedelta(minutes=30)
+    out = core.run_once(api, store, later, clock=clock_at(later + timedelta(seconds=2)))
+
+    assert out.action == "unchanged" and out.receipt == f"receipts/date=2026-10-30/083000Z-{first.sha256[:12]}.json"
+    assert store.writes == ["receipt", "state"] and len(store.objects) == 1
+    r = receipt(store, out.receipt)
+    assert r["action"] == "unchanged"
+    assert (r["run_started_at"], r["downloaded_at"]) == ("2026-10-30T08:30:00+00:00", "2026-10-30T08:30:02+00:00")
+    assert r["snapshot"] == first.keys[0].rsplit("/", 1)[0] and r["snapshot_sha256"] == first.sha256
+    assert [p["key"] for p in r["pages"]] == first.keys and r["rows"] == 38
+
+
+def test_unchanged_multi_page_receipt_names_every_stored_page(records, now):
+    api, store = FakeAPI(records), MemoryStore()
+    first = core.run_once(api, store, now, page_size=10)
+    out = core.run_once(api, store, now + timedelta(minutes=30), page_size=10)
+    assert out.action == "unchanged"
+    assert [p["key"] for p in receipt(store, out.receipt)["pages"]] == first.keys
+
+
+@pytest.mark.parametrize("last_key", [None, "raw/date=2026-10-30/073000Z-000000000000/page-000.json.gz"])
+def test_matching_hash_without_a_usable_snapshot_key_stores_a_fresh_copy(records, now, last_key):
+    """An unchanged receipt must name the snapshot holding this content; a missing or foreign key cannot."""
+    api = FakeAPI(records)
+    sha = core.run_once(api, MemoryStore(), now - timedelta(minutes=30)).sha256
+    store = MemoryStore(stored_state(api, now, minutes_ago=30, sha=sha, last_key=last_key))
+    out = core.run_once(api, store, now)
+    assert out.action == "stored" and receipt(store, out.receipt)["action"] == "stored"
+
+
+def test_skipped_run_writes_no_receipt(records, now):
+    api = FakeAPI(records)
+    store = MemoryStore(stored_state(api, now, minutes_ago=10))
+    out = core.run_once(api, store, now)
+    assert out.action == "skipped" and out.receipt is None and store.receipts == {}
+
+
+def test_failed_receipt_leaves_the_state_untouched(records, now):
+    class ReceiptFails(MemoryStore):
+        def put_receipt(self, key, body, now):
+            raise RuntimeError("S3 went away")
+
+    api = FakeAPI(records)
+    store = ReceiptFails()
+    with pytest.raises(RuntimeError):
+        core.run_once(api, store, now)
+    assert len(store.objects) == 1 and store.state is None  # pages stay unreceipted; the next run stores again
+
+    sha = core.run_once(api, MemoryStore(), now).sha256
+    before = stored_state(api, now, minutes_ago=30, sha=sha,
+                          last_key=f"raw/date=2026-10-30/073000Z-{sha[:12]}/page-000.json.gz")
+    store = ReceiptFails(before)
+    with pytest.raises(RuntimeError):
+        core.run_once(api, store, now)                       # the unchanged path
+    assert store.objects == {} and store.state == before and store.state_writes == 0
+
+
+def test_receipt_that_landed_before_its_write_raised_leaves_state_and_the_next_run_stores_again(records, now):
+    """botocore retries a write after a read timeout; if the first attempt landed, the retry gets 412."""
+    class LandsThenRaises(MemoryStore):
+        fail = True
+
+        def put_receipt(self, key, body, now):
+            super().put_receipt(key, body, now)
+            if self.fail:
+                raise RuntimeError("PreconditionFailed")
+
+    api, store = FakeAPI(records), LandsThenRaises()
+    with pytest.raises(RuntimeError):
+        core.run_once(api, store, now)
+    assert len(store.receipts) == 1 and store.state is None
+
+    store.fail = False
+    out = core.run_once(api, store, now + timedelta(minutes=2))
+    assert out.action == "stored" and len(store.receipts) == 2 and len(store.objects) == 2
+
+
+def test_failed_page_or_block_writes_no_receipt(records, now):
+    class SecondPutFails(MemoryStore):
+        def put_snapshot(self, key, body, metadata, now):
+            if self.objects:
+                raise RuntimeError("S3 went away")
+            super().put_snapshot(key, body, metadata, now)
+
+    store = SecondPutFails()
+    with pytest.raises(RuntimeError):
+        core.run_once(FakeAPI(records), store, now, page_size=10)
+    assert store.receipts == {}
+
+    api, store = FakeAPI(records), MemoryStore()
+    api.overrides["datastore_search"] = core.Response(429, b"{}", "application/json", 3)
+    with pytest.raises(core.BlockedError):
+        core.run_once(api, store, now)
+    assert store.receipts == {}
+
+
+def test_code_fingerprint_covers_python_files_by_name_and_content(tmp_path):
+    (tmp_path / "b.py").write_bytes(b"y")
+    (tmp_path / "a.py").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"ignored")
+    want = hashlib.sha256(b"a.py\0" + hashlib.sha256(b"x").digest() + b"b.py\0" + hashlib.sha256(b"y").digest()).hexdigest()
+    assert core.code_fingerprint(tmp_path) == want
+    (tmp_path / "a.py").write_bytes(b"x2")
+    assert core.code_fingerprint(tmp_path) != want
+
+
+def test_the_running_code_is_fingerprinted():
+    from pathlib import Path
+    assert core.CODE_SHA256 == core.code_fingerprint(Path(core.__file__).parent)
+    assert re.fullmatch(r"[0-9a-f]{64}", core.CODE_SHA256)

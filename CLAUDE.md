@@ -17,9 +17,9 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 ## Current state (2026-10-29)
 
-- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. CI runs the tests and `scripts/mutation_check.py` on every push; baseline 146 tests, 51 mutations, all caught.
+- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash, snapshot key and a "blocked" latch. Receipts (one write-once JSON per full download, `docs/receipts.md`) are built and tested but not deployed yet. CI runs the tests and `scripts/mutation_check.py` on every push; baseline 184 tests, 76 mutations, all caught.
 - Snapshots: first 2026-10-27 18:04Z, a few more from a 10-minute accidental run that evening, continuous since 2026-10-29.
-- Data model v1 runs locally: `src/model/` builds snapshots, observations and flights Parquet tables from `data/raw/` (an `s3 sync`, gitignored). Rules, their UNSURE marks and the nightly-Lambda proposal (not deployed) are in `docs/data-model.md`; before touching a rule, read it.
+- Data model v1 runs locally: `src/model/` builds snapshots, observations and flights Parquet tables from `data/raw/` and `data/receipts/` (`sh scripts/sync.sh`, gitignored). Rules, their UNSURE marks and the nightly-Lambda proposal (not deployed) are in `docs/data-model.md`; before touching a rule, read it.
 
 ## The data (measured on 61 snapshots, Oct 12–27)
 

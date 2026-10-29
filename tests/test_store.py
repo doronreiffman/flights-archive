@@ -72,3 +72,23 @@ def test_missing_state_as_plain_404_reads_as_none(s3):
     client, stub = s3
     stub.add_client_error("get_object", service_error_code="404", http_status_code=404)
     assert S3Store(client, "b", retention_days=30).read_state() is None
+
+
+def test_receipt_put_is_write_once_and_locked(s3, now):
+    """A receipt is evidence like a snapshot: S3 must refuse to replace it and Object Lock must keep it."""
+    client, stub = s3
+    stub.add_response("put_object", {}, {
+        "Bucket": "b", "Key": "receipts/date=2026-10-30/080000Z.json", "Body": b'{"a": 1}',
+        "ContentType": "application/json", "IfNoneMatch": "*", "ObjectLockMode": "GOVERNANCE",
+        "ObjectLockRetainUntilDate": now + timedelta(days=30), "ChecksumAlgorithm": "SHA256",
+    })
+    S3Store(client, "b", retention_days=30).put_receipt("receipts/date=2026-10-30/080000Z.json", b'{"a": 1}', now)
+
+
+def test_memory_store_refuses_a_second_receipt_at_the_same_key(now):
+    from collector.store import MemoryStore
+    store = MemoryStore()
+    store.put_receipt("receipts/x.json", b"1", now)
+    with pytest.raises(FileExistsError):
+        store.put_receipt("receipts/x.json", b"2", now)
+    assert store.receipts == {"receipts/x.json": b"1"} and store.objects == {}

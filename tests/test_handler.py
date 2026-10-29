@@ -40,7 +40,7 @@ def test_parse_event(event, mode):
 def test_success_pings_the_check(records, now):
     pings = []
     out = run(cfg(), FakeAPI(records), MemoryStore(), now, lambda u, m: pings.append((u, m)))
-    assert out["action"] == "stored"
+    assert out["action"] == "stored" and out["receipt"].startswith("receipts/date=2026-10-30/080000Z-")
     assert pings == [("https://hc-ping.com/abc", json.dumps(out))]
 
 

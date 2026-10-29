@@ -86,3 +86,13 @@ def test_logs_go_to_a_group_created_first(resources):
     fn = resources["CollectorFunction"]["Properties"]
     assert fn["LoggingConfig"]["LogGroup"] == {"Ref": "CollectorLogs"}
     assert resources["CollectorLogs"]["Properties"]["RetentionInDays"] == 30
+
+
+def test_only_snapshots_and_receipts_are_written_locked(resources):
+    """The collector writes locked objects under raw/ and receipts/ only; state/ is the one key it reads and rewrites."""
+    statements = resources["CollectorFunction"]["Properties"]["Policies"][0]["Statement"]
+    by_sid = {s["Sid"]: s for s in statements}
+    locked = by_sid["WriteOnceArchive"]
+    assert sorted(locked["Action"]) == ["s3:PutObject", "s3:PutObjectRetention"]
+    assert locked["Resource"] == [{"Fn::Sub": "${ArchiveBucket.Arn}/raw/*"}, {"Fn::Sub": "${ArchiveBucket.Arn}/receipts/*"}]
+    assert by_sid["ReadWriteState"]["Resource"] == {"Fn::Sub": "${ArchiveBucket.Arn}/state/*"}

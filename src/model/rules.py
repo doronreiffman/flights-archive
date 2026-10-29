@@ -3,6 +3,7 @@
 Tables flow in this order (docs/data-model.md names the rules R1..R8):
 
   raw_rows   every row of every snapshot file, as the board published it
+  receipts   one row per acquisition receipt (docs/receipts.md); decides which snapshots are trusted
   rows       R1 local times to UTC, R2 duplicates removed, board key added
   snapshots  one row per snapshot with its counts
   keys       one row per board key (airline, flight no., direction, airport, scheduled time)
@@ -14,6 +15,8 @@ All *_utc columns are naive UTC timestamps; *_local columns are Israel wall-cloc
 """
 from __future__ import annotations
 
+import glob
+
 import duckdb
 
 TERMINAL_STATUSES = ("DEPARTED", "LANDED", "CANCELED")
@@ -24,6 +27,13 @@ GAP_HOURS = 1
 # The largest reply the model reads. DuckDB reserves a read buffer per gzipped file from this, so 256 MB ran
 # out of memory at 17 files; the collector refuses any reply past 32 MB (core.MAX_BODY_BYTES).
 MAX_REPLY_BYTES = 32 * 1024 * 1024
+# Receipts (docs/receipts.md). A snapshot newer than every receipt is waiting for its receipt; one this
+# long after the newest receipt means receipts/ was synced earlier than raw/.
+PENDING_GRACE_MINUTES = 5
+RECEIPT_VERSIONS = (1,)
+# Snapshots with pages but no receipt that a person has checked against the collector logs (a receipt
+# write that failed); they are dropped. Any other unreceipted snapshot stops the build.
+KNOWN_ORPHANS: frozenset[str] = frozenset()
 
 # Board field -> model column. Names come from the datastore's field notes, except the
 # city pair: the notes label CHLOC1TH "Location1City" and CHLOC1T "...CityHebrew" but the
@@ -55,6 +65,13 @@ TRACKED = ("sched_local", "est_local", "status", "status_he", "terminal", "count
 
 _RECORD_TYPE = "STRUCT(" + ", ".join(['"_id" BIGINT'] + [f"{k} VARCHAR" for k in COLUMNS]) + ")"
 _SNAPSHOT_PATH = r"date=(\d{4}-\d{2}-\d{2})/(\d{6})Z-([0-9a-f]{12})/page-(\d{3})\.json\.gz$"
+_RECEIPT_COLUMNS = {
+    "receipt_version": "INTEGER", "action": "VARCHAR", "run_started_at": "VARCHAR", "downloaded_at": "VARCHAR",
+    "code_sha256": "VARCHAR", "resource_last_modified": "VARCHAR", "snapshot": "VARCHAR",
+    "snapshot_sha256": "VARCHAR", "rows": "BIGINT",
+    "pages": "STRUCT(key VARCHAR, rows BIGINT, sha256 VARCHAR, latency_ms BIGINT)[]",
+}
+_RECEIPT_SNAPSHOT = r"^raw/date=(\d{4}-\d{2}-\d{2})/(\d{6}Z-[0-9a-f]{12})$"
 
 
 def connect() -> duckdb.DuckDBPyConnection:
@@ -106,6 +123,63 @@ def load_raw(con, raw_glob: str) -> int:
     return con.execute("SELECT count(*) FROM raw_rows").fetchone()[0]
 
 
+def load_receipts(con, receipts_glob: str | None) -> int:
+    """Read every receipt into `receipts`. No glob or no files gives an empty table: every snapshot is then legacy."""
+    if receipts_glob and glob.glob(receipts_glob, recursive=True):
+        path = receipts_glob.replace("'", "''")
+        cols = ", ".join(f"'{k}': '{v}'" for k, v in _RECEIPT_COLUMNS.items())
+        source = f"read_json('{path}', filename = true, columns = {{{cols}}})"
+    else:
+        source = "(SELECT NULL::VARCHAR AS filename, " + ", ".join(f"NULL::{t} AS {k}" for k, t in _RECEIPT_COLUMNS.items()) + " WHERE false)"
+    con.execute(f"""
+        CREATE OR REPLACE TABLE receipts AS
+        WITH r AS (SELECT *, regexp_extract(snapshot, '{_RECEIPT_SNAPSHOT}', ['d', 'stem']) AS m FROM {source})
+        SELECT 'receipts/' || regexp_extract(filename, 'date=[^/]+/[^/]+$') AS receipt_file,
+               receipt_version, action,
+               run_started_at::TIMESTAMPTZ::TIMESTAMP AS run_started_at,
+               downloaded_at::TIMESTAMPTZ::TIMESTAMP AS downloaded_at,
+               try_cast(resource_last_modified AS TIMESTAMP) AS resource_last_modified,
+               nullif(m['d'] || '/' || m['stem'], '/') AS snapshot_id,
+               snapshot_sha256, rows, len(pages) AS pages, code_sha256
+        FROM r
+    """)
+    versions = ", ".join(str(v) for v in RECEIPT_VERSIONS)
+    odd = [r[0] for r in con.execute(f"""
+        SELECT receipt_file FROM receipts
+        WHERE receipt_version NOT IN ({versions}) OR receipt_version IS NULL OR action NOT IN ('stored', 'unchanged')
+           OR action IS NULL OR snapshot_id IS NULL ORDER BY 1""").fetchall()]
+    if odd:
+        raise ValueError(f"{len(odd)} receipts carry a receipt_version, action or snapshot this model does not "
+                         f"understand: {odd[:10]}; update src/model/rules.py before building")
+    return con.execute("SELECT count(*) FROM receipts").fetchone()[0]
+
+
+def _check_receipts(con) -> None:
+    """Stop the build when the local copy cannot be trusted. A silent drop could move a flight's first
+    CANCELED sighting by a refresh without flagging it (docs/receipts.md, "Model changes")."""
+    def ids(sql: str) -> list[str]:
+        return [r[0] for r in con.execute(sql).fetchall()]
+
+    missing = ids("SELECT DISTINCT snapshot_id FROM receipts WHERE snapshot_id NOT IN (SELECT snapshot_id FROM snapshot_files) ORDER BY 1")
+    if missing:
+        raise ValueError(f"{len(missing)} receipts name snapshots with no files under raw/: {missing[:10]}. Run scripts/sync.sh.")
+    differ = ids("""SELECT snapshot_id FROM snapshot_files
+                    WHERE receipt = 'receipted' AND (file_rows <> receipt_rows OR file_pages <> receipt_pages) ORDER BY 1""")
+    if differ:
+        raise ValueError(f"{len(differ)} receipted snapshots differ from their files: {differ[:10]}. The archive cannot "
+                         "produce this: re-sync raw/, or suspect a collector bug.")
+    stale = ids(f"""SELECT snapshot_id FROM snapshot_files
+                    WHERE receipt = 'pending' AND fetched_at > newest_receipt + INTERVAL {PENDING_GRACE_MINUTES} MINUTE ORDER BY 1""")
+    if stale:
+        raise ValueError(f"receipts/ is older than raw/: {len(stale)} snapshots come more than {PENDING_GRACE_MINUTES} min "
+                         f"after the newest receipt (first: {stale[0]}). Run scripts/sync.sh.")
+    unreceipted = ids("SELECT snapshot_id FROM snapshot_files WHERE receipt = 'unreceipted' ORDER BY 1")
+    if unreceipted:
+        raise ValueError(f"{len(unreceipted)} snapshots have pages but no receipt: {unreceipted[:10]}. Re-run scripts/sync.sh; "
+                         "if it persists, check the collector logs at those times and list confirmed orphans in "
+                         "KNOWN_ORPHANS (src/model/rules.py).")
+
+
 def convert_times_and_dedupe(con) -> None:
     """R1 and R2: rows = raw_rows with UTC times, one row per (snapshot, board key).
 
@@ -114,23 +188,43 @@ def convert_times_and_dedupe(con) -> None:
     it is dropped and counted on the kept snapshot as identical_repeats. A snapshot whose files
     hold fewer rows than the reply's own `total` is an interrupted multi-page store; it is dropped
     and listed in snapshot_runs with incomplete = true.
+
+    Receipts decide trust first: `receipted` and `legacy` snapshots are kept, `pending` and `orphan`
+    ones dropped, and anything else stops the build (_check_receipts).
     """
     fields = ", ".join(COLUMNS.values())
     key = ", ".join(KEY)
+    orphans = ", ".join(f"'{o}'" for o in sorted(KNOWN_ORPHANS)) or "NULL"
+    con.execute(f"""
+        CREATE OR REPLACE TABLE snapshot_files AS
+        WITH s AS (SELECT snapshot_id, min(fetched_at) AS fetched_at, right(snapshot_id, 12) AS sha,
+                          count(*) < max(declared_total) AS incomplete,
+                          count(*) AS file_rows, count(DISTINCT page) AS file_pages
+                   FROM raw_rows GROUP BY snapshot_id),
+             b AS (SELECT min(date_trunc('second', run_started_at)) AS first_receipt,
+                          max(date_trunc('second', run_started_at)) AS newest_receipt FROM receipts),
+             st AS (SELECT snapshot_id, rows AS receipt_rows, pages AS receipt_pages FROM receipts WHERE action = 'stored')
+        SELECT s.*, st.receipt_rows, st.receipt_pages, b.newest_receipt,
+               CASE WHEN st.snapshot_id IS NOT NULL THEN 'receipted'
+                    WHEN b.first_receipt IS NULL OR s.fetched_at < b.first_receipt THEN 'legacy'
+                    WHEN s.fetched_at > b.newest_receipt THEN 'pending'
+                    WHEN s.snapshot_id IN ({orphans}) THEN 'orphan'
+                    ELSE 'unreceipted' END AS receipt
+        FROM s CROSS JOIN b LEFT JOIN st USING (snapshot_id)
+    """)
+    _check_receipts(con)
     con.execute("""
         CREATE OR REPLACE TABLE snapshot_runs AS
-        WITH s AS (SELECT snapshot_id, min(fetched_at) AS fetched_at, right(snapshot_id, 12) AS sha,
-                          count(*) < max(declared_total) AS incomplete
-                   FROM raw_rows GROUP BY snapshot_id),
-             c AS (SELECT * FROM s WHERE NOT incomplete),
+        WITH c AS (SELECT * FROM snapshot_files WHERE NOT incomplete AND receipt IN ('receipted', 'legacy')),
              o AS (SELECT *, lag(sha) OVER (ORDER BY fetched_at, snapshot_id) AS prev_sha FROM c),
              g AS (SELECT *, sha IS NOT DISTINCT FROM prev_sha AS repeat,
                           count(*) FILTER (WHERE sha IS DISTINCT FROM prev_sha)
                               OVER (ORDER BY fetched_at, snapshot_id ROWS UNBOUNDED PRECEDING) AS grp
                    FROM o)
-        SELECT snapshot_id, fetched_at, incomplete, repeat, count(*) OVER (PARTITION BY grp) - 1 AS identical_repeats FROM g
+        SELECT snapshot_id, fetched_at, incomplete, receipt, repeat, count(*) OVER (PARTITION BY grp) - 1 AS identical_repeats FROM g
         UNION ALL
-        SELECT snapshot_id, fetched_at, incomplete, false, 0 FROM s WHERE incomplete
+        SELECT snapshot_id, fetched_at, incomplete, receipt, false, 0 FROM snapshot_files
+        WHERE incomplete OR receipt NOT IN ('receipted', 'legacy')
     """)
     con.execute(f"""
         CREATE OR REPLACE TABLE rows AS
@@ -143,7 +237,8 @@ def convert_times_and_dedupe(con) -> None:
                    try_cast(terminal AS INTEGER) AS terminal,
                    counters, zone, status, status_he
             FROM raw_rows
-            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat AND NOT incomplete)
+            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs
+                                  WHERE NOT repeat AND NOT incomplete AND receipt IN ('receipted', 'legacy'))
         ), ranked AS (
             SELECT *,
                    row_number() OVER (PARTITION BY snapshot_id, {key} ORDER BY row_id) AS key_rank
@@ -377,11 +472,12 @@ def build_flights(con) -> None:
     """)
 
 
-def build_all(con, raw_glob: str) -> dict[str, int]:
+def build_all(con, raw_glob: str, receipts_glob: str | None = None) -> dict[str, int]:
     """Run every step. Returns row counts per output table."""
     load_raw(con, raw_glob)
+    load_receipts(con, receipts_glob)
     convert_times_and_dedupe(con)
     link_retimes(con)
     build_observations(con)
     build_flights(con)
-    return {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("snapshots", "observations", "flights")}
+    return {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("snapshots", "observations", "flights", "receipts")}

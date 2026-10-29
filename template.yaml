@@ -81,12 +81,15 @@ Resources:
           RETENTION_DAYS: !Ref RetentionDays
       Policies:
         - Statement:
-            - Sid: WriteSnapshotsOnly
+            # Snapshots and their receipts: written once, locked, never read back by the collector.
+            - Sid: WriteOnceArchive
               Effect: Allow
               Action:
                 - s3:PutObject
                 - s3:PutObjectRetention
-              Resource: !Sub "${ArchiveBucket.Arn}/raw/*"
+              Resource:
+                - !Sub "${ArchiveBucket.Arn}/raw/*"
+                - !Sub "${ArchiveBucket.Arn}/receipts/*"
             - Sid: ReadWriteState
               Effect: Allow
               Action:

@@ -10,18 +10,19 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL = ("src/model/rules.py", ["tests/test_model.py"])
+MODEL = ("src/model/rules.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 CORE = ("src/collector/core.py", ["tests/test_core.py", "tests/test_http.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
+SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
     "R1 ambiguous hour resolved to the later instant": ("WHEN il_idt_ok(t) THEN t - INTERVAL 3 HOUR", "WHEN il_ist_ok(t) THEN t - INTERVAL 2 HOUR"),
     "R1 no nonexistent flag": ("CREATE MACRO il_nonexistent(t) AS NOT il_idt_ok(t) AND NOT il_ist_ok(t)", "CREATE MACRO il_nonexistent(t) AS false"),
     "R2 duplicates kept": ("        WHERE key_rank = 1\n", "\n"),
-    "R2 repeated snapshots kept": ("            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat AND NOT incomplete)\n", "            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT incomplete)\n"),
+    "R2 repeated snapshots kept": ("WHERE NOT repeat AND NOT incomplete AND receipt IN ('receipted', 'legacy'))", "WHERE NOT incomplete AND receipt IN ('receipted', 'legacy'))"),
     "R2 missing total not refused": ("    if no_total:", "    if False:"),
     "R2 incomplete snapshots kept": ("                          count(*) < max(declared_total) AS incomplete", "                          false AS incomplete"),
     "R2 conflict keeps highest id": ("PARTITION BY snapshot_id, {key} ORDER BY row_id)", "PARTITION BY snapshot_id, {key} ORDER BY row_id DESC)"),
@@ -50,6 +51,20 @@ MODEL_MUTATIONS = {
     "Final state from a bare arg_max (NULL skipped)": ("o.fin.est_local AS est_local_final, o.fin.est_utc AS est_utc_final,", "coalesce(o.fin.est_local, o.fst.sched_local) AS est_local_final, o.fin.est_utc AS est_utc_final,"),
     "R8 uncanceled never": ("o.canceled_rn IS NOT NULL AND o.last_not_canceled_rn > o.canceled_rn AS uncanceled", "false AS uncanceled"),
     "reader buffer 256 MB": ("MAX_REPLY_BYTES = 32 * 1024 * 1024", "MAX_REPLY_BYTES = 256 * 1024 * 1024"),
+    "receipts ignored": ("CASE WHEN st.snapshot_id IS NOT NULL THEN 'receipted'", "CASE WHEN false THEN 'receipted'"),
+    "everything legacy": ("WHEN b.first_receipt IS NULL OR s.fetched_at < b.first_receipt THEN 'legacy'", "WHEN true THEN 'legacy'"),
+    "legacy cutover at the newest receipt": ("WHEN b.first_receipt IS NULL OR s.fetched_at < b.first_receipt THEN 'legacy'", "WHEN b.first_receipt IS NULL OR s.fetched_at < b.newest_receipt THEN 'legacy'"),
+    "pending and orphan snapshots kept": ("AND NOT incomplete AND receipt IN ('receipted', 'legacy'))", "AND NOT incomplete)"),
+    "repeat check over dropped snapshots": ("WITH c AS (SELECT * FROM snapshot_files WHERE NOT incomplete AND receipt IN ('receipted', 'legacy')),", "WITH c AS (SELECT * FROM snapshot_files WHERE NOT incomplete),"),
+    "known orphans ignored": ("WHEN s.snapshot_id IN ({orphans}) THEN 'orphan'", "WHEN false THEN 'orphan'"),
+    "pending grace 60 min": ("PENDING_GRACE_MINUTES = 5", "PENDING_GRACE_MINUTES = 60"),
+    "newest receipt from stored receipts only": ("max(date_trunc('second', run_started_at)) AS newest_receipt FROM receipts),", "max(date_trunc('second', run_started_at)) FILTER (WHERE action = 'stored') AS newest_receipt FROM receipts),"),
+    "stale receipts not refused": ("    if stale:", "    if False:"),
+    "unreceipted snapshots not refused": ("    if unreceipted:", "    if False:"),
+    "receipt mismatch not refused": ("    if differ:", "    if False:"),
+    "receipt mismatch on rows only": ("(file_rows <> receipt_rows OR file_pages <> receipt_pages)", "(file_rows <> receipt_rows)"),
+    "receipt without files not refused": ("    if missing:", "    if False:"),
+    "unknown receipt version accepted": ("    if odd:", "    if False:"),
 }
 
 
@@ -75,6 +90,16 @@ COLLECTOR_MUTATIONS = {
     "user agent not checked at startup": (HANDLER, '        core.check_user_agent(env["USER_AGENT"])\n', "\n"),
     "alarm on one window": (TEMPLATE, "      EvaluationPeriods: 2\n      DatapointsToAlarm: 2", "      EvaluationPeriods: 1\n      DatapointsToAlarm: 1"),
     "user agent pattern dropped": (TEMPLATE, "    AllowedPattern: '.*\\+https?://.*@.*'", "    AllowedPattern: '.*'"),
+    "state written before the receipt": (CORE, '    store.put_receipt(receipt_key, _receipt("stored", now, downloaded_at, last_modified, prefix, digest, pages), now)\n    new_state.update(sha256=digest, last_key=keys[0])\n    store.write_state(new_state)\n', '    new_state.update(sha256=digest, last_key=keys[0])\n    store.write_state(new_state)\n    store.put_receipt(receipt_key, _receipt("stored", now, downloaded_at, last_modified, prefix, digest, pages), now)\n'),
+    "unchanged run writes no receipt": (CORE, '        store.put_receipt(receipt_key, _receipt("unchanged", now, downloaded_at, last_modified, stored_prefix, digest, pages), now)\n', "\n"),
+    "unchanged trusts any last_key": (CORE, 'stored_prefix.endswith(f"Z-{digest[:12]}")', "stored_prefix"),
+    "download time from the run start": (CORE, "    downloaded_at = clock()\n", "    downloaded_at = now\n"),
+    "receipt key without the hash": (CORE, '{now:%H%M%S}Z-{digest[:12]}.json"', '{now:%H%M%S}Z.json"'),
+    "fingerprint ignores file content": (CORE, "hashlib.sha256(path.read_bytes()).digest()", "b''"),
+    "receipt not locked": (STORE, '        self._put_locked(key, body, now, ContentType="application/json")', '        self.client.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType="application/json")'),
+    "receipts not writable": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/receipts/*"\n', ""),
+    "raw synced before receipts": (SYNC, 'aws s3 sync "s3://$BUCKET/receipts/" data/receipts/ --profile "$PROFILE" --region "$REGION"\naws s3 sync "s3://$BUCKET/raw/" data/raw/ --profile "$PROFILE" --region "$REGION"', 'aws s3 sync "s3://$BUCKET/raw/" data/raw/ --profile "$PROFILE" --region "$REGION"\naws s3 sync "s3://$BUCKET/receipts/" data/receipts/ --profile "$PROFILE" --region "$REGION"'),
+    "sync identity not checked": (SYNC, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
