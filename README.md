@@ -77,15 +77,18 @@ aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock":
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest --cov=collector
+pytest --cov=collector --cov=model
 cfn-lint template.yaml
+python scripts/mutation_check.py
 ```
+
+The mutation check breaks each rule in turn and expects a test to fail; it is about 50 short pytest runs, a few minutes. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
 
 The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
 
 ## Model
 
-`src/model/` turns the raw snapshots into three Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per physical flight: retimes linked, codeshares grouped, outcome, cancellation lead time). The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
+`src/model/` turns the raw snapshots into three Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time). The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
 
 ## Cost
 

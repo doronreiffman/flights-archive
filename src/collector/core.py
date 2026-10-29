@@ -104,6 +104,7 @@ class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
         if (new.scheme, new.netloc) != (old.scheme, old.netloc):
+            fp.close()
             raise CollectorError(f"redirect to {new.scheme}://{new.netloc} refused; {old.netloc} is the only source")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 

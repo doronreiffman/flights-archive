@@ -91,6 +91,20 @@ def test_incomplete_multi_page_snapshot_is_dropped(raw):
     assert [s["snap_rn"] for s in q(con, "SELECT * FROM snapshots ORDER BY snap_rn")] == [1, 2]
     assert one(con, "SELECT count(*) n FROM snapshot_runs WHERE incomplete")["n"] == 1
     assert one(con, "SELECT max(snapshots_seen) n FROM flights")["n"] == 2
+    out = raw.parent / "model"
+    assert build.main(["--raw", str(raw), "--out", str(out)]) == 0
+    assert "Snapshots dropped: 1 incomplete" in report.report(out)
+
+
+def test_snapshot_without_a_declared_total_is_refused(raw):
+    write_snapshot(raw, at(6), [row()])
+    path = next(raw.rglob("page-000.json.gz"))
+    import gzip, json
+    doc = json.loads(gzip.decompress(path.read_bytes()))
+    del doc["result"]["total"]
+    path.write_bytes(gzip.compress(json.dumps(doc).encode()))
+    with pytest.raises(ValueError, match="no result.total"):
+        run(raw)
 
 
 def test_key_conflict_keeps_lowest_id_and_is_counted(raw):

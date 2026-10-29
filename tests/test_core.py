@@ -303,3 +303,16 @@ def test_block_is_still_reported_when_the_latch_cannot_be_saved(records, now, bl
     api.overrides["resource_show"] = core.Response(403, blocked_html, "text/html", 1)
     with pytest.raises(core.BlockedError, match="latch could not be saved: S3 is down"):
         core.run_once(api, LatchFails(), now)
+
+
+def test_interrupted_multi_page_store_leaves_no_state(records, now):
+    class SecondPutFails(MemoryStore):
+        def put_snapshot(self, key, body, metadata, now):
+            if self.objects:
+                raise RuntimeError("S3 went away")
+            super().put_snapshot(key, body, metadata, now)
+
+    store = SecondPutFails()
+    with pytest.raises(RuntimeError):
+        core.run_once(FakeAPI(records), store, now, page_size=10)
+    assert len(store.objects) == 1 and store.state is None  # page-000 stays (write-once); the next run re-stores

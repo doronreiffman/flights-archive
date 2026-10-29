@@ -28,6 +28,11 @@ def server():
                 self.send_header("Location", "http://127.0.0.1:1/ok")  # another port is another host
                 self.end_headers()
                 return
+            if self.path.startswith("/redirect-scheme"):
+                self.send_response(302)
+                self.send_header("Location", f"https://{self.headers['Host']}/ok")  # same host, other scheme
+                self.end_headers()
+                return
             if self.path.startswith("/blocked"):
                 body, status, ctype = b"<html>Security Violation</html>", 403, "text/html"
             else:
@@ -80,9 +85,16 @@ def test_user_agent_without_url_and_email_is_refused(ua):
 
 
 def test_redirect_within_the_host_is_followed(server):
-    base, _ = server
+    base, seen = server
     resp = core.http_get(f"{base}/redirect-same", 5, user_agent=UA)
     assert resp.status == 200 and resp.body.startswith(b'{"success"')
+    assert seen["ua"] == UA  # the identified client survives the hop
+
+
+def test_redirect_to_another_scheme_is_refused(server):
+    base, _ = server
+    with pytest.raises(core.CollectorError, match="redirect to https://127.0.0.1"):
+        core.http_get(f"{base}/redirect-scheme", 5, user_agent=UA)
 
 
 def test_redirect_to_another_host_is_refused(server):

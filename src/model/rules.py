@@ -8,7 +8,7 @@ Tables flow in this order (docs/data-model.md names the rules R1..R8):
   keys       one row per board key (airline, flight no., direction, airport, scheduled time)
   links      R4 retime links between keys; keymap gives each key its physical flight id
   observations  R3 one row per flight per change
-  flights    R5-R8 one row per physical flight
+  flights    R5-R8 one row per marketed flight (airline + number); the codeshare group is the physical movement
 
 All *_utc columns are naive UTC timestamps; *_local columns are Israel wall-clock as published.
 """
@@ -97,6 +97,9 @@ def load_raw(con, raw_glob: str) -> int:
     bad = con.execute("SELECT count(*) FROM raw_rows WHERE snapshot_id IS NULL OR fetched_at IS NULL OR snapshot_id = '/Z-'").fetchone()[0]
     if bad:
         raise ValueError(f"{bad} rows come from files whose path is not date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-NNN.json.gz")
+    no_total = con.execute("SELECT count(DISTINCT snapshot_id) FROM raw_rows WHERE declared_total IS NULL").fetchone()[0]
+    if no_total:
+        raise ValueError(f"{no_total} snapshots have no result.total in their reply; completeness cannot be judged")
     return con.execute("SELECT count(*) FROM raw_rows").fetchone()[0]
 
 
@@ -266,7 +269,7 @@ def build_observations(con) -> None:
 
 
 def build_flights(con) -> None:
-    """R5-R8: one row per physical flight."""
+    """R5-R8: one row per marketed flight; its codeshare group is the physical movement."""
     latest = con.execute("SELECT max(snap_rn) FROM snapshots").fetchone()[0] or 0
     # R5/R6: the group a flight sat in at its last appearance, and the operator guess.
     con.execute("""
