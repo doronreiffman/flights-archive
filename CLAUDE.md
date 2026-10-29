@@ -5,7 +5,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 ## Hard rules
 
 - Personal accounts only. Nothing touches the owner's employer: no work systems, accounts, cloud or credentials.
-- AWS: profile `flights-sam`, region `il-central-1`, account `137953273942`, and nothing else. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer.
+- AWS: profile `flights-sam`, region `il-central-1`, account `137953273942`, and nothing else. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer; their names are in `CLAUDE.local.md` (untracked, read automatically).
 - GitHub: before any `gh` call or `git push`, `gh auth status` must show doronreiffman as the active account; any other account is the employer's, and if one is active, stop and tell the owner. Pushes go through gh too (`credential.https://github.com.helper` in `~/.gitconfig` is `gh auth git-credential`), so a push under the wrong account fails with "Repository not found".
 - Ask before anything that writes outside this repo: `sam deploy`, any AWS write, `git push`, enabling or disabling the schedule. Read-only AWS calls (`s3 ls` / `cp` / `sync` from the bucket, `describe-*`, `get-caller-identity`) need no ask.
 - The archive bucket `flights-archive-archivebucket-onpwo5ns74tw` is write-once with Object Lock. Never delete, overwrite or bypass retention; the snapshots are the project.
