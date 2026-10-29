@@ -100,9 +100,24 @@ def load_raw(con, raw_glob: str) -> int:
 
 
 def convert_times_and_dedupe(con) -> None:
-    """R1 and R2: rows = raw_rows with UTC times, one row per (snapshot, board key)."""
+    """R1 and R2: rows = raw_rows with UTC times, one row per (snapshot, board key).
+
+    A snapshot whose content hash (the sha12 in its path) equals the previous snapshot's is the
+    same board stored twice (the collector's snapshot write succeeded but its state write failed);
+    it is dropped and counted on the kept snapshot as identical_repeats.
+    """
     fields = ", ".join(COLUMNS.values())
     key = ", ".join(KEY)
+    con.execute("""
+        CREATE OR REPLACE TABLE snapshot_runs AS
+        WITH s AS (SELECT DISTINCT snapshot_id, fetched_at, right(snapshot_id, 12) AS sha FROM raw_rows),
+             o AS (SELECT *, lag(sha) OVER (ORDER BY fetched_at, snapshot_id) AS prev_sha FROM s),
+             g AS (SELECT *, sha IS NOT DISTINCT FROM prev_sha AS repeat,
+                          count(*) FILTER (WHERE sha IS DISTINCT FROM prev_sha)
+                              OVER (ORDER BY fetched_at, snapshot_id ROWS UNBOUNDED PRECEDING) AS grp
+                   FROM o)
+        SELECT snapshot_id, repeat, count(*) OVER (PARTITION BY grp) - 1 AS identical_repeats FROM g
+    """)
     con.execute(f"""
         CREATE OR REPLACE TABLE rows AS
         WITH typed AS (
@@ -114,6 +129,7 @@ def convert_times_and_dedupe(con) -> None:
                    try_cast(terminal AS INTEGER) AS terminal,
                    counters, zone, status, status_he
             FROM raw_rows
+            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat)
         ), ranked AS (
             SELECT *,
                    row_number() OVER (PARTITION BY snapshot_id, {key} ORDER BY row_id) AS key_rank
@@ -148,9 +164,10 @@ def convert_times_and_dedupe(con) -> None:
         )
         SELECT snapshot_id, fetched_at, row_number() OVER (ORDER BY fetched_at, snapshot_id) AS snap_rn,
                epoch(fetched_at - lag(fetched_at) OVER (ORDER BY fetched_at, snapshot_id))::BIGINT AS gap_before_s,
-               pages, rows_raw, rows, duplicate_rows, key_conflicts, unparsed_sched, missing_est,
+               pages, rows_raw, rows, duplicate_rows, key_conflicts, unparsed_sched, missing_est, identical_repeats,
                min_sched_local, max_sched_local
         FROM per_file JOIN conflicts USING (snapshot_id) JOIN kept USING (snapshot_id)
+        JOIN snapshot_runs USING (snapshot_id)  -- kept has no repeats, so this join also drops them here
     """)
 
 

@@ -1,20 +1,27 @@
-"""Break each model rule on purpose and confirm a test fails. Run from the repo root:
+"""Break each rule on purpose and confirm a test fails. Run from the repo root:
 
     .venv/bin/python scripts/mutation_check.py
 
-Restores src/model/rules.py afterwards. Exit code 1 if any mutation goes unnoticed.
+Each mutation names the file it breaks and the test files that must catch it. Files are restored
+afterwards. Exit code 1 if any mutation goes unnoticed.
 """
 import subprocess
 import sys
 from pathlib import Path
 
-RULES = Path(__file__).resolve().parent.parent / "src" / "model" / "rules.py"
+ROOT = Path(__file__).resolve().parent.parent
+MODEL = ("src/model/rules.py", ["tests/test_model.py"])
+CORE = ("src/collector/core.py", ["tests/test_core.py", "tests/test_http.py"])
+HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
+STORE = ("src/collector/store.py", ["tests/test_store.py"])
+TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 
-# name -> (text as it stands in rules.py, the broken replacement)
-MUTATIONS = {
+# name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
+MODEL_MUTATIONS = {
     "R1 ambiguous hour resolved to the later instant": ("WHEN il_idt_ok(t) THEN t - INTERVAL 3 HOUR", "WHEN il_ist_ok(t) THEN t - INTERVAL 2 HOUR"),
     "R1 no nonexistent flag": ("CREATE MACRO il_nonexistent(t) AS NOT il_idt_ok(t) AND NOT il_ist_ok(t)", "CREATE MACRO il_nonexistent(t) AS false"),
     "R2 duplicates kept": ("        WHERE key_rank = 1\n", "\n"),
+    "R2 repeated snapshots kept": ("            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat)\n", "\n"),
     "R2 conflict keeps highest id": ("PARTITION BY snapshot_id, {key} ORDER BY row_id)", "PARTITION BY snapshot_id, {key} ORDER BY row_id DESC)"),
     "R3 counters not tracked": ('"est_local", "status", "status_he", "terminal", "counters", "zone",', '"est_local", "status", "status_he", "terminal", "zone",'),
     "R3 unchanged rows emitted": ("WHERE change_kind <> 'change' OR len(changed_fields) > 0", "WHERE true"),
@@ -43,25 +50,53 @@ MUTATIONS = {
 }
 
 
+
+COLLECTOR_MUTATIONS = {
+    "status-check timeout 999 s": (CORE, "SHOW_TIMEOUT = 20.0", "SHOW_TIMEOUT = 999.0"),
+    "download timeout 1 ms": (CORE, "SEARCH_TIMEOUT = 45.0", "SEARCH_TIMEOUT = 0.001"),
+    "full fetch every 29 min": (CORE, "FULL_FETCH_EVERY = timedelta(minutes=30)", "FULL_FETCH_EVERY = timedelta(minutes=29)"),
+    "pending window 11 min": (CORE, "PENDING_WINDOW = timedelta(minutes=10)", "PENDING_WINDOW = timedelta(minutes=11)"),
+    "gzip with a timestamp": (CORE, "gzip.compress(page.body, mtime=0)", "gzip.compress(page.body, mtime=12345)"),
+    "user agent not checked": (CORE, '    if "+http" not in user_agent or "@" not in user_agent:', "    if False:"),
+    "body size not capped": (CORE, "    if len(body) > MAX_BODY_BYTES:", "    if False:"),
+    "plain 404 not treated as missing state": (STORE, 'in ("NoSuchKey", "404")', 'in ("NoSuchKey",)'),
+    "ping sends no body": (HANDLER, "data=message.encode()[:10000]", "data=b''"),
+    "ping sends no user agent": (HANDLER, 'headers={"User-Agent": user_agent})', "headers={})"),
+    "ping timeout 999": (HANDLER, "urllib.request.urlopen(req, timeout=10).close()", "urllib.request.urlopen(req, timeout=999).close()"),
+    "transient failure pings /fail again": (HANDLER, '        log.error("collector failed: %s", err)\n        raise', '        log.error("collector failed: %s", err)\n        pinger(fail_url, str(err))\n        raise'),
+    "user agent not checked at startup": (HANDLER, '        core.check_user_agent(env["USER_AGENT"])\n', "\n"),
+    "alarm on one window": (TEMPLATE, "      EvaluationPeriods: 2\n      DatapointsToAlarm: 2", "      EvaluationPeriods: 1\n      DatapointsToAlarm: 1"),
+    "user agent pattern dropped": (TEMPLATE, "    AllowedPattern: '.*\\+https?://.*@.*'", "    AllowedPattern: '.*'"),
+}
+
+MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
+
+
 def main() -> int:
-    original = RULES.read_text()
+    originals = {}
     missed = []
     try:
-        for name, (old, new) in MUTATIONS.items():
+        for name, ((rel, tests), old, new) in MUTATIONS.items():
+            path = ROOT / rel
+            original = originals.setdefault(path, path.read_text())
             if original.count(old) != 1:
-                print(f"STALE  {name}: the text to break occurs {original.count(old)} times; update this script")
+                print(f"STALE  {name}: the text to break occurs {original.count(old)} times in {rel}; update this script")
                 missed.append(name)
                 continue
-            RULES.write_text(original.replace(old, new))
-            run = subprocess.run([sys.executable, "-m", "pytest", "tests/test_model.py", "-q", "-x", "-p", "no:cacheprovider"],
-                                 capture_output=True, text=True)
+            path.write_text(original.replace(old, new))
+            try:
+                run = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
+                                     capture_output=True, text=True, cwd=ROOT)
+            finally:
+                path.write_text(original)
             caught = run.returncode != 0
             print(("CAUGHT " if caught else "MISSED ") + name)
             if not caught:
                 missed.append(name)
     finally:
-        RULES.write_text(original)
-    print("rules.py restored." + (f" Missed: {missed}" if missed else " Every mutation was caught."))
+        for path, original in originals.items():
+            path.write_text(original)
+    print("Files restored." + (f" Missed: {missed}" if missed else " Every mutation was caught."))
     return 1 if missed else 0
 
 

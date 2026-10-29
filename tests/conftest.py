@@ -20,9 +20,20 @@ def blocked_html():
     return (FIXTURES / "blocked.html").read_bytes()
 
 
+FIELDS = [{"id": "_id", "type": "int"}] + [{"id": f, "type": "numeric" if f == "CHTERM" else "text"}
+                                            for f in sorted(core.REQUIRED_FIELDS)]
+
+
 def ckan(result: dict, success: bool = True) -> bytes:
+    """A datastore_search reply with the same envelope keys as the live one (archived 2026-10-29)."""
+    limit, offset = result.get("limit", 10000), result.get("offset", 0)
+    base = f"/api/3/action/datastore_search?resource_id={core.RESOURCE_ID}&limit={limit}&sort=_id"
+    full = {"include_total": True, "limit": limit, "offset": offset, "records_format": "objects",
+            "resource_id": core.RESOURCE_ID, "sort": "_id", "total_estimation_threshold": None,
+            "fields": FIELDS, "_links": {"start": base, "next": f"{base}&offset={offset + limit}"},
+            "total_was_estimated": False} | result  # records and total come from the caller
     return json.dumps({"help": "https://data.gov.il/api/3/action/help_show", "success": success,
-                       "result": result}, ensure_ascii=False).encode()
+                       "result": full}, ensure_ascii=False).encode()
 
 
 def ok(body: bytes) -> core.Response:

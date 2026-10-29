@@ -35,6 +35,8 @@ PENDING_WINDOW = timedelta(minutes=10)
 # 20 s: data.gov.il answered resource_show slower than 10 s twice right after its 13:01Z refresh on 2026-10-29.
 SHOW_TIMEOUT = 20.0
 SEARCH_TIMEOUT = 45.0
+# The board is about 1 MB uncompressed; a reply past this is not the board.
+MAX_BODY_BYTES = 32 * 1024 * 1024
 MAX_PAGES = 20
 
 REQUIRED_FIELDS = frozenset({
@@ -86,20 +88,29 @@ class Outcome:
     keys: list[str] = field(default_factory=list)
 
 
+def check_user_agent(user_agent: str) -> str:
+    """The User-Agent must name a project URL and a contact email, e.g.
+    "flights-archive/0.1 (+https://github.com/you/repo; you@example.org)"."""
+    if "+http" not in user_agent or "@" not in user_agent:
+        raise ValueError("USER_AGENT must contain a +https:// project URL and a contact email address")
+    return user_agent
+
+
 def http_get(url: str, timeout: float, *, user_agent: str) -> Response:
     """GET a URL. HTTP error statuses come back as a Response, not an exception."""
-    if not user_agent.strip():
-        raise ValueError("a descriptive User-Agent is required")
+    check_user_agent(user_agent)
     req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
     start = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read()
+            body = resp.read(MAX_BODY_BYTES + 1)
             status, ctype = resp.status, resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as err:
-        body = err.read() or b""
+        body = err.read(MAX_BODY_BYTES + 1) or b""
         status, ctype = err.code, err.headers.get("Content-Type", "") if err.headers else ""
     elapsed = int((time.monotonic() - start) * 1000)
+    if len(body) > MAX_BODY_BYTES:
+        raise CollectorError(f"{url.split('?')[0]}: reply larger than {MAX_BODY_BYTES} bytes")
     return Response(status=status, body=body, content_type=ctype, elapsed_ms=elapsed)
 
 

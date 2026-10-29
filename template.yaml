@@ -7,6 +7,10 @@ Parameters:
     Type: String
     Description: Names the project and a contact, e.g. "flights-archive/0.1 (+https://github.com/you/repo; you@example.org)"
     MinLength: 10
+    # Must carry a +https:// project URL and an email, or the deploy is refused. A value with
+    # spaces must be inner-quoted on the sam deploy command line or it is silently cut short.
+    AllowedPattern: '.*\+https?://.*@.*'
+    ConstraintDescription: must contain "+https://<project url>" and a contact email address
   HealthcheckUrl:
     Type: String
     NoEcho: true
@@ -122,7 +126,7 @@ Resources:
   ErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: The flight-board collector raised an error. Check the logs; a BLOCKED error means stop and ask.
+      AlarmDescription: The flight-board collector errored in two consecutive 5-minute windows. Check the logs; a BLOCKED error means stop and ask.
       Namespace: AWS/Lambda
       MetricName: Errors
       Dimensions:
@@ -130,7 +134,9 @@ Resources:
           Value: !Ref CollectorFunction
       Statistic: Sum
       Period: 300
-      EvaluationPeriods: 1
+      # One slow reply from data.gov.il is not an incident; errors in two windows in a row are.
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching

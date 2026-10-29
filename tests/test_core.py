@@ -25,6 +25,7 @@ def test_first_run_stores_the_reply_untouched(records, now):
     body, meta = store.objects[out.keys[0]]
     reply = api.reply(api.searches()[0])
     assert gzip.decompress(body) == reply
+    assert body == gzip.compress(reply, mtime=0)  # reproducible bytes: same reply, same object
     assert out.sha256 == hashlib.sha256(reply).hexdigest() == meta["snapshot-sha256"] == meta["page-sha256"]
     assert meta["rows"] == "38" and meta["pages"] == "1" and meta["http-status"] == "200"
     assert meta["resource-last-modified"] == api.last_modified
@@ -271,3 +272,10 @@ def test_memory_store_refuses_overwrite(now):
     store.put_snapshot("raw/x", b"1", {}, now)
     with pytest.raises(FileExistsError):
         store.put_snapshot("raw/x", b"2", {}, now)
+
+
+def test_constants_are_the_documented_values():
+    """Pinned as literals: the other tests reuse the constants and would not notice a change."""
+    assert core.SHOW_TIMEOUT == 20.0 and core.SEARCH_TIMEOUT == 45.0
+    assert core.FULL_FETCH_EVERY == timedelta(minutes=30) and core.PENDING_WINDOW == timedelta(minutes=10)
+    assert core.MAX_BODY_BYTES == 32 * 1024 * 1024 and core.MAX_PAGES == 20

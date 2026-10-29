@@ -34,6 +34,7 @@ class Config:
         missing = [k for k in ("BUCKET", "USER_AGENT") if not env.get(k, "").strip()]
         if missing:
             raise ValueError(f"missing environment variables: {missing}")
+        core.check_user_agent(env["USER_AGENT"])
         return cls(
             bucket=env["BUCKET"],
             user_agent=env["USER_AGENT"],
@@ -84,9 +85,14 @@ def run(cfg: Config, fetch: core.Fetcher, store: core.Store, now: datetime,
         log.error("BLOCKED: %s", err)
         pinger(fail_url, f"BLOCKED: {err}")
         raise
+    except DrillError as err:
+        log.error("drill: %s", err)
+        pinger(fail_url, f"DrillError: {err}")
+        raise
     except Exception as err:
+        # No /fail ping: healthchecks.io's grace period decides whether a run of errors is an
+        # outage, and the alarm needs errors in two consecutive windows. One slow reply stays quiet.
         log.error("collector failed: %s", err)
-        pinger(fail_url, f"{type(err).__name__}: {err}")
         raise
     summary = asdict(outcome)
     log.info(json.dumps(summary))

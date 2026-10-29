@@ -70,6 +70,18 @@ def test_exact_duplicates_collapse_and_are_counted(raw):
     assert one(con, "SELECT count(*) n FROM flights")["n"] == 1
 
 
+def test_same_board_stored_twice_counts_once(raw):
+    write_snapshot(raw, at(6), [row()], sha="a" * 12)
+    write_snapshot(raw, at(6, 2), [row()], sha="a" * 12)
+    write_snapshot(raw, at(6, 4), [row()], sha="a" * 12)
+    write_snapshot(raw, at(6, 15), [row(status="DELAYED")], sha="b" * 12)
+    con = run(raw)
+    snaps = q(con, "SELECT * FROM snapshots ORDER BY snap_rn")
+    assert [(s["snap_rn"], s["identical_repeats"], s["gap_before_s"]) for s in snaps] == [(1, 2, None), (2, 0, 900)]
+    f = one(con, "SELECT * FROM flights")
+    assert (f["snapshots_seen"], f["observations"], f["last_seen_at"]) == (2, 2, at(6, 15))
+
+
 def test_key_conflict_keeps_lowest_id_and_is_counted(raw):
     write_snapshot(raw, at(6), [row(status="DELAYED", _id=7), row(status="ON TIME", _id=3)])
     con = run(raw)

@@ -24,10 +24,10 @@ def report(model_dir: Path) -> str:
         con.execute(f"CREATE VIEW {t} AS SELECT * FROM '{model_dir / t}.parquet'")
     s = ["Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
          "resource e83f763b-b7d7-479e-b172-ae981ddc6de5). Built by flights-archive from archived snapshots.\n"]
-    cov = _rows(con, """SELECT count(*), min(fetched_at), max(fetched_at), min(rows), max(rows),
+    cov = _rows(con, """SELECT count(*), min(fetched_at), max(fetched_at), min(rows), max(rows), sum(identical_repeats),
                         sum(duplicate_rows), sum(key_conflicts), sum(unparsed_sched), sum(missing_est) FROM snapshots""")[0]
     s.append("## Coverage\n")
-    s.append(_table(["snapshots", "first", "last", "rows min", "rows max", "duplicate rows", "key conflicts", "unparsed sched", "missing est"], [cov]))
+    s.append(_table(["snapshots", "first", "last", "rows min", "rows max", "stored twice", "duplicate rows", "key conflicts", "unparsed sched", "missing est"], [cov]))
     gaps = _rows(con, "SELECT fetched_at, round(gap_before_s / 3600.0, 1) FROM snapshots WHERE gap_before_s > 3600 ORDER BY 1")
     s.append("\nCollection gaps over an hour (snapshot, hours since the previous one):\n")
     s.append(_table(["snapshot", "gap h"], gaps) if gaps else "none")

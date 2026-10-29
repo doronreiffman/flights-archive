@@ -37,10 +37,14 @@ def at(hour: int, minute: int = 0, day: int = 27) -> datetime:
     return UTC_DAY.replace(day=day, hour=hour, minute=minute)
 
 
-def write_snapshot(raw: Path, fetched_at: datetime, rows: list[dict], ids: bool = True, pages: int = 1) -> str:
-    """Write one snapshot (one file per page); returns its snapshot id. Rows get _id 1.. unless given."""
+def write_snapshot(raw: Path, fetched_at: datetime, rows: list[dict], ids: bool = True, pages: int = 1,
+                   sha: str | None = None) -> str:
+    """Write one snapshot (one file per page); returns its snapshot id. Rows get _id 1.. unless given.
+
+    The collector names a snapshot by its content hash; pass sha to imitate the same board stored twice.
+    """
     records = [({"_id": i} | r) if ids and "_id" not in r else r for i, r in enumerate(rows, start=1)]
-    sha = hashlib.sha256(json.dumps(records, ensure_ascii=False).encode() + fetched_at.isoformat().encode()).hexdigest()[:12]
+    sha = sha or hashlib.sha256(json.dumps(records, ensure_ascii=False).encode() + fetched_at.isoformat().encode()).hexdigest()[:12]
     folder = raw / f"date={fetched_at:%Y-%m-%d}" / f"{fetched_at:%H%M%S}Z-{sha}"
     folder.mkdir(parents=True)
     size = -(-len(records) // pages)

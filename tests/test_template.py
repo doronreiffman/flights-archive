@@ -4,6 +4,7 @@ cfn-lint checks the template is valid, but it doesn't catch a misspelled SAM
 event property or a quietly changed retry count, so these settings are
 asserted directly.
 """
+import re
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,19 @@ def test_timeout_covers_the_slowest_honest_run(resources):
     assert core.SHOW_TIMEOUT >= 20
     budget = core.SHOW_TIMEOUT + core.SEARCH_TIMEOUT + 10 + 15
     assert budget <= resources["CollectorFunction"]["Properties"]["Timeout"]
+
+
+def test_user_agent_parameter_refuses_a_value_without_url_and_email(resources):
+    template, _ = decode(str(TEMPLATE))
+    pattern = template["Parameters"]["UserAgent"]["AllowedPattern"]
+    assert re.fullmatch(pattern, "flights-archive/0.1 (+https://github.com/x/y; me@example.org)")
+    assert not re.fullmatch(pattern, "flights-archive/0.1")  # what a space-split parameter override leaves
+
+
+def test_alarm_needs_two_consecutive_bad_windows(resources):
+    alarm = resources["ErrorAlarm"]["Properties"]
+    assert (alarm["Period"], alarm["EvaluationPeriods"], alarm["DatapointsToAlarm"], alarm["Threshold"]) == (300, 2, 2, 1)
+    assert alarm["TreatMissingData"] == "notBreaching"
 
 
 def test_bucket_is_locked_private_and_versioned(resources):

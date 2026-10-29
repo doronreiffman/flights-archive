@@ -6,6 +6,8 @@ import pytest
 
 from collector import core
 
+UA = "flights-archive/0.1 (+https://example.org; me@example.org)"
+
 
 @pytest.fixture
 def server():
@@ -49,7 +51,7 @@ def test_sends_our_user_agent(server):
 
 def test_error_status_comes_back_as_a_response(server):
     base, _ = server
-    resp = core.http_get(f"{base}/blocked", 5, user_agent="flights-archive/0.1")
+    resp = core.http_get(f"{base}/blocked", 5, user_agent=UA)
     assert resp.status == 403 and b"Security Violation" in resp.body
     with pytest.raises(core.BlockedError):
         core.parse_result(resp, "test")
@@ -58,9 +60,17 @@ def test_error_status_comes_back_as_a_response(server):
 def test_timeout_is_enforced(server):
     base, _ = server
     with pytest.raises(OSError):  # socket timeouts surface as TimeoutError or URLError, both OSError
-        core.http_get(f"{base}/slow", 0.3, user_agent="flights-archive/0.1")
+        core.http_get(f"{base}/slow", 0.3, user_agent=UA)
 
 
-def test_blank_user_agent_is_refused():
+@pytest.mark.parametrize("ua", ["  ", "flights-archive/0.1", "flights-archive/0.1 (+https://example.org)", "me@example.org"])
+def test_user_agent_without_url_and_email_is_refused(ua):
     with pytest.raises(ValueError):
-        core.http_get("http://127.0.0.1:9/", 1, user_agent="  ")
+        core.http_get("http://127.0.0.1:9/", 1, user_agent=ua)
+
+
+def test_oversized_reply_is_refused(server, monkeypatch):
+    base, _ = server
+    monkeypatch.setattr(core, "MAX_BODY_BYTES", 8)
+    with pytest.raises(core.CollectorError, match="larger than 8 bytes"):
+        core.http_get(f"{base}/ok", 5, user_agent=UA)

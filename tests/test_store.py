@@ -66,3 +66,9 @@ def test_retention_must_be_positive(s3):
     client, _ = s3
     with pytest.raises(ValueError):
         S3Store(client, "b", retention_days=0)
+
+
+def test_missing_state_as_plain_404_reads_as_none(s3):
+    client, stub = s3
+    stub.add_client_error("get_object", service_error_code="404", http_status_code=404)
+    assert S3Store(client, "b", retention_days=30).read_state() is None

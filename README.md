@@ -18,9 +18,9 @@ Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), 
 
 ## Rules the code enforces
 
-- **One identified client.** Every request sends the `USER_AGENT` you set, which must name the project and a contact address.
+- **One identified client.** Every request sends the `USER_AGENT` you set, which must carry a `+https://` project URL and a contact email; the deploy and the code both refuse one without them.
 - **Stop if blocked, and stay stopped.** A 401, 403 or 429, or an HTML page served where JSON belongs, raises `BlockedError`, pings healthchecks.io's `/fail`, stores nothing, and sets a latch in the state file. Every later run refuses to call data.gov.il until a person clears it. Don't switch to a browser User-Agent, another IP or anything else that works around a block: the data.gov.il license excludes data obtained by circumventing technical protection. Find out why, ask data.gov.il if needed, then unblock (below).
-- **Outages aren't blocks.** 5xx errors, including HTML error pages, fail that run and alert, and the next run tries again.
+- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period and the CloudWatch alarm (errors in two consecutive 5-minute windows) decide when a run of failures is an outage, so one slow reply stays quiet.
 - **Validate before writing.** Zero rows, a missing field, a total that doesn't match the rows, or the board changing mid-download all raise and store nothing.
 - **No retries.** Neither the scheduler nor Lambda retries a failed run; the next scheduled run is the retry.
 - **Never touch iaa.gov.il.** Its terms forbid copying without written consent.
@@ -37,12 +37,12 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
    ```bash
    sam build
    sam deploy --profile flights-sam --region il-central-1 --parameter-overrides \
-     UserAgent='flights-archive/0.1 (+https://github.com/<you>/flights-archive; <email>)' \
-     HealthcheckUrl='https://hc-ping.com/<uuid>' \
-     AlertEmail='<email>'
+     'UserAgent="flights-archive/0.1 (+https://github.com/<you>/flights-archive; <email>)"' \
+     'HealthcheckUrl=https://hc-ping.com/<uuid>' \
+     'AlertEmail=<email>'
    ```
 
-   Review the change set and confirm. Then confirm the SNS subscription email AWS sends you. The function and bucket names are in the stack outputs.
+   The inner double quotes around the User-Agent matter: `--parameter-overrides` splits on spaces, and without them the value is silently cut at the first space (the template now rejects a value with no URL and email, which catches that). Review the change set and confirm. Afterwards check the live value: `aws lambda get-function-configuration --function-name <CollectorFunctionName> --query Environment.Variables.USER_AGENT --profile flights-sam --region il-central-1`. Then confirm the SNS subscription email AWS sends you. The function and bucket names are in the stack outputs.
 5. Run it once by hand. That's one request to data.gov.il, the same as a manual check:
 
    ```bash
@@ -60,7 +60,7 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
      --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
    ```
 
-   Within about 5 minutes you should get the alarm email, and healthchecks.io should show a failure. Run step 5 again to clear it.
+   healthchecks.io should show a failure within a minute. The alarm email needs errors in two consecutive 5-minute windows, so run the drill again about 5 minutes later if you want to see that email too. Run step 5 to clear healthchecks.io.
 7. Go live: deploy again with the same parameters plus `ScheduleState=ENABLED`. After 10 minutes, healthchecks.io should show a ping every 2 minutes and new snapshots should appear about every 15.
 
 ## If it's blocked

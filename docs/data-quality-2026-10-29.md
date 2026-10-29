@@ -2,9 +2,9 @@ Source: Israel Airports Authority flight board, published on data.gov.il (datase
 
 ## Coverage
 
-| snapshots | first | last | rows min | rows max | duplicate rows | key conflicts | unparsed sched | missing est |
-|---|---|---|---|---|---|---|---|---|
-| 6 | 2026-10-27 18:04:46 | 2026-10-29 13:04:45 | 1905 | 2260 | 0 | 0 | 0 | 0 |
+| snapshots | first | last | rows min | rows max | stored twice | duplicate rows | key conflicts | unparsed sched | missing est |
+|---|---|---|---|---|---|---|---|---|---|
+| 6 | 2026-10-27 18:04:46 | 2026-10-29 13:04:45 | 1905 | 2260 | 0 | 0 | 0 | 0 | 0 |
 
 Collection gaps over an hour (snapshot, hours since the previous one):
 

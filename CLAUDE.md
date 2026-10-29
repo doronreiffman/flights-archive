@@ -6,7 +6,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 - Personal accounts only. Nothing touches the owner's employer: no work systems, accounts, cloud or credentials.
 - AWS: profile `flights-sam`, region `il-central-1`, account `137953273942`, and nothing else. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer.
-- GitHub: before any `gh` call, `gh auth status` must show doronreiffman as the active account; any other account is the employer's, and if one is active, stop and tell the owner. `git push` uses the keychain credential, which is doronreiffman; confirm with `printf 'protocol=https\nhost=github.com\n' | git credential-osxkeychain get | grep username` if in doubt.
+- GitHub: before any `gh` call or `git push`, `gh auth status` must show doronreiffman as the active account; any other account is the employer's, and if one is active, stop and tell the owner. Pushes go through gh too (`credential.https://github.com.helper` in `~/.gitconfig` is `gh auth git-credential`), so a push under the wrong account fails with "Repository not found".
 - Ask before anything that writes outside this repo: `sam deploy`, any AWS write, `git push`, enabling or disabling the schedule. Read-only AWS calls (`s3 ls` / `cp` / `sync` from the bucket, `describe-*`, `get-caller-identity`) need no ask.
 - The archive bucket `flights-archive-archivebucket-onpwo5ns74tw` is write-once with Object Lock. Never delete, overwrite or bypass retention; the snapshots are the project.
 - data.gov.il is the only source. Never call iaa.gov.il (its terms forbid copying). If data.gov.il blocks us, stop and tell the owner: the license excludes data obtained by working around a block (browser User-Agent, IP rotation, anything of the kind).
@@ -17,7 +17,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 ## Current state (2026-10-29)
 
-- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, about 25 s after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. 68 tests, CI on GitHub.
+- Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash and a "blocked" latch. 68 tests, CI on GitHub.
 - Snapshots: first 2026-10-27 18:04Z, a few more from a 10-minute accidental run that evening, continuous since 2026-10-29.
 - Data model v1 runs locally: `src/model/` builds snapshots, observations and flights Parquet tables from `data/raw/` (an `s3 sync`, gitignored). Rules, their UNSURE marks and the nightly-Lambda proposal (not deployed) are in `docs/data-model.md`; before touching a rule, read it.
 - Next: stats, forecasts, MCP server + agent, dashboard.

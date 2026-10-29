@@ -4,6 +4,8 @@ import pytest
 
 from collector import core
 from collector.handler import Config, DrillError, parse_event, ping, run
+
+UA = "flights-archive/0.1 (+https://example.org/repo; me@example.org)"
 from collector.store import MemoryStore
 from conftest import FakeAPI
 
@@ -18,7 +20,7 @@ def test_config_requires_bucket_and_user_agent():
 
 
 def test_config_defaults_and_trailing_slash():
-    c = Config.from_env({"BUCKET": "b", "USER_AGENT": "ua", "HEALTHCHECK_URL": "https://hc-ping.com/abc/"})
+    c = Config.from_env({"BUCKET": "b", "USER_AGENT": UA, "HEALTHCHECK_URL": "https://hc-ping.com/abc/"})
     assert c.healthcheck_url == "https://hc-ping.com/abc" and c.retention_days == 3650 and c.page_size == 10000
 
 
@@ -42,11 +44,32 @@ def test_success_pings_the_check(records, now):
     assert pings == [("https://hc-ping.com/abc", json.dumps(out))]
 
 
-def test_failure_pings_fail_and_reraises(now):
+def test_transient_failure_reraises_without_pinging(now):
     pings = []
     with pytest.raises(core.CollectorError):
         run(cfg(), FakeAPI([]), MemoryStore(), now, lambda u, m: pings.append((u, m)))
-    assert pings[0][0] == "https://hc-ping.com/abc/fail" and "zero rows" in pings[0][1]
+    assert pings == []  # healthchecks.io's grace period decides, not one bad run
+
+
+def test_ping_posts_the_message_with_our_user_agent(monkeypatch):
+    calls = []
+
+    class Resp:
+        def close(self):
+            calls.append("closed")
+
+    def fake_urlopen(req, timeout):
+        calls.append((req.full_url, req.data, req.get_header("User-agent"), timeout))
+        return Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    ping("https://hc-ping.com/abc", "hello", UA)
+    assert calls == [("https://hc-ping.com/abc", b"hello", UA, 10), "closed"]
+
+
+def test_user_agent_without_url_or_email_is_refused_at_startup():
+    with pytest.raises(ValueError, match="USER_AGENT"):
+        Config.from_env({"BUCKET": "b", "USER_AGENT": "flights-archive/0.1"})
 
 
 def test_block_is_flagged_loudly(records, now, blocked_html):
@@ -75,9 +98,9 @@ def test_drill_fails_loudly_without_touching_the_source(records, now):
 
 def test_no_healthcheck_url_means_no_fail_url(now):
     pings = []
-    with pytest.raises(core.CollectorError):
+    with pytest.raises(DrillError):
         run(Config(bucket="b", user_agent="ua"), FakeAPI([]), MemoryStore(), now,
-            lambda u, m: pings.append((u, m)))
+            lambda u, m: pings.append((u, m)), mode="drill")
     assert pings[0][0] == ""
 
 
