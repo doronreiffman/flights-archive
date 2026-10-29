@@ -84,11 +84,12 @@ def load_raw(con, raw_glob: str) -> int:
             FROM read_json('{path}', filename = true, maximum_object_size = 268435456,
                            columns = {{'success': 'BOOLEAN', 'result': 'STRUCT(total BIGINT, records {_RECORD_TYPE}[])'}})
         ), u AS (
-            SELECT filename, m, unnest(result.records) AS r FROM f
+            SELECT filename, m, result.total AS declared_total, unnest(result.records) AS r FROM f
         )
         SELECT m['d'] || '/' || m['t'] || 'Z-' || m['sha'] AS snapshot_id,
                try_cast(m['d'] || ' ' || substr(m['t'], 1, 2) || ':' || substr(m['t'], 3, 2) || ':' || substr(m['t'], 5, 2) AS TIMESTAMP) AS fetched_at,
                try_cast(m['page'] AS INTEGER) AS page,
+               declared_total,
                r."_id" AS row_id,
                {renames}
         FROM u
@@ -104,19 +105,26 @@ def convert_times_and_dedupe(con) -> None:
 
     A snapshot whose content hash (the sha12 in its path) equals the previous snapshot's is the
     same board stored twice (the collector's snapshot write succeeded but its state write failed);
-    it is dropped and counted on the kept snapshot as identical_repeats.
+    it is dropped and counted on the kept snapshot as identical_repeats. A snapshot whose files
+    hold fewer rows than the reply's own `total` is an interrupted multi-page store; it is dropped
+    and listed in snapshot_runs with incomplete = true.
     """
     fields = ", ".join(COLUMNS.values())
     key = ", ".join(KEY)
     con.execute("""
         CREATE OR REPLACE TABLE snapshot_runs AS
-        WITH s AS (SELECT DISTINCT snapshot_id, fetched_at, right(snapshot_id, 12) AS sha FROM raw_rows),
-             o AS (SELECT *, lag(sha) OVER (ORDER BY fetched_at, snapshot_id) AS prev_sha FROM s),
+        WITH s AS (SELECT snapshot_id, min(fetched_at) AS fetched_at, right(snapshot_id, 12) AS sha,
+                          count(*) < max(declared_total) AS incomplete
+                   FROM raw_rows GROUP BY snapshot_id),
+             c AS (SELECT * FROM s WHERE NOT incomplete),
+             o AS (SELECT *, lag(sha) OVER (ORDER BY fetched_at, snapshot_id) AS prev_sha FROM c),
              g AS (SELECT *, sha IS NOT DISTINCT FROM prev_sha AS repeat,
                           count(*) FILTER (WHERE sha IS DISTINCT FROM prev_sha)
                               OVER (ORDER BY fetched_at, snapshot_id ROWS UNBOUNDED PRECEDING) AS grp
                    FROM o)
-        SELECT snapshot_id, repeat, count(*) OVER (PARTITION BY grp) - 1 AS identical_repeats FROM g
+        SELECT snapshot_id, fetched_at, incomplete, repeat, count(*) OVER (PARTITION BY grp) - 1 AS identical_repeats FROM g
+        UNION ALL
+        SELECT snapshot_id, fetched_at, incomplete, false, 0 FROM s WHERE incomplete
     """)
     con.execute(f"""
         CREATE OR REPLACE TABLE rows AS
@@ -129,7 +137,7 @@ def convert_times_and_dedupe(con) -> None:
                    try_cast(terminal AS INTEGER) AS terminal,
                    counters, zone, status, status_he
             FROM raw_rows
-            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat)
+            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs WHERE NOT repeat AND NOT incomplete)
         ), ranked AS (
             SELECT *,
                    row_number() OVER (PARTITION BY snapshot_id, {key} ORDER BY row_id) AS key_rank
@@ -167,7 +175,7 @@ def convert_times_and_dedupe(con) -> None:
                pages, rows_raw, rows, duplicate_rows, key_conflicts, unparsed_sched, missing_est, identical_repeats,
                min_sched_local, max_sched_local
         FROM per_file JOIN conflicts USING (snapshot_id) JOIN kept USING (snapshot_id)
-        JOIN snapshot_runs USING (snapshot_id)  -- kept has no repeats, so this join also drops them here
+        JOIN (SELECT snapshot_id, identical_repeats FROM snapshot_runs) USING (snapshot_id)  -- kept has no repeats or incompletes
     """)
 
 

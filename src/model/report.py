@@ -20,7 +20,7 @@ def _table(headers: list[str], rows: list[tuple]) -> str:
 
 def report(model_dir: Path) -> str:
     con = duckdb.connect()
-    for t in ("snapshots", "observations", "flights"):
+    for t in ("snapshots", "snapshot_runs", "observations", "flights"):
         con.execute(f"CREATE VIEW {t} AS SELECT * FROM '{model_dir / t}.parquet'")
     s = ["Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
          "resource e83f763b-b7d7-479e-b172-ae981ddc6de5). Built by flights-archive from archived snapshots.\n"]
@@ -28,6 +28,8 @@ def report(model_dir: Path) -> str:
                         sum(duplicate_rows), sum(key_conflicts), sum(unparsed_sched), sum(missing_est) FROM snapshots""")[0]
     s.append("## Coverage\n")
     s.append(_table(["snapshots", "first", "last", "rows min", "rows max", "stored twice", "duplicate rows", "key conflicts", "unparsed sched", "missing est"], [cov]))
+    dropped = _rows(con, "SELECT count(*) FILTER (WHERE incomplete), count(*) FILTER (WHERE repeat) FROM snapshot_runs")[0]
+    s.append(f"\nSnapshots dropped: {dropped[0]} incomplete (fewer rows than the reply's total), {dropped[1]} identical to the previous one.")
     gaps = _rows(con, "SELECT fetched_at, round(gap_before_s / 3600.0, 1) FROM snapshots WHERE gap_before_s > 3600 ORDER BY 1")
     s.append("\nCollection gaps over an hour (snapshot, hours since the previous one):\n")
     s.append(_table(["snapshot", "gap h"], gaps) if gaps else "none")

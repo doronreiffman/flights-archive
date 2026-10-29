@@ -4,13 +4,13 @@ Grade: production-lean. A deterministic full rebuild with tested rules, runnable
 
 ## Inputs
 
-`data/raw/` is an `aws s3 sync` of the bucket's `raw/` prefix (read-only; the folder is gitignored). Each snapshot is one or more files `date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-NNN.json.gz`, the untouched CKAN `datastore_search` reply. The fetch time comes from the path (to the second, UTC). The resource's own `last_modified` is only in the S3 object metadata, which a sync does not keep; the model uses fetch time as the observation time, which is 25 s to 2 min later than the board refresh. Every archived snapshot has rows: the collector refuses a zero-row reply, so an empty board never reaches the archive.
+`data/raw/` is an `aws s3 sync` of the bucket's `raw/` prefix (read-only; the folder is gitignored). Each snapshot is one or more files `date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-NNN.json.gz`, the untouched CKAN `datastore_search` reply. The fetch time comes from the path (to the second, UTC). The resource's own `last_modified` is only in the S3 object metadata, which a sync does not keep; the model uses fetch time as the observation time, which is 25 s to 2 min later than the board refresh. Every archived snapshot has rows: the collector refuses a zero-row reply, so an empty board never reaches the archive. A snapshot whose files hold fewer rows than the reply's own `total` (a multi-page store interrupted after the first page) is dropped and listed in `snapshot_runs` as incomplete.
 
 ## Outputs (Parquet, in `data/model/`)
 
 - `snapshots.parquet`: one row per snapshot. id, fetched_at, pages, rows, duplicate rows removed, key conflicts, board window (min and max scheduled time).
 - `observations.parquet`: one row per flight per change. Every field of the board row, local times kept and UTC times added with their DST flags, the snapshot it came from, `change_kind` (`first`, `change`, `retime`) and `changed_fields` (which fields differ from the previous observation of the same flight).
-- `flights.parquet`: one row per physical flight. Identity, first/last seen, scheduled times (first and final, local and UTC), retime count, first and final status, outcome, first time seen CANCELED with the lead time and a censoring flag, codeshare group and size, operating-carrier guess.
+- `flights.parquet`: one row per marketed flight, that is one airline and flight number on the board, with its retimes linked into one row. The physical movement (the aircraft) is the codeshare group that R5 infers, so several `flights` rows usually share one `codeshare_group_id`; the feed names no operator, and R6's guess stays marked as a guess. Identity, first/last seen, scheduled times (first and final, local and UTC), retime count, first and final status, outcome, first time seen CANCELED with the lead time and a censoring flag, codeshare group and size, operating-carrier guess.
 
 ## Rules
 
@@ -55,6 +55,8 @@ PYTHONPATH=src .venv/bin/python -m model.report --model data/model > docs/data-q
 ```
 
 ## Columns
+
+`snapshot_runs`: every snapshot file set found, with `incomplete`, `repeat` and `identical_repeats`; the ones kept become `snapshots`.
 
 `snapshots`: snapshot_id, fetched_at, snap_rn (1-based order), gap_before_s, pages, rows_raw, rows (after R2), duplicate_rows, key_conflicts, unparsed_sched, missing_est, identical_repeats, min_sched_local, max_sched_local.
 

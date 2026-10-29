@@ -18,6 +18,16 @@ def server():
             seen["ua"] = self.headers.get("User-Agent")
             if self.path.startswith("/slow"):
                 time.sleep(1.5)
+            if self.path.startswith("/redirect-same"):
+                self.send_response(302)
+                self.send_header("Location", "/ok")
+                self.end_headers()
+                return
+            if self.path.startswith("/redirect-other"):
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:1/ok")  # another port is another host
+                self.end_headers()
+                return
             if self.path.startswith("/blocked"):
                 body, status, ctype = b"<html>Security Violation</html>", 403, "text/html"
             else:
@@ -67,6 +77,18 @@ def test_timeout_is_enforced(server):
 def test_user_agent_without_url_and_email_is_refused(ua):
     with pytest.raises(ValueError):
         core.http_get("http://127.0.0.1:9/", 1, user_agent=ua)
+
+
+def test_redirect_within_the_host_is_followed(server):
+    base, _ = server
+    resp = core.http_get(f"{base}/redirect-same", 5, user_agent=UA)
+    assert resp.status == 200 and resp.body.startswith(b'{"success"')
+
+
+def test_redirect_to_another_host_is_refused(server):
+    base, _ = server
+    with pytest.raises(core.CollectorError, match="redirect to http://127.0.0.1:1 refused"):
+        core.http_get(f"{base}/redirect-other", 5, user_agent=UA)
 
 
 def test_oversized_reply_is_refused(server, monkeypatch):

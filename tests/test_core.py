@@ -279,3 +279,27 @@ def test_constants_are_the_documented_values():
     assert core.SHOW_TIMEOUT == 20.0 and core.SEARCH_TIMEOUT == 45.0
     assert core.FULL_FETCH_EVERY == timedelta(minutes=30) and core.PENDING_WINDOW == timedelta(minutes=10)
     assert core.MAX_BODY_BYTES == 32 * 1024 * 1024 and core.MAX_PAGES == 20
+
+
+@pytest.mark.parametrize("ids", [[1, 2, 2, 4], [1, 3, 2, 4], [1, 2, "3", 4]])
+def test_row_ids_must_be_strictly_increasing(records, now, ids):
+    rows = [dict(r, _id=i) for r, i in zip(records[:4], ids)]
+    with pytest.raises(core.CollectorError, match="_id"):
+        core.run_once(FakeAPI(rows), MemoryStore(), now)
+
+
+def test_row_ids_are_checked_across_pages(records, now):
+    rows = [dict(r, _id=i) for r, i in zip(records[:4], [1, 2, 3, 3])]
+    with pytest.raises(core.CollectorError, match="_id 3"):
+        core.run_once(FakeAPI(rows), MemoryStore(), now, page_size=3)
+
+
+def test_block_is_still_reported_when_the_latch_cannot_be_saved(records, now, blocked_html):
+    class LatchFails(MemoryStore):
+        def write_state(self, state):
+            raise RuntimeError("S3 is down")
+
+    api = FakeAPI(records)
+    api.overrides["resource_show"] = core.Response(403, blocked_html, "text/html", 1)
+    with pytest.raises(core.BlockedError, match="latch could not be saved: S3 is down"):
+        core.run_once(api, LatchFails(), now)

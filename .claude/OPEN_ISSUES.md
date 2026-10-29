@@ -17,6 +17,8 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 
 ## Collector
 
+- **Reserved concurrency cannot be set.** Round-2 review asked for `ReservedConcurrentExecutions: 1`; this account's Lambda quota in il-central-1 is 5 concurrent executions and AWS refuses any reservation that leaves fewer than 100 unreserved. Overlap is already impossible under the schedule (2 min period, 100 s timeout); only a manual invoke during a scheduled run could overlap. Options if that ever matters: a quota increase, or conditional (If-Match) state writes.
+- **Recovery path untested.** One account, one region, a retained bucket, no restore drill. Round-2 review: write a runbook and test an import of archived objects; a cross-region mirror of archived objects (not of source requests) later, under $1 a month. Owner's call when.
 - **Latch policy on a single 429 / 403.** The reviewer suggests requiring two or three consecutive blocks before latching, since one transient 429 halts collection until a manual unblock and the resulting hole breaks R4 and R8. Current code latches on the first. Owner's call; the conservative reading of the license argues for keeping it.
 
 ## Repo hygiene (before the repo goes public)
@@ -24,3 +26,8 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 - **Seven commits carry the placeholder email `<email for public commits>`.** Future commits use 83887818+doronreiffman@users.noreply.github.com (`.git/config`, set 2026-10-29). Rewriting the seven and force-pushing the private remote needs the owner's explicit confirmation.
 - **Employer profile names in CLAUDE.md** were put there on the owner's instruction; they are names only, but the reviewer suggests moving them to an untracked `CLAUDE.local.md` before publishing. Owner's call.
 - **The User-Agent's repo URL returns 404 while the repo is private.** Either make the repo public or use another contact URL; owner's call.
+
+## Governance
+
+- **Raw redistribution is not cleared.** The brief positions "an openly licensed dataset"; the round-2 review says the data.gov.il terms were not re-read for redistribution and robots.txt is not authorization. Until the owner re-reads the terms (or asks data.gov.il), raw stays private and only code, methodology and narrowly scoped derived aggregates are candidates for publication, described as lower-risk, not cleared. Owner's call.
+- **Claims discipline.** Publish "first observed CANCELED on the public board", never "cancelled at"; no operator, actual-cancellation or delay claims without evidence. CHPTOL meaning still open (q3).

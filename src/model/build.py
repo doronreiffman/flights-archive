@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import rules
 
-TABLES = ("snapshots", "observations", "flights")
+TABLES = ("snapshots", "snapshot_runs", "observations", "flights")
 
 
 def build(raw_dir: Path, out_dir: Path) -> dict[str, int]:

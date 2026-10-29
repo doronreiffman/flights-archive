@@ -22,6 +22,7 @@ import hashlib
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -96,13 +97,27 @@ def check_user_agent(user_agent: str) -> str:
     return user_agent
 
 
+class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to the same scheme and host. Anything else would mean fetching the
+    board from somewhere other than data.gov.il, which the license and our rules do not cover."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if (new.scheme, new.netloc) != (old.scheme, old.netloc):
+            raise CollectorError(f"redirect to {new.scheme}://{new.netloc} refused; {old.netloc} is the only source")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SameHostRedirects)
+
+
 def http_get(url: str, timeout: float, *, user_agent: str) -> Response:
     """GET a URL. HTTP error statuses come back as a Response, not an exception."""
     check_user_agent(user_agent)
     req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
     start = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             body = resp.read(MAX_BODY_BYTES + 1)
             status, ctype = resp.status, resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as err:
@@ -154,6 +169,7 @@ def fetch_board(fetch: Fetcher, page_size: int) -> list[Page]:
     pages: list[Page] = []
     offset = 0
     total = None
+    last_id = None
     while True:
         url = (f"{API}/datastore_search?resource_id={RESOURCE_ID}"
                f"&limit={page_size}&offset={offset}&sort=_id")
@@ -172,6 +188,11 @@ def fetch_board(fetch: Fetcher, page_size: int) -> list[Page]:
             missing = REQUIRED_FIELDS.difference(rec) if isinstance(rec, dict) else REQUIRED_FIELDS
             if missing:
                 raise CollectorError(f"record {offset + i} is missing fields: {sorted(missing)}")
+            # Pages are cut by _id order, so a repeated or unsorted _id means rows could be skipped or doubled.
+            row_id = rec.get("_id")
+            if not isinstance(row_id, int) or (last_id is not None and row_id <= last_id):
+                raise CollectorError(f"record {offset + i}: _id {row_id!r} is not strictly increasing after {last_id!r}")
+            last_id = row_id
         pages.append(Page(body=resp.body, rows=len(records), status=resp.status, elapsed_ms=resp.elapsed_ms))
         offset += len(records)
         if offset >= total:
@@ -209,7 +230,11 @@ def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000
     try:
         return _collect(fetch, store, now, state, page_size)
     except BlockedError as err:
-        store.write_state({**state, "blocked": {"at": now.isoformat(), "reason": str(err)[:500]}})
+        try:
+            store.write_state({**state, "blocked": {"at": now.isoformat(), "reason": str(err)[:500]}})
+        except Exception as latch_err:  # noqa: BLE001 - the block must still be reported as a block
+            raise BlockedError(f"{err} (and the block latch could not be saved: {latch_err}; "
+                               "the next run will call data.gov.il again)") from err
         raise
 
 

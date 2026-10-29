@@ -6,6 +6,8 @@ Source: Israel Airports Authority flight board, published on data.gov.il (datase
 |---|---|---|---|---|---|---|---|---|---|
 | 6 | 2026-10-27 18:04:46 | 2026-10-29 13:04:45 | 1905 | 2260 | 0 | 0 | 0 | 0 | 0 |
 
+Snapshots dropped: 0 incomplete (fewer rows than the reply's total), 0 identical to the previous one.
+
 Collection gaps over an hour (snapshot, hours since the previous one):
 
 | snapshot | gap h |

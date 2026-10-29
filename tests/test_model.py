@@ -82,6 +82,17 @@ def test_same_board_stored_twice_counts_once(raw):
     assert (f["snapshots_seen"], f["observations"], f["last_seen_at"]) == (2, 2, at(6, 15))
 
 
+def test_incomplete_multi_page_snapshot_is_dropped(raw):
+    write_snapshot(raw, at(6), [row(flight_no=str(n)) for n in range(5)], pages=2)
+    sid = write_snapshot(raw, at(6, 15), [row(flight_no=str(n)) for n in range(5)], pages=2)
+    (raw / f"date=2026-10-27/{sid.split('/')[1]}" / "page-001.json.gz").unlink()  # the store was interrupted
+    write_snapshot(raw, at(6, 30), [row(flight_no=str(n)) for n in range(5)], pages=2)
+    con = run(raw)
+    assert [s["snap_rn"] for s in q(con, "SELECT * FROM snapshots ORDER BY snap_rn")] == [1, 2]
+    assert one(con, "SELECT count(*) n FROM snapshot_runs WHERE incomplete")["n"] == 1
+    assert one(con, "SELECT max(snapshots_seen) n FROM flights")["n"] == 2
+
+
 def test_key_conflict_keeps_lowest_id_and_is_counted(raw):
     write_snapshot(raw, at(6), [row(status="DELAYED", _id=7), row(status="ON TIME", _id=3)])
     con = run(raw)
@@ -425,7 +436,7 @@ def test_report_summarises_the_model(raw, tmp_path, capsys):
     assert build.main(["--raw", str(raw), "--out", str(out)]) == 0
     assert report.main(["--model", str(out)]) == 0
     text = capsys.readouterr().out
-    assert "## Coverage" in text and "| 2 |" in text
+    assert "## Coverage" in text and "| 2 |" in text and "Snapshots dropped: 0 incomplete" in text
     assert "Flights with a retime link: 1" in text
     assert "Flights seen CANCELED: 1. Already cancelled when first seen: 1." in text
     assert "Source: Israel Airports Authority" in text
