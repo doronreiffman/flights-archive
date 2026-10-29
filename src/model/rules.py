@@ -21,6 +21,9 @@ RETIME_WINDOW_HOURS = 12
 VANISH_HORIZON_HOURS = 1
 # A hole in collection longer than this hides what happened to a flight that left the board in it.
 GAP_HOURS = 1
+# The largest reply the model reads. DuckDB reserves a read buffer per gzipped file from this, so 256 MB ran
+# out of memory at 17 files; the collector refuses any reply past 32 MB (core.MAX_BODY_BYTES).
+MAX_REPLY_BYTES = 32 * 1024 * 1024
 
 # Board field -> model column. Names come from the datastore's field notes, except the
 # city pair: the notes label CHLOC1TH "Location1City" and CHLOC1T "...CityHebrew" but the
@@ -81,7 +84,7 @@ def load_raw(con, raw_glob: str) -> int:
             SELECT filename,
                    regexp_extract(filename, '{_SNAPSHOT_PATH}', ['d', 't', 'sha', 'page']) AS m,
                    result
-            FROM read_json('{path}', filename = true, maximum_object_size = 268435456,
+            FROM read_json('{path}', filename = true, maximum_object_size = {MAX_REPLY_BYTES},
                            columns = {{'success': 'BOOLEAN', 'result': 'STRUCT(total BIGINT, records {_RECORD_TYPE}[])'}})
         ), u AS (
             SELECT filename, m, result.total AS declared_total, unnest(result.records) AS r FROM f
