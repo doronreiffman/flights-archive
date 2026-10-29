@@ -1,6 +1,6 @@
 # flights-archive
 
-Personal portfolio project. Archives the Ben Gurion flight board from data.gov.il (Israel Airports Authority, dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`) and turns it into a searchable history of each flight's board changes first, then statistics, scored cancellation forecasts and an agent once the data supports them. README.md covers what the collector does, how to deploy it and what it costs.
+Personal portfolio project. Archives the Ben Gurion flight board from data.gov.il (Israel Airports Authority, dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`) and turns it into a searchable history of each flight's board changes first, then statistics, scored cancellation forecasts and an agent once the data supports them. README.md is the public landing page; `docs/operations.md` covers how the collector works, deploying and running it, and what it costs.
 
 ## Hard rules
 

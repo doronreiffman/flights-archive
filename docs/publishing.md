@@ -11,7 +11,7 @@ Goal: one HTTPS link to the history site that the owner can send, for a few cent
 - **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). Every page already says when the board was last seen.
 - **The address is a random `dxxxx.cloudfront.net` name.** A custom domain is a later, separate decision with its own cost.
 - **Pay-as-you-go has no spending cap.** The account's existing "My Monthly Cost Budget" ($5, emails at 85% and 100% of actual, 100% of forecast) is the guard.
-- **Your name is not on the site**, and a link to the code would 404 while the repo is private (OPEN_ISSUES, "Repo hygiene").
+- **Your name is not on the site**, and the site does not link to the code yet.
 
 ## Design
 

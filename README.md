@@ -1,109 +1,56 @@
 # flights-archive
 
-Archives the Ben Gurion airport flight board that the Israel Airports Authority publishes on data.gov.il (dataset `flydata`), so the history survives after the board drops each flight, about a day after it flies.
+Keeps the history of the Ben Gurion airport flight board, which overwrites itself every 15 minutes: every version kept for 10 years, with a receipt for every download.
 
-Source: Israel Airports Authority, data.gov.il dataset `flydata`, resource `e83f763b-b7d7-479e-b172-ae981ddc6de5`. Used under the [data.gov.il terms of use](https://data.gov.il/he/terms-of-use), which allow reuse, including commercial, with the source cited.
+**Live site:** coming soon (hosting is built and waiting on AWS) · **Design notes:** [docs/](docs/README.md) · **Run it yourself:** [docs/operations.md](docs/operations.md)
 
-## What it does
+**Stack:** Python 3.13 · AWS SAM (Lambda, EventBridge Scheduler, S3 Object Lock, CloudWatch, SNS) · DuckDB and Parquet · S3 + CloudFront for the site · GitHub Actions
 
-Every 2 minutes a Lambda function in il-central-1 (Tel Aviv):
+<!-- screenshot: docs/img/timeline.png, added when the site is live -->
 
-1. Asks `resource_show` when the board last changed. That's a small request.
-2. Downloads the full board through `datastore_search` only if that timestamp moved, if the last full download is 30+ minutes old, or for up to 10 minutes after the timestamp moved without the data changing yet.
-3. Stores the reply bytes untouched, gzipped, only if their SHA-256 differs from the last stored snapshot.
-4. After every full download, stored or unchanged, writes a small receipt: when the run started and finished, the board's `last_modified`, rows, page hashes, which code wrote it, and the stored snapshot that holds this content.
+## Why
 
-The board refreshes about every 15 minutes, so that's roughly 4 downloads an hour.
+The Israel Airports Authority publishes the airport's live departures and arrivals board as open data on data.gov.il. The board shows about one to two days back and three days ahead, and every refresh replaces the last one. When a flight goes from ON TIME to CANCELED, the board itself keeps no record of what it said before.
 
-Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), with fetch time, HTTP status, latency, row count, hashes and the resource's `last_modified` in the object metadata. Receipts land at `receipts/date=YYYY-MM-DD/HHMMSSZ-<sha12>.json`, written after the pages, so a receipt means every page it names is in the archive; it also keeps `last_modified` and the hashes where a local sync can see them (sync drops object metadata). Snapshots stored before receipts existed (before the first receipt) have none. Object Lock (governance mode, 10 years by default) keeps every version of a snapshot or receipt, and the collector's writes carry a write-once condition, so it never replaces one (the code enforces that condition, not IAM). A small `state/collector.json` remembers the last timestamp, hash and snapshot key. Design: `docs/receipts.md`.
+This project keeps that record. It saves every version of the board, writes down what it saved and when, and turns the archive into a timeline for each flight: what the board said, and when we first saw it. That history answers questions the live board can't. The first is how far ahead cancellations appear.
 
-## Rules the code enforces
+## What it does today
 
-- **One identified client.** Every request sends the `USER_AGENT` you set, which must carry a `+https://` project URL and a contact email; the deploy and the code both refuse one without them.
-- **Stop if blocked, and stay stopped.** A 401, 403 or 429, or an HTML page served where JSON belongs, raises `BlockedError`, pings healthchecks.io's `/fail`, stores nothing, and sets a latch in the state file. Every later run refuses to call data.gov.il until a person clears it. Don't switch to a browser User-Agent, another IP or anything else that works around a block: the data.gov.il license excludes data obtained by circumventing technical protection. Find out why, ask data.gov.il if needed, then unblock (below).
-- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period and the CloudWatch alarm (errors in two consecutive 5-minute windows) decide when a run of failures is an outage, so one slow reply stays quiet.
-- **Validate before writing.** Zero rows, a missing field, a total that doesn't match the rows, or the board changing mid-download all raise and store nothing.
-- **No retries.** Neither the scheduler nor Lambda retries a failed run; the next scheduled run is the retry.
-- **Never touch iaa.gov.il.** Its terms forbid copying without written consent.
+- **Collector**, live on AWS. A Lambda function in Tel Aviv checks every 2 minutes whether the board changed and downloads it when it did, about 4 times an hour. The archive starts on 27 October 2026 and has been continuous since 29 October.
+- **Archive.** Every board is stored exactly as received, and every version is kept for 10 years under S3 Object Lock (governance mode); the collector never overwrites a stored file. After every download it also writes a receipt: when it ran, what it got, which code version wrote it. As of 29 October 2026: 39 boards, covering 3,113 flight listings (a flight sold under several numbers counts once per number).
+- **Data model.** DuckDB turns the archive into Parquet tables: every change to every flight, retimed flights linked to their new slot where the board allows it, flight numbers that share a slot, times and check-in counters grouped as likely codeshares, and each first CANCELED sighting bracketed between the last board without it and the first board with it.
+- **History site.** A static page per day, with a timeline per flight number. Built and tested; it goes live once AWS enables the hosting.
 
-## Deploy
+## How it works
 
-You need a personal AWS account (nothing from an employer) with il-central-1 enabled, AWS CLI 2.32 or newer, the AWS SAM CLI, and Python 3.13 on your Mac for `sam build` (`brew install python@3.13`, or use `sam build --use-container` with Docker).
-
-1. Sign in: `aws login --profile flights`. Then check that `aws sts get-caller-identity --profile flights-sam` shows your personal account. The `flights-sam` profile hands the `aws login` session to SAM.
-2. Create a healthchecks.io check (period 2 minutes, grace 15 minutes) and copy its ping URL.
-3. Email data.gov.il about the collector, with the User-Agent you'll use.
-4. Build and deploy with the schedule switched off (`ScheduleState` defaults to `DISABLED`). The parameters stay on your command line, not in a file you might commit:
-
-   Deploy from a clean, committed tree (`git status --porcelain src/` prints nothing): every receipt records a fingerprint of the collector's code, and only a committed tree lets you find the commit behind it. The run summary in the logs shows the same fingerprint.
-
-   ```bash
-   sam build
-   sam deploy --profile flights-sam --region il-central-1 --parameter-overrides \
-     'UserAgent="flights-archive/0.1 (+https://github.com/<you>/flights-archive; <email>)"' \
-     'HealthcheckUrl=https://hc-ping.com/<uuid>' \
-     'AlertEmail=<email>'
-   ```
-
-   The inner double quotes around the User-Agent matter: `--parameter-overrides` splits on spaces, and without them the value is silently cut at the first space (the template now rejects a value with no URL and email, which catches that). Review the change set and confirm. Afterwards check the live value: `aws lambda get-function-configuration --function-name <CollectorFunctionName> --query Environment.Variables.USER_AGENT --profile flights-sam --region il-central-1`. Then confirm the SNS subscription email AWS sends you. The function and bucket names are in the stack outputs.
-5. Run it once by hand. That's one request to data.gov.il, the same as a manual check:
-
-   ```bash
-   aws lambda invoke --function-name <CollectorFunctionName> --payload '{}' \
-     --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
-   cat out.json
-   aws s3 ls s3://<bucket>/raw/ --recursive --profile flights-sam
-   ```
-
-   `out.json` should say `"action": "stored"` with about 2,000 to 2,800 rows, and the listing should show one snapshot.
-6. Prove the alerts work with a drill, which fails on purpose without calling data.gov.il:
-
-   ```bash
-   aws lambda invoke --function-name <CollectorFunctionName> --payload '{"drill": true}' \
-     --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
-   ```
-
-   healthchecks.io should show a failure within a minute. The alarm email needs errors in two consecutive 5-minute windows, so run the drill again about 5 minutes later if you want to see that email too. Run step 5 to clear healthchecks.io.
-7. Go live: deploy again with the same parameters plus `ScheduleState=ENABLED`. After 10 minutes, healthchecks.io should show a ping every 2 minutes and new snapshots should appear about every 15.
-
-## If it's blocked
-
-The alarm email and the `/fail` ping say `BLOCKED`. The collector has stopped calling data.gov.il. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
-
-```bash
-aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock": true}' \
-  --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
+```mermaid
+flowchart LR
+  B["data.gov.il<br/>flight board"] -->|"every 2 min: changed?"| L["Collector<br/>AWS Lambda, Tel Aviv"]
+  L -->|"new board + receipt"| S[("Archive<br/>S3, kept 10 years")]
+  S -->|sync| M["Data model<br/>DuckDB to Parquet"]
+  M --> T["History site<br/>static pages"]
+  T -.->|"checked upload, not live yet"| C["S3 + CloudFront"]
 ```
 
-## Develop
+## Engineering choices worth a look
 
-```bash
-python3.13 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-pytest --cov=collector --cov=model --cov=timeline
-cfn-lint template.yaml
-python scripts/mutation_check.py
-```
+- **Nothing stored is ever replaced, and every download leaves a receipt.** The snapshots are the project, so the collector writes each file once, S3 keeps every version, and the model trusts only boards it can account for. [docs/receipts.md](docs/receipts.md)
+- **A polite collector that stops cold.** It identifies itself on every request, downloads the full board only when it changed (or every 30 minutes as a safety check), and on any sign of being blocked it stops and waits for a person. The data license excludes data obtained by working around a block. [docs/operations.md](docs/operations.md)
+- **Three clocks.** Board times are Israel wall-clock with no offset, our times are UTC, and the October clock change repeats an hour. Each conversion rule is written down and tested, including under an Israeli time zone. [docs/data-model.md](docs/data-model.md)
+- **Claims no stronger than the evidence.** The site says "first observed CANCELED on the public board", never "cancelled at", because the board is all we see. A check before every upload refuses a page that uses a banned phrasing, or that lacks the source line. [docs/timeline.md](docs/timeline.md), [docs/terms.md](docs/terms.md)
+- **Tests that are themselves tested.** 289 tests, and 156 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 29 October 2026). Both run in CI on every push.
+- **Cheap, boring infrastructure.** About $1 to $2 in the archive's first year ([operations.md](docs/operations.md#cost)) and under $0.05 a month for the site ([publishing.md](docs/publishing.md#cost-monthly)), each estimate written down with its sources.
 
-The mutation check breaks each rule in turn and expects a test to fail; it is about 110 short pytest runs, several minutes. One timeline test runs the search box's JavaScript under Node and is skipped where Node is missing. CI runs it on every push, which costs nothing on GitHub's free tier at this repo's push rate.
+## What's next
 
-The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
+- **First cancellation statistics** once enough continuous data exists: how far ahead cancellations appear on the board, within the 72 hours it shows.
+- **Per-flight cancellation forecasts**, only once enough cancellations exist to score them honestly, with a published Brier score against a historical-rate baseline.
+- **No delay figures** until it's confirmed whether the board's estimated time is gate or runway time.
 
-## Model
+## Data and license
 
-`src/model/` turns the raw snapshots into Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time), plus `receipts` and `snapshot_runs`. It trusts only snapshots with a receipt, or from before receipts existed, and stops when the local copy looks out of step; `sh scripts/sync.sh` copies receipts, then snapshots, into `data/`. The rules, what is still uncertain about them, and how to run the build are in `docs/data-model.md`; `docs/data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
+Source: Israel Airports Authority flight board, published on [data.gov.il](https://data.gov.il) (dataset `flydata`), used under the [data.gov.il terms of use](https://data.gov.il/he/terms-of-use). The clauses that bear on this project are quoted in [docs/terms.md](docs/terms.md). This is an unofficial project, not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel. The raw archive is not published.
 
-## Timeline
+## Operating it
 
-`src/timeline/` turns the model into a static site: one page per scheduled day, and a timeline per flight number of what the public board showed and when it was first seen. The wording never claims more than the board showed (no cancellation times, delays or operators), and every page cites the source and says it is unofficial. Design and limits: `docs/timeline.md`. Local only for now; the owner's reading of the data.gov.il terms is that they allow publishing it (`docs/terms.md`).
-
-```bash
-PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
-.venv/bin/python -m http.server -d site 8000   # then open http://localhost:8000
-```
-
-Publishing (not deployed yet): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases, and the source and unofficial lines on every page. Both write to AWS, so each runs on the owner's go; design, takedown and cost in `docs/publishing.md`.
-
-## Cost
-
-About $1 to $2 for the first year: roughly 3,000 to 4,400 snapshots and 0.3 to 0.7 GB a month, plus a few cents of S3 requests. Receipts add about 3,300 small writes a month, about $0.02 at il-central-1 prices (AWS Price List, 2026-10-29). Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.
+Deploying the collector, the alerts, clearing a block, development and costs: [docs/operations.md](docs/operations.md). If the collector reports `BLOCKED`, see [If it's blocked](docs/operations.md#if-its-blocked).

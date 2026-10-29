@@ -6,7 +6,7 @@ Grade: product v1 on a production-lean generator. The generator is deterministic
 
 A static website built from the model's tables. Pick a date, find a marketed flight number, and see the flight's story on the public board: every change to its status, estimated time, terminal and check-in counters with when we first saw it, retimes, the other flight numbers listed in the same slot, pauses in collection, and how its board story ended. A methodology page explains the rules and their limits. Every page cites the source.
 
-It comes first because it uses what only an archive has: the history that the live board drops about a day after each flight. The outside review (change 3 of `reviews/review-2026-10-29-round-2.md`) names its readers as technical reviewers and data journalists, and asks to watch five outsiders use it before building anything bigger.
+It comes first because it uses what only an archive has: the history that the live board drops about a day after each flight. The outside review (change 3 of the second outside review, whose notes are kept outside the repo) names its readers as technical reviewers and data journalists, and asks to watch five outsiders use it before building anything bigger.
 
 ## Goals
 

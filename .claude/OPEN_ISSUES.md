@@ -26,7 +26,7 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 
 ## Site (q15)
 
-- **CloudFront needs account verification.** The first deploy of stack `flights-archive-site` (2026-10-29 20:50Z) failed on `SiteDistribution`: "Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support" (request 3d8d62f4-c0fb-4a48-8d70-1ab0e7e085b4). Rolled back; every resource DELETE_COMPLETE, no bucket left; the stack record sits in ROLLBACK_COMPLETE. Next: the owner opens an AWS Support case. On AWS's confirmation: delete the stack record and redeploy (inside the owner's deploy go of 2026-10-29), then the first upload on the owner's go, given with the terms page's update date reread that day (`docs/terms.md`).
+- **CloudFront needs account verification.** The first deploy of stack `flights-archive-site` (2026-10-29 20:50Z) failed on `SiteDistribution`: "Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support" (request 3d8d62f4-c0fb-4a48-8d70-1ab0e7e085b4). Rolled back; every resource DELETE_COMPLETE, no bucket left; the stack record sits in ROLLBACK_COMPLETE. The owner requested verification through AWS Support (web response, 2026-10-29 about 23:40 Israel time). On AWS's confirmation: delete the stack record and redeploy (inside the owner's deploy go of 2026-10-29), then the first upload on the owner's go, given with the terms page's update date reread that day (`docs/terms.md`).
 
 ## Repo hygiene (before the repo goes public)
 
