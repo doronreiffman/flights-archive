@@ -6,6 +6,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 
 - Personal accounts only. Nothing touches the owner's employer: no work systems, accounts, cloud or credentials.
 - AWS: profile `flights-sam`, region `il-central-1`, account `137953273942`, and nothing else. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer.
+- GitHub: before any `gh` call, `gh auth status` must show doronreiffman as the active account; any other account is the employer's, and if one is active, stop and tell the owner. `git push` uses the keychain credential, which is doronreiffman; confirm with `printf 'protocol=https\nhost=github.com\n' | git credential-osxkeychain get | grep username` if in doubt.
 - Ask before anything that writes outside this repo: `sam deploy`, any AWS write, `git push`, enabling or disabling the schedule. Read-only AWS calls (`s3 ls` / `cp` / `sync` from the bucket, `describe-*`, `get-caller-identity`) need no ask.
 - The archive bucket `flights-archive-archivebucket-onpwo5ns74tw` is write-once with Object Lock. Never delete, overwrite or bypass retention; the snapshots are the project.
 - data.gov.il is the only source. Never call iaa.gov.il (its terms forbid copying). If data.gov.il blocks us, stop and tell the owner: the license excludes data obtained by working around a block (browser User-Agent, IP rotation, anything of the kind).
