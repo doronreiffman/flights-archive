@@ -1,0 +1,34 @@
+# data.gov.il terms, as read on 2026-10-29 (q12)
+
+The owner's call, 2026-10-29, on the owner's reading of the terms (not legal advice): they allow publishing the history timeline (derived per-flight pages). Raw replies are not published; on the same reading the general license would allow that too, but nothing needs it.
+
+## Source
+
+- Page: https://data.gov.il/he/terms-of-use, "תנאי שימוש אתר מאגרי המידע הממשלתיים". Shown on the page: "תאריך פרסום: 01/01/2018 תאריך עדכון: 30/08/2025". A web-fetch agent found no English version (`/en/terms-of-use` returned 404 to it, 2026-10-29).
+- Copy: saved by the owner from their browser on 2026-10-29 21:30 Israel time, kept outside git at `data/sources/data-gov-il-terms-2026-10-29.pdf` (SHA-256 `5ac2f124b8992101561c177dc7e6d9ef24ca95e118ec7af11f4cb3fc21522ce6`). Every quote below was checked against it, by the agent and by an independent review. A plain `curl` of the page from this Mac got HTTP 403 from the site's CloudFront filter ("Request blocked") at about 21:28 the same evening; it was not retried.
+- The dataset's own label: `package_show?id=flydata` gave `license_id` "other-open", `license_title` "Other (Open)", no license URL and no usage text (read through a web-fetch agent on 2026-10-29, not rechecked against the raw reply).
+
+## Clauses that bear on this project
+
+Hebrew as on the page; the English is ours.
+
+1. Precedence (intro): "ככל שלמאגר מידע מוצמד רישיון שימוש השונה מהרישיון המובא להלן, יגבר הרישיון המוצמד למאגר המידע." Where a dataset carries its own license that differs from this one, the dataset's license wins. flydata's "Other (Open)" label has no text, so nothing on record differs; we read the general license as governing (our inference).
+2. Changes ("רישיון לשימוש במאגרי המידע באתר Data.Gov.il"): "המשרד רשאי לשנות את תנאי רישיון זה בכל עת, כאשר כל שינוי כזה ייכנס לתוקף מידית עם הצגתו באתר. השימוש במידע יהיה בכפוף לתנאי הרישיון שהיו בתוקף בתאריך ובשעה בהם נלקח המידע מהאתר." The Office may change the license at any time, effective as soon as it is posted; use of the information is subject to the terms in force on the date and at the time it was taken.
+3. Permitted uses ("שימושים מותרים"): "אתה רשאי להעתיק את המידע, להפיץ אותו, להעמיד אותו לרשות לציבור, לשדר אותו, לבצע שינויים טכניים במידע וליצור ממנו יצירות נגזרות בכל מדיום או פורמט. אתה רשאי לעשות שימוש במידע באופן מסחרי ובאופן שאינו מסחרי." You may copy, distribute, make public, broadcast, change technically and make derivative works, in any medium or format, commercially or not.
+4. Prohibited use 1 ("שימושים אסורים"): "להציג את המידע באופן מטעה ו/או באופן הגורם למצג שווא ו/או לשנות את המידע בדרך שתגרום לסילופו ו/או באופן הפוגע או העלול לפגוע בכבודו או בשמו של בעל זכויות היוצרים בו." Presenting the information misleadingly or so as to create a false impression, changing it so as to distort it, or in a way that harms or may harm the honour or reputation of its copyright holder.
+5. Prohibited use 3: "לעשות שימוש שיביא לפגיעה בפרטיותו של אדם, לרבות על ידי הצלבת המידע עם מקורות מידע אחרים." Use that would infringe a person's privacy, including by cross-referencing the information with other sources.
+6. Cite the source ("ציון מקור המידע"): "בשימוש במידע, עליך לציין את מקור המידע." When using the information, you must cite its source. No wording is prescribed.
+7. Outside the license ("היקף תחולת רישיון זה", item 2): "מידע שפרסומו ו/או הגישה אליו אסורים לפי דין, או שהושג שלא כדין ו/או שלא ברשות, לרבות תוך עקיפת אמצעים טכנולוגיים האמורים להגן עליו." Information whose publication or access is forbidden by law, or that was obtained unlawfully or without permission, including by circumventing technological measures meant to protect it.
+8. No official status or endorsement ("העדר גושפנקא או חסות"): "רישיון זה אינו מקנה לך זכות להשתמש במידע באופן היוצר מצג או מרמז על כל מעמד רשמי בשימוש זה או על כך שהמדינה מעניקה חסות או נותנת גושפנקא לך, לצד שלישי, או לשימוש שאתה או צד שלישי עושים במידע או בכל מוצר ערך מוסף." The license gives no right to use the information in a way that presents or implies any official status for that use, or that the State sponsors or endorses you, a third party, or the use you or a third party make of it or of any value-added product.
+9. Also outside the license (same section, items 3 and 5; our paraphrase): the State's or a public body's emblem, and rights other than copyright, such as trademarks.
+10. Breach ("הפרה"): "הפרת רישיון זה על ידך תביא לסיומו המיידי." Your breach ends the license at once.
+
+## What it asks of us (our reading)
+
+- Cite the source (clause 6): every page carries `ATTRIBUTION` (`src/model/report.py`), naming the Israel Airports Authority and data.gov.il; all 9 pages of the 2026-10-29 build do.
+- No implied official status or endorsement (clause 8): every page says "Unofficial; not affiliated with the Israel Airports Authority." (`UNOFFICIAL`, `src/timeline/pages.py`). It does not yet say the site is not endorsed by data.gov.il or the State; adding that is part of q15.
+- No misleading presentation (clause 4): we read the wording rules in `docs/timeline.md` as how we meet it. A page saying "cancelled at" where we only know when the board first showed CANCELED would be misleading. `tests/test_timeline_build.py` checks the six banned phrases and the "listed together" and "flight numbers listed" wording on a synthetic test build; nothing checks the real site yet. q15 adds a banned-phrase scan of the real site before each upload.
+- Privacy (clause 5): the board holds no personal data (the fields in CLAUDE.md, "The data"), and we cross-reference it with nothing.
+- No emblems or logos (clause 9): the timeline's anti-goals already forbid logos.
+- Blocks (clause 7): the collector stops at the first block (401, 403, 429, or an HTML page where JSON belongs) and, once its latch is saved, waits for a person, so it never works around one.
+- Changes (clause 2): before each upload, the owner checks the terms page's update date in their browser; if it has moved past 30/08/2025, the terms are read again before uploading.

@@ -99,19 +99,24 @@ JavaScript: one pytest test runs `search.js`'s matching function under Node (ski
 
 ## Five outsiders (from the review)
 
-Observed sessions on the owner's machine, not a copy handed out (the terms reading comes first). Tasks: "find IZ 991 on 29 October and tell me what happened to it", "find a flight that was cancelled and say when that was announced", "is there anything here you would use, and for what?". Watch for: misreading "first observed CANCELED" as the cancellation time, misreading "listed together" as the same aircraft, not finding a flight. The review's stop rule: if fewer than two of five name a real use, keep the collector and the case study and stop product work.
+Observed sessions with the owner watching, not a copy handed out: the point is to see where people misread. Tasks: "find IZ 991 on 29 October and tell me what happened to it", "find a flight that was cancelled and say when that was announced", "is there anything here you would use, and for what?". Watch for: misreading "first observed CANCELED" as the cancellation time, misreading "listed together" as the same aircraft, not finding a flight. The review's stop rule: if fewer than two of five name a real use, keep the collector and the case study and stop product work.
 
-## Publishing (not in v1, owner's call)
+## Publishing (q15, owner's call)
 
-The pages contain per-flight timelines derived from the board, not raw replies. The open issue "Raw redistribution is not cleared" says only code, methodology and narrowly scoped derived aggregates are candidates for publication until the owner re-reads the data.gov.il terms. Per-flight timelines are more detailed than aggregates, so publishing and handing out copies both wait for that reading. When it is cleared, the cheapest fits are a private S3 bucket behind CloudFront in this account, or GitHub Pages if the repo goes public (it is private today); both need their price checked then. Before publishing, the model's gaps should come from receipts (OPEN_ISSUES).
+The owner reads the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. Before publishing, the model's gaps should come from receipts (q14).
+
+The owner picked S3 + CloudFront (2026-10-29): a few cents a month at most, and the repo can stay private. Options as priced that day for under 1 GB and about 1,000 page views a month:
+
+- A private S3 bucket in il-central-1 behind CloudFront, in this account, on the default cloudfront.net address: well under a cent a month for today's 2.4 MB site, at most about $0.03 for a site near 1 GB; a custom domain would add its own cost. S3 storage is $0.025 per GB-month (AWS price list for il-central-1, published 2026-10-15); CloudFront stays inside its always-free 1 TB and 10 million requests a month (CloudFront FAQ). CloudFront's flat-rate Free plan ($0, 1M requests, 100 GB) is the other way; whether this account qualifies needs a console check.
+- GitHub Pages: free from a public repo. From a private repo it needs a paid plan (Pro; its current price is unconfirmed), and the site is public either way.
 
 ## Cost
 
-Nothing new in AWS: the build is local and reads the local model. Hosting cost is part of the publishing decision.
+Nothing new in AWS: the build is local and reads the local model. Hosting: see "Publishing".
 
 ## What to know
 
-- Publishing per-flight history is the step that turns a private archive into redistribution; the terms come first.
+- Publishing per-flight history is the step that turns a private archive into redistribution; the terms were read on 2026-10-29 (`docs/terms.md`).
 - Three clocks meet on every page: board times (Israel wall-clock, no offset), our times (UTC, shown as Israel time) and the clock change on the last Sunday of October. The naive-conversion trap is real on this Mac and invisible on CI, so it is tested under an Israeli time zone.
 - The board's words are not facts about the flight. DEPARTED is the board's status, not a take-off time; a flight that vanished was not necessarily cancelled; our first sighting is not the flight's first listing (most flights so far were first seen at the archive's start or right after its 42-hour hole).
 - "Listed together" is an inference from the same slot, estimated time, terminal and counters; arrivals with no counters can merge two real flights (OPEN_ISSUES, Model).

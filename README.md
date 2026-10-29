@@ -95,7 +95,7 @@ The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once t
 
 ## Timeline
 
-`src/timeline/` turns the model into a static site: one page per scheduled day, and a timeline per flight number of what the public board showed and when it was first seen. The wording never claims more than the board showed (no cancellation times, delays or operators), and every page cites the source and says it is unofficial. Design and limits: `docs/timeline.md`. Local only for now; publishing waits for a reading of the data.gov.il terms.
+`src/timeline/` turns the model into a static site: one page per scheduled day, and a timeline per flight number of what the public board showed and when it was first seen. The wording never claims more than the board showed (no cancellation times, delays or operators), and every page cites the source and says it is unofficial. Design and limits: `docs/timeline.md`. Local only for now; the owner's reading of the data.gov.il terms is that they allow publishing it (`docs/terms.md`).
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
