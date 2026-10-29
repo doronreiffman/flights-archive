@@ -14,7 +14,7 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 - **Codeshare `time-only` groups (all arrivals) can merge two real flights** from the same airport at the same scheduled and estimated minute. Measure once a week of data exists: look for groups whose members' statuses diverge.
 - **Operating-carrier guess** is the lowest flight number in the group; pure convention, `operating_is_guess` marks it.
 - **`vanished` vs `dropped` threshold** is 1 h past the last appearance; with the gap outcome in place neither class has a real example yet.
-- **Collection gaps ignore `unchanged` receipts.** R4, R7 and R8 measure gaps by snapshot spacing, so a stall on data.gov.il's side (the board not changing for over an hour) reads as a collection hole. The timeline shows the model's gaps in neutral words ("our collection paused, or the board stopped changing"). Receipts record every full download since 2026-10-29 17:02:50Z; switching the rules to them is q14, the owner's call, and a precondition for publishing coverage gaps (`docs/receipts.md`, "Model changes").
+- **Collection gaps ignore `unchanged` receipts.** R4, R7 and R8 measure gaps by snapshot spacing, so a stall on data.gov.il's side (the board not changing for over an hour) reads as a collection hole. The timeline shows the model's gaps in neutral words ("our collection paused, or the board stopped changing"). Receipts record every full download since 2026-10-29 17:02:50Z; switching the rules to them is q14. The owner chose to publish the timeline first (2026-10-29); q14 starts with the first `unchanged` receipt, none so far (`docs/receipts.md`, "Model changes").
 
 ## Collector
 

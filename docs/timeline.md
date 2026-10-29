@@ -103,7 +103,7 @@ Observed sessions with the owner watching, not a copy handed out: the point is t
 
 ## Publishing (q15, owner's call)
 
-The owner reads the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. Before publishing, the model's gaps should come from receipts (q14).
+The owner reads the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. The owner chose to publish before the model's gaps come from receipts (q14, 2026-10-29): the gap wording already names both causes, and no board has yet stayed unchanged between two downloads.
 
 The owner picked S3 + CloudFront (2026-10-29): a few cents a month at most, and the repo can stay private. Options as priced that day for under 1 GB and about 1,000 page views a month:
 
