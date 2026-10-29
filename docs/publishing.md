@@ -1,0 +1,82 @@
+# Publishing the history timeline (q15)
+
+Grade: portfolio project. Careful where it faces the public (wording, permissions, what the bucket exposes); quick everywhere else: uploads by hand, no custom domain, no automation.
+
+Goal: one HTTPS link to the history site that the owner can send, for a few cents a month, without touching the collector's stack.
+
+## What you might not be asking
+
+- **Public is copyable.** Taking our copy down takes minutes; copies others make (archive.org, scrapers) can outlive it. The terms reading (`docs/terms.md`) is what makes this acceptable.
+- **`noindex` stays on every page** (`docs/timeline.md`, "How it is built"), so search engines will not list the site; people arrive by the link you share. Dropping it is a one-line change, owner's call.
+- **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). Every page already says when the board was last seen.
+- **The address is a random `dxxxx.cloudfront.net` name.** A custom domain is a later, separate decision with its own cost.
+- **Pay-as-you-go has no spending cap.** The account's existing "My Monthly Cost Budget" ($5, emails at 85% and 100% of actual, 100% of forecast) is the guard.
+- **Your name is not on the site**, and a link to the code would 404 while the repo is private (OPEN_ISSUES, "Repo hygiene").
+
+## Design
+
+### A stack of its own
+
+New template `site-template.yaml`, stack `flights-archive-site`, il-central-1, deployed with `aws cloudformation deploy` (no SAM: there is no code). The collector stack holds the Object Lock archive and the live Lambda; a site change must never put a change set on it.
+
+Resources:
+
+- `SiteBucket`: private; `BucketOwnerEnforced` (origin access control requires it); all four public-access blocks; SSE-S3. No versioning and no Object Lock: the site is rebuilt from the model, so there is nothing to keep.
+- `SiteOriginAccessControl`: origin type `s3`, signing `always`, protocol `sigv4`. Access control is the only option here: the older origin access identity does not support buckets in opt-in Regions launched after December 2022, il-central-1 among them (https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html).
+- `SiteDistribution`: one origin at `!GetAtt SiteBucket.RegionalDomainName` (the global `bucket.s3.amazonaws.com` form returns 400 for buckets in Regions launched after 2019-03-20), with `S3OriginConfig: {OriginAccessIdentity: ""}` and the access control attached; default root object `index.html`; HTTP redirected to HTTPS; GET and HEAD only; managed cache policy CachingOptimized and managed response-headers policy SecurityHeadersPolicy (both by their fixed AWS IDs; the latter sends `nosniff`, so content types must be right); compression on; `PriceClass_100` (North America, Europe, Israel and Türkiye); the default cloudfront.net certificate; no access logs. A missing page returns 403 (there is no list grant), not 404; acceptable for a site that links only to pages it has.
+- `SiteBucketPolicy`: `s3:GetObject` on the bucket's objects for the `cloudfront.amazonaws.com` service principal, only when `AWS:SourceArn` is this distribution. No other grant; no `*` principal. A separate resource, which avoids a dependency cycle with the distribution.
+- Outputs: bucket name, distribution ID, domain name.
+
+### Code changes
+
+- **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow.
+- **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html` file after stripping tags, unescaping entities and collapsing whitespace, so a phrase split by markup or a line break is still caught. It exits non-zero and names file and phrase on a hit.
+- **`scripts/publish.sh`**, in this order, uploading nothing if a check fails:
+  1. the AWS identity check `scripts/sync.sh` uses;
+  2. `site/` must carry the build's `.timeline-site` marker;
+  3. the banned-phrase check over `site/`;
+  4. bucket and distribution from the stack's outputs; the bucket name must start with `flights-archive-site-sitebucket-` (so never the archive bucket, where a delete would add markers that hide locked snapshots, and never `None` from a missing output), and the distribution ID must be non-empty;
+  5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css`, then `*.js` as `text/javascript`, each with `--delete` (which, under the filters, removes only stale files of that type). Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
+  6. a CloudFront invalidation of the literal `'/*'`.
+- **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. The owner reads the date on the live page and states it with each upload's go; a date other than 30/08/2025 stops the upload until the terms are read again.
+- **Takedown**: `aws s3 rm s3://<site bucket>/ --recursive`, then invalidate `'/*'`; minutes, and the stack can go later.
+
+### Tests and mutation checks
+
+- `tests/test_site_template.py`: the bucket's four blocks and ownership; no `*` principal anywhere; the policy grants only `s3:GetObject` to the CloudFront service principal under the `AWS:SourceArn` condition on this distribution; the origin's `RegionalDomainName` and empty identity; the access control's signing; HTTPS redirect; GET and HEAD only; default root object; the managed policy IDs.
+- `tests/test_publish.py`, against a fake `aws` as `tests/test_sync.py` does: identity first; a wrong account, a missing marker, a banned phrase, the archive bucket's name or a missing output each upload nothing; the happy path runs the three syncs with their includes, content types and `--delete` against the stack's bucket, then invalidates the literal `/*`, all under `--profile flights-sam`.
+- `tests/test_timeline_check.py`: a phrase found across a tag, a line break and an entity; a clean site passes; the new footer words on every page.
+- CI lints both templates with `--regions il-central-1` (cfn-lint checks only us-east-1 by default).
+- `scripts/mutation_check.py`: an entry for each refusal in `publish.sh`, the tag stripping, the footer words, the policy's `SourceArn` condition, the regional origin and the HTTPS redirect.
+
+### Deploy, then publish (the owner's go for each)
+
+1. Identity check, then `aws cloudformation deploy --template-file site-template.yaml --stack-name flights-archive-site --profile flights-sam --region il-central-1`.
+2. `scripts/sync.sh`, model build, timeline build.
+3. The owner reads the terms page's update date and gives the go with it; `sh scripts/publish.sh`.
+4. The owner opens the link and checks a day page, a flight and the search.
+
+## Cost (monthly)
+
+- S3 storage at $0.025 per GB-month (AWS price list, il-central-1, published 2026-10-15): well under a cent for today's 2.4 MB, about $0.03 near 1 GB.
+- S3 requests: every build rewrites every file, so each upload PUTs all of them (about 11) plus a few LISTs, at $0.0055 per 1,000; CloudFront caches the GETs. Under a cent.
+- CloudFront: inside the always-free 1 TB and 10 million requests a month; invalidations: the first 1,000 paths a month are free, and `/*` counts as one path (https://aws.amazon.com/cloudfront/pricing/pay-as-you-go, https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
+- Total: under $0.05 a month. Guard: the account's "My Monthly Cost Budget", $5, emails at 85% and 100% of actual and 100% of forecast (`aws budgets describe-budgets` and `describe-notifications-for-budget`, read 2026-10-29).
+
+## Unverified until the deploy
+
+- That the stack deploys in il-central-1: cfn-lint 1.58.0's il-central-1 schema lists `AWS::CloudFront::Distribution` and `AWS::CloudFront::OriginAccessControl`, and the deploy has the final word.
+
+## Rejected
+
+- GitHub Pages: the repo would have to go public, or a paid plan, and the site is public either way.
+- CloudFront's flat-rate Free plan: no overage charges, but a console opt-in and an eligibility check; revisit if traffic ever costs money.
+- S3 static website hosting: needs a public bucket and serves HTTP only.
+- Adding the site to `template.yaml`: one deploy would touch both the archive and the site.
+- Publishing automatically after each build: needs the nightly build (q5, q2) first.
+- A build-time banned-phrase stop beside the upload check: one check, where publication happens, is what the terms record promises.
+- A `--terms-date` flag: it proves nothing a reader of `docs/terms.md` could not type.
+
+## Design review (2026-10-29, Opus; the owner's waiver covers all q15 reviews, Fable over its limit)
+
+Accepted, all thirteen: the regional origin and empty identity; the bucket-name guard before `--delete`; cfn-lint for il-central-1; the terms-date flag dropped; content types set, not guessed; an allowlist upload; the 403 noted; `'/*'` quoted; tag-stripped scanning; the footer's test and anti-goal; a takedown command; one scan, not two; the PUT basis. The unverified list was closed against cfn-lint's schema and AWS's pricing and invalidation pages.
