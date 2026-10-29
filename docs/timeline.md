@@ -105,7 +105,7 @@ Observed sessions with the owner watching, not a copy handed out: the point is t
 
 The owner reads the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. The owner chose to publish before the model's gaps come from receipts (q14, 2026-10-29): the gap wording already names both causes, and no board has yet stayed unchanged between two downloads.
 
-The owner picked S3 + CloudFront (2026-10-29): a few cents a month at most, and the repo can stay private. Options as priced that day for under 1 GB and about 1,000 page views a month:
+The owner picked S3 + CloudFront (2026-10-29): a few cents a month at most. (A second reason given then, that the repo could stay private, lapsed when the owner chose to make the repo public, q16.) Options as priced that day for under 1 GB and about 1,000 page views a month:
 
 - A private S3 bucket in il-central-1 behind CloudFront, in this account, on the default cloudfront.net address: well under a cent a month for today's 2.4 MB site, at most about $0.03 for a site near 1 GB; a custom domain would add its own cost. S3 storage is $0.025 per GB-month (AWS price list for il-central-1, published 2026-10-15); CloudFront stays inside its always-free 1 TB and 10 million requests a month (CloudFront FAQ). CloudFront's flat-rate Free plan ($0, 1M requests, 100 GB) is the other way; whether this account qualifies needs a console check.
 - GitHub Pages: free from a public repo. From a private repo it needs a paid plan (Pro; its current price is unconfirmed), and the site is public either way.

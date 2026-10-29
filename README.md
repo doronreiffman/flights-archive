@@ -1,6 +1,6 @@
 # flights-archive
 
-Keeps the history of the Ben Gurion airport flight board, which overwrites itself every 15 minutes: every version kept for 10 years, with a receipt for every download.
+Keeps the history of the Ben Gurion airport flight board, which overwrites itself every 15 minutes: every version kept for 10 years, with a receipt for every download since 29 October 2026.
 
 **Live site:** coming soon (hosting is built and waiting on AWS) · **Design notes:** [docs/](docs/README.md) · **Run it yourself:** [docs/operations.md](docs/operations.md)
 
@@ -34,7 +34,7 @@ flowchart LR
 
 ## Engineering choices worth a look
 
-- **Nothing stored is ever replaced, and every download leaves a receipt.** The snapshots are the project, so the collector writes each file once, S3 keeps every version, and the model trusts only boards it can account for. [docs/receipts.md](docs/receipts.md)
+- **Nothing stored is ever replaced, and every download leaves a receipt.** The snapshots are the project, so the collector writes each file once, S3 keeps every version, and the model trusts only boards with a receipt, or from before receipts began. [docs/receipts.md](docs/receipts.md)
 - **A polite collector that stops cold.** It identifies itself on every request, downloads the full board only when it changed (or every 30 minutes as a safety check), and on any sign of being blocked it stops and waits for a person. The data license excludes data obtained by working around a block. [docs/operations.md](docs/operations.md)
 - **Three clocks.** Board times are Israel wall-clock with no offset, our times are UTC, and the October clock change repeats an hour. Each conversion rule is written down and tested, including under an Israeli time zone. [docs/data-model.md](docs/data-model.md)
 - **Claims no stronger than the evidence.** The site says "first observed CANCELED on the public board", never "cancelled at", because the board is all we see. A check before every upload refuses a page that uses a banned phrasing, or that lacks the source line. [docs/timeline.md](docs/timeline.md), [docs/terms.md](docs/terms.md)

@@ -69,7 +69,7 @@ Resources:
 
 ## Rejected
 
-- GitHub Pages: the repo would have to go public, or a paid plan, and the site is public either way.
+- GitHub Pages: free from a public repo, with no account verification, but the site is built on the owner's Mac from the private archive, so every build's pages would have to be committed to the repo, and the repo would have to go public before launch (q17). Rechecked 2026-10-29 after the repo-public decision (q16) and the CloudFront verification wait; the owner kept CloudFront.
 - CloudFront's flat-rate Free plan: no overage charges, but a console opt-in and an eligibility check; revisit if traffic ever costs money.
 - S3 static website hosting: needs a public bucket and serves HTTP only.
 - Adding the site to `template.yaml`: one deploy would touch both the archive and the site.
