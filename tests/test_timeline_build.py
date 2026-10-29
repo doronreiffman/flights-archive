@@ -72,11 +72,11 @@ def test_a_cancellation_is_told_as_first_observed_on_the_board(site):
 
 def test_the_timeline_shows_old_and_new_values_and_our_first_sighting(site):
     text = page(site, "2026-10-28")
-    block = text[text.index('id="LY001-D-1000-JFK"'):]
+    block = text[text.index('id="LY001-D-20261028-1000-JFK"'):]
     block = block[:block.index("</details>")]
     assert "first seen by us" in block and "estimated time, as published" in block
-    assert "10:00 → 10:30" in block
-    assert "Seen on 2 stored boards" in block
+    assert "<tr><td>27 Oct 08:15</td><td>estimated time, as published: 10:00 → 10:30</td></tr>" in block
+    assert "First seen 27 Oct 08:00, last seen 27 Oct 08:15. Seen on 2 stored boards." in block
 
 
 def test_codeshare_numbers_are_listed_together_never_as_one_aircraft(site):
@@ -93,7 +93,8 @@ def test_hebrew_is_marked_right_to_left(site):
 def test_every_flight_is_on_exactly_one_day_page_with_unique_anchors(site):
     days = [p for p in all_pages(site) if p.startswith("day/")]
     ids = [i for d in days for i in re.findall(r'<details id="([^"]+)" data-k=', all_pages(site)[d])]
-    assert sorted(ids) == ["EY607-D-1200-JFK", "IZ991-D-1000-ATH", "LY001-D-1000-JFK", "LY9614-D-1200-JFK"]
+    assert sorted(ids) == ["EY607-D-20261028-1200-JFK", "IZ991-D-20261028-1000-ATH", "LY001-D-20261028-1000-JFK",
+                           "LY9614-D-20261028-1200-JFK"]
 
 
 def test_counts_are_flight_numbers_not_flights(site):
@@ -103,7 +104,7 @@ def test_counts_are_flight_numbers_not_flights(site):
 
 def test_the_search_box_has_keys_and_stays_hidden_without_javascript(site):
     text = page(site, "2026-10-28")
-    assert 'data-k="ly001 ly1 newyork jfk"' in text
+    assert 'data-k="ly001 ly1 001 1 newyork jfk"' in text
     assert '<input id="search" type="search" hidden' in text and '<script src="../search.js" defer></script>' in text
     assert (site / "search.js").exists() and (site / "style.css").exists()
 
@@ -119,6 +120,8 @@ def test_days_at_the_archive_edges_are_partial(tmp_path):
                                          row(flight_no="3", sched_local="2026-10-31T10:00:00")])])
     assert "partial" in page(site, "2026-10-26") and "partial" in page(site, "2026-10-31")
     assert "partial" not in page(site, "2026-10-28")
+    index = all_pages(site)["index.html"]
+    assert re.search(r"2026-10-26\.html.*?<td>partial</td>", index) and re.search(r"2026-10-28\.html.*?<td></td>", index)
 
 
 def test_a_pause_between_stored_boards_is_shown_in_neutral_words(tmp_path):
@@ -129,11 +132,26 @@ def test_a_pause_between_stored_boards_is_shown_in_neutral_words(tmp_path):
     assert "between 27 Oct 08:00 and 27 Oct 11:00</td>" in page(site, "2026-10-28")  # when the change was seen
 
 
+def test_a_pause_is_shown_only_on_days_whose_board_window_it_touches(tmp_path):
+    site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-28T10:00:00"), row(flight_no="2", sched_local="2026-11-05T10:00:00")]),
+                                (at(9), [row(sched_local="2026-10-28T10:00:00", status="DELAYED"),
+                                         row(flight_no="2", sched_local="2026-11-05T10:00:00")])])
+    assert "No new board stored" in page(site, "2026-10-28") and "No new board stored" not in page(site, "2026-11-05")
+
+
 def test_a_retime_across_midnight_shows_the_original_date(tmp_path):
     site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-28T23:30:00")]),
                                 (at(6, 15), [row(sched_local="2026-10-29T00:30:00")])])
-    assert "(originally 28 Oct 23:30)" in page(site, "2026-10-29")
+    assert "(originally 28 Oct 23:30)" in page(site, "2026-10-29") and "retimed: scheduled: 28 Oct 23:30 → 00:30" in page(site, "2026-10-29")
     assert not (site / "day" / "2026-10-28.html").exists()
+
+
+def test_a_retime_past_midnight_beside_the_next_days_flight_of_the_same_time(tmp_path):
+    """A daily 23:30 flight retimed to 00:30 lands on the next day's page beside that day's own 23:30."""
+    site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-28T23:30:00"), row(sched_local="2026-10-29T23:30:00")]),
+                                (at(6, 15), [row(sched_local="2026-10-29T00:30:00"), row(sched_local="2026-10-29T23:30:00")])])
+    ids = re.findall(r'<details id="([^"]+)"', page(site, "2026-10-29"))
+    assert sorted(ids) == ["LY001-D-20261028-2330-JFK", "LY001-D-20261029-2330-JFK"]
 
 
 def test_a_number_listed_twice_in_a_day_points_to_the_other_listing(tmp_path):
@@ -177,24 +195,24 @@ def test_the_same_model_gives_the_same_bytes_in_separate_processes(tmp_path, sit
 def test_the_search_box_matches_by_prefix_ignoring_case_and_spaces():
     script = Path(__file__).parent.parent / "src" / "timeline" / "static" / "search.js"
     probe = (f"const s = require({str(script)!r});"
-             "console.log(JSON.stringify(['LY 1', 'ly001', '6H 115A', 'new york', 'jfk', 'LY2', '', 'ly1 0', 'york'].map("
-             "q => s.matches(q, 'ly001 ly1 newyork jfk'))))")
+             "console.log(JSON.stringify(['LY 1', 'ly001', '6H 115A', 'new york', 'jfk', 'LY2', '', 'ly1 0', 'york', '001', '1'].map("
+             "q => s.matches(q, 'ly001 ly1 001 1 newyork jfk'))))")
     out = subprocess.run(["node", "-e", probe], check=True, capture_output=True, text=True).stdout.strip()
-    assert out == "[true,true,false,true,true,false,true,false,false]"
+    assert out == "[true,true,false,true,true,false,true,false,false,true,true]"
 
 
 def test_a_retimed_flight_keeps_the_anchor_of_its_first_scheduled_time(tmp_path):
     site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-28T23:30:00")]),
                                 (at(6, 15), [row(sched_local="2026-10-29T00:30:00")])])
-    assert '<details id="LY001-D-2330-JFK"' in page(site, "2026-10-29")
+    assert '<details id="LY001-D-20261028-2330-JFK"' in page(site, "2026-10-29")
 
 
 def test_an_anchor_does_not_change_when_the_same_number_appears_again(tmp_path):
     alone = make_site(tmp_path / "a", [(at(6), [row(sched_local="2026-10-28T10:00:00")])])
     twice = make_site(tmp_path / "b", [(at(6), [row(sched_local="2026-10-28T10:00:00"),
                                                 row(sched_local="2026-10-28T18:00:00", airport="BUS")])])
-    assert '<details id="LY001-D-1000-JFK"' in page(alone, "2026-10-28")
-    assert '<details id="LY001-D-1000-JFK"' in page(twice, "2026-10-28")
+    assert '<details id="LY001-D-20261028-1000-JFK"' in page(alone, "2026-10-28")
+    assert '<details id="LY001-D-20261028-1000-JFK"' in page(twice, "2026-10-28")
 
 
 def test_two_flights_sharing_an_anchor_stop_the_build():
@@ -215,11 +233,24 @@ def test_cli_builds_the_site_and_refuses_a_missing_model(tmp_path, site, capsys)
 
 
 def test_leftovers_of_an_interrupted_build_are_cleared(tmp_path, site):
-    leftover = tmp_path / "site.building"
-    leftover.mkdir()
-    (leftover / "junk.html").write_text("half-written")
+    for name in ("site.building", "site.old"):  # a crash before or during the swap
+        leftover = tmp_path / name
+        leftover.mkdir()
+        (leftover / build.MARKER).write_text("")
+        (leftover / "junk.html").write_text("half-written")
     build.build(tmp_path / "model", site)
-    assert not leftover.exists() and not (site / "junk.html").exists()
+    assert not (tmp_path / "site.building").exists() and not (tmp_path / "site.old").exists()
+    assert not (site / "junk.html").exists() and (site / "index.html").exists()
+
+
+@pytest.mark.parametrize("name", ["site.building", "site.old"])
+def test_a_folder_named_like_a_leftover_but_not_ours_is_left_alone(tmp_path, site, name):
+    other = tmp_path / name
+    other.mkdir()
+    (other / "keep.txt").write_text("someone else's")
+    with pytest.raises(SystemExit, match="not made by timeline.build"):
+        build.build(tmp_path / "model", site)
+    assert (other / "keep.txt").read_text() == "someone else's" and (site / "index.html").exists()
 
 
 def test_a_hebrew_field_change_shows_both_values_right_to_left(tmp_path):

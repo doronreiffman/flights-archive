@@ -35,19 +35,30 @@ def search_keys(airline: str, flight_no: str, city: str, airport: str) -> str:
     then city and airport, lower case without spaces. Built from the separate fields: codes like 6H or
     ENT and numbers like 0115A make a combined string impossible to split back."""
     code, number = airline.lower(), flight_no.lower()
-    keys = [code + number, code + (number.lstrip("0") or "0"),
+    bare = number.lstrip("0") or "0"
+    keys = [code + number, code + bare, number, bare,  # the number alone too: people type "991"
             (city or "").lower().replace(" ", ""), (airport or "").lower()]
     return " ".join(dict.fromkeys(k for k in keys if k))
 
 
 def anchor(airline: str, flight_no: str, direction: str, sched_local_first: datetime, airport: str) -> str:
-    """A link target that never changes between builds: number, direction, first scheduled time, airport."""
-    raw = f"{airline}{flight_no}-{direction}-{sched_local_first:%H%M}-{airport}"
+    """A link target that never changes between builds: number, direction, first scheduled date and time, airport.
+    The date matters: a daily 23:30 flight retimed past midnight lands on the next day's page beside that
+    day's own 23:30."""
+    raw = f"{airline}{flight_no}-{direction}-{sched_local_first:%Y%m%d-%H%M}-{airport}"
     return re.sub(r"[^A-Za-z0-9-]", "", raw)
 
 
-def _hours(minutes: float) -> str:
-    return "less than an hour" if minutes < 60 else f"at least {int(minutes // 60)} h"
+def _lead(low: float, high: float) -> str:
+    """How far ahead of its scheduled time the cancellation showed, from the bracket's two ends: `low` from
+    the first CANCELED sighting, `high` from the sighting before it. Only what both ends support."""
+    if low >= 60:
+        return f"at least {int(low // 60)} h before its scheduled time"
+    if high < 0:
+        return "after its scheduled time"
+    if low >= 0:
+        return "less than an hour before its scheduled time" if high < 60 else "before its scheduled time"
+    return "around its scheduled time"
 
 
 def cancellation_sentence(f: dict, page_date: date) -> str | None:
@@ -58,13 +69,12 @@ def cancellation_sentence(f: dict, page_date: date) -> str | None:
     if f["canceled_at_first_sight"]:
         text = f"Already CANCELED the first time we saw it ({fmt_utc(seen, page_date)})."
     elif f["cancel_lead_censored"]:
-        text = (f"First observed CANCELED on the public board at {fmt_utc(seen, page_date)}; the change happened after "
-                f"{fmt_utc(f['cancel_announced_after'], page_date)}, during a pause in our collection.")
+        # Censored: over an hour without a sighting of this flight (a pause in collection, or the flight was off the board).
+        text = (f"First observed CANCELED on the public board at {fmt_utc(seen, page_date)}; we had not seen this flight since "
+                f"{fmt_utc(f['cancel_announced_after'], page_date)}, so the change happened somewhere in between.")
     else:
-        lead = f["cancel_lead_min"]
-        when = "after its scheduled time" if lead < 0 else f"{_hours(lead)} before its scheduled time"
         text = (f"First observed CANCELED on the public board between {fmt_utc(f['cancel_announced_after'], page_date)} "
-                f"and {fmt_utc(seen, page_date)}, {when}.")
+                f"and {fmt_utc(seen, page_date)}, {_lead(f['cancel_lead_min'], f['cancel_lead_max_min'])}.")
     if f["uncanceled"]:  # NULL (cancelled at first sight, never seen otherwise) counts as false
         text += " Later shown with another status."
     return text
@@ -78,7 +88,7 @@ def outcome_sentence(f: dict, page_date: date) -> str | None:
         case "landed":
             return f"Board showed LANDED (last seen {last})."
         case "open":
-            return f"Still on the board at the last check ({last})."
+            return f"Still on the board when we last stored it ({last})."
         case "gap":
             return "Left the board during a pause in our collection; what happened is unknown."
         case "vanished":
@@ -87,8 +97,8 @@ def outcome_sentence(f: dict, page_date: date) -> str | None:
                     "not necessarily cancelled, it may have been retimed.")
         case "dropped":
             return f"Left the board without a final status; last seen {last}, within an hour of its scheduled time or later."
-        case "canceled":
-            return None  # the cancellation sentence covers it
+        case "canceled":  # the cancellation sentence covers it, unless the board said something else in between
+            return f"Board showed CANCELED again (last seen {last})." if f["uncanceled"] else None
     raise ValueError(f"unknown outcome {f['outcome']!r}")
 
 
@@ -98,8 +108,8 @@ UNOFFICIAL = "Unofficial; not affiliated with the Israel Airports Authority."
 SITE_NAME = "flights-archive: Ben Gurion board history"
 TIMES_NOTE = ("Scheduled and estimated times are the board's, in Israel local time as published. "
               "The times we saw things are Israel time too.")
-PARTIAL_NOTE = ("partial: our archive does not cover this day's whole board window, "
-                "so some flight numbers or changes may be missing.")
+PARTIAL_NOTE = ("partial: the archive started or ended while this day's flights were still being listed, "
+                "so some flight numbers may be missing.")
 
 # (model column, label), in the order a timeline row lists them. status_he travels with status.
 FIELDS = (("sched_local", "scheduled"), ("est_local", "estimated time, as published"), ("status", "status"),
@@ -247,19 +257,19 @@ def methodology_page(attribution: str, gap_hours: float, retime_hours: float) ->
 <h2>What this is</h2>
 <p>An unofficial archive of the public flight board for Ben Gurion airport, which the Israel Airports Authority publishes on data.gov.il. The board shows each flight from about three days ahead until about a day after; this archive keeps what it showed after the flight leaves the board.</p>
 <h2>How we collect</h2>
-<p>Every two minutes we ask data.gov.il whether the board has changed, and download it when it has (about every 15 minutes) or at least every 30 minutes. Each download whose content is new is stored unchanged. A page shows a change at the first stored board on which we saw it; the board itself may have changed a little earlier.</p>
+<p>Every two minutes we ask data.gov.il whether the board has changed, and download it when it has (about every 15 minutes) or at least every 30 minutes. Each download whose content is new is stored unchanged; "last stored" below means the last board we stored. A page shows a change at the first stored board on which we saw it; the board itself may have changed a little earlier.</p>
 <h2>What a flight's timeline shows</h2>
 <p>One flight number (an airline and number) on one scheduled date. The first row is what the board showed the first time we saw it, which is not necessarily when the flight first appeared on the board: most flights in the earliest days were first seen when the archive started. Each later row is a change, with the old and new values. If the flight is moved to a new scheduled time, the timeline follows it when the new time appears on the very next board within {retime_hours:g} hours; the summary then says when it was originally scheduled.</p>
 <h2>Cancellations</h2>
-<p>We report when the board first showed CANCELED, and the stored board before it that did not: the change happened between the two. That is when the cancellation appeared on the public board, not when the airline decided it. When the two boards are more than {gap_hours:g} hour apart, or the flight was already CANCELED the first time we saw it, we do not give a lead time.</p>
+<p>We report when the board first showed CANCELED, and the stored board before it that did not: the change happened between the two. That is when the cancellation appeared on the public board, not when the airline decided it. A lead time is given only as far as both ends support it. When we had not seen the flight for more than {gap_hours:g} hour before the CANCELED sighting, or it was already CANCELED the first time we saw it, we give no lead time.</p>
 <h2>How a timeline ends</h2>
-<p>The board's final words, DEPARTED or LANDED, are its status, not measured times. A flight that left the board early without a final status was not necessarily cancelled: most such cases so far were moved to a new time. A flight that left the board during a pause in our collection has an unknown ending.</p>
+<p>The board's final words, DEPARTED or LANDED, are its status, not measured times. A flight that left the board early without a final status was not necessarily cancelled: it may have been moved to a new time that we could not link. A flight that left the board during a pause in our collection has an unknown ending.</p>
 <h2>Listed together</h2>
 <p>Several flight numbers often share one slot: same direction, airport, scheduled and estimated time, terminal and check-in counters. We show them as listed together. The board does not say which airline flies the aircraft, and arrivals with no counters to compare can occasionally group two different flights.</p>
 <h2>Estimated times</h2>
 <p>The board's estimated time is shown as published. What it measures (gate or runway) is not confirmed, so this site gives no delay figures.</p>
 <h2>Pauses and partial days</h2>
-<p>A pause is a stretch of more than {gap_hours:g} hour with no new board stored: our collection stopped, or the board did not change. A day is partial when the archive started or ended inside the window in which that day's flights were on the board.</p>
+<p>A pause is a stretch of more than {gap_hours:g} hour with no new board stored: our collection stopped, or the board did not change. A day is partial when the archive started or ended while that day's flights were still being listed, so some flight numbers may be missing. On any day, what the board showed before we first saw a flight, or during a pause, is missing.</p>
 <h2>Receipts</h2>
 <p>Since 29 October 2026 every full download leaves a write-once receipt, so a stored board is used only once its receipt shows it was stored completely. Boards stored before then are used as they are.</p>
 <h2>Source</h2>

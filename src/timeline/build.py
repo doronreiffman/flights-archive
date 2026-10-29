@@ -85,26 +85,37 @@ def render(flights: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str,
     return files
 
 
+def _siblings(out_dir: Path) -> tuple[Path, Path]:
+    return out_dir.with_name(out_dir.name + ".building"), out_dir.with_name(out_dir.name + ".old")
+
+
 def refuse_foreign(out_dir: Path) -> None:
-    """A folder this generator did not make (no marker) is never replaced: `--out data` must not delete the archive copy."""
-    if out_dir.exists() and not (out_dir / MARKER).exists():
-        raise SystemExit(f"{out_dir} exists and was not made by timeline.build (no {MARKER}); refusing to replace it")
+    """A folder this generator did not make (no marker) is never replaced or deleted: `--out data` must not
+    delete the archive copy, and neither may a stray `<out>.building` or `<out>.old` that someone else owns."""
+    for folder in (out_dir, *_siblings(out_dir)):
+        if folder.exists() and not (folder / MARKER).exists():
+            raise SystemExit(f"{folder} exists and was not made by timeline.build (no {MARKER}); refusing to replace it")
 
 
 def write_site(files: dict[str, str], out_dir: Path) -> None:
-    """Build beside out_dir, then swap it in."""
+    """Build beside out_dir, then swap: the old site moves aside before the new one moves in, so a crash
+    leaves either the old site or the new one in place (plus a marked leftover the next build clears)."""
     refuse_foreign(out_dir)
-    tmp = out_dir.with_name(out_dir.name + ".building")
-    if tmp.exists():
-        shutil.rmtree(tmp)
+    tmp, old = _siblings(out_dir)
+    for leftover in (tmp, old):
+        if leftover.exists():
+            shutil.rmtree(leftover)
+    tmp.mkdir(parents=True)
+    (tmp / MARKER).write_text("Made by timeline.build; replaced whole on every build.\n", encoding="utf-8")
     for rel, text in files.items():
         path = tmp / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
-    (tmp / MARKER).write_text("Made by timeline.build; replaced whole on every build.\n", encoding="utf-8")
     if out_dir.exists():
-        shutil.rmtree(out_dir)
+        out_dir.rename(old)
     tmp.rename(out_dir)
+    if old.exists():
+        shutil.rmtree(old)
 
 
 def build(model_dir: Path, out_dir: Path) -> dict[str, int]:

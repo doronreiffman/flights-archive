@@ -39,7 +39,7 @@ It comes first because it uses what only an archive has: the history that the li
 - `day/YYYY-MM-DD.html`:
   - Header: date, counts, partial label, the gaps that overlap this day's board window, the last check in this build.
   - A search box (works only with JavaScript; the page is complete without it).
-  - Departures, then arrivals. Each flight is a `<details>` element with a stable anchor: airline and number, direction, first scheduled time, airport, kept to letters, digits and hyphens, for example `#LY5115-D-1630-KUT`. It never changes between builds, and the build stops if two flights on a page ever share one.
+  - Departures, then arrivals. Each flight is a `<details>` element with a stable anchor: airline and number, direction, first scheduled date and time, airport, kept to letters, digits and hyphens, for example `#LY5115-D-20261028-1630-KUT`. The date is needed: a daily 23:30 flight retimed past midnight lands on the next day's page beside that day's own 23:30. It never changes between builds, and the build stops if two flights on a page ever share one.
   - Summary line: scheduled time ("originally 28 Oct 23:30" after a retime, with the date when it differs from the page's), flight number, "listed together with" the other numbers of its codeshare group, city and airport, the outcome sentence. If the same number appears again that day: "Same number also listed at 13:30 (to KUT)".
   - Timeline table, one row per observation, ordered by board: when we saw it (Israel time, with the date when it differs from the page's; "between X and Y" when the previous sighting was more than an hour earlier), what changed, old value to new value (the old value is the previous observation of the same flight). The first row is "first seen by us" and lists the initial status, estimated time, terminal and counters.
   - Footer per flight: first and last seen, and how many stored boards it appeared on.
@@ -55,9 +55,8 @@ Cancellation sentence (only when `canceled_first_seen_at` is set):
 | case | sentence |
 |---|---|
 | already CANCELED at our first sighting (`canceled_at_first_sight`) | Already CANCELED the first time we saw it (HH:MM). |
-| bracket spans a gap (censored, not first sight) | First observed CANCELED on the public board at HH:MM; the change happened after HH:MM, during a pause in our collection. |
-| uncensored, lead time 0 or more | First observed CANCELED on the public board between HH:MM and HH:MM, at least N h before its scheduled time. (N is `cancel_lead_min` in whole hours, rounded down; "less than an hour" below 60 min.) |
-| uncensored, negative lead time | First observed CANCELED on the public board between HH:MM and HH:MM, after its scheduled time. |
+| more than an hour without a sighting before it (censored, not first sight) | First observed CANCELED on the public board at HH:MM; we had not seen this flight since HH:MM, so the change happened somewhere in between. |
+| uncensored | First observed CANCELED on the public board between HH:MM and HH:MM, then the lead, from both ends of the bracket (`cancel_lead_min` from the CANCELED sighting, `cancel_lead_max_min` from the one before): "at least N h before its scheduled time" when the low end is an hour or more (N rounded down); "after its scheduled time" when even the high end is negative; "less than an hour before" when both ends fall between 0 and 60 minutes; "before its scheduled time" when the low end is under an hour and the high end over; "around its scheduled time" when the bracket straddles it. |
 | `uncanceled` true (NULL counts as false) | adds: Later shown with another status. |
 
 Outcome sentence:
@@ -66,8 +65,8 @@ Outcome sentence:
 |---|---|
 | departed | Board showed DEPARTED (last seen HH:MM). |
 | landed | Board showed LANDED (last seen HH:MM). |
-| canceled | (the cancellation sentence covers it) |
-| open | Still on the board at the last check (HH:MM). |
+| canceled | (the cancellation sentence covers it); if it was shown with another status in between: Board showed CANCELED again (last seen HH:MM). |
+| open | Still on the board when we last stored it (HH:MM). |
 | gap | Left the board during a pause in our collection; what happened is unknown. |
 | vanished | Left the board N h before its scheduled time without a final status; not necessarily cancelled, it may have been retimed. |
 | dropped | Left the board without a final status; last seen HH:MM, within an hour of its scheduled time or later. |
@@ -80,8 +79,8 @@ Times: board times (scheduled, estimated) are Israel wall-clock as published. Th
 
 - `src/timeline/` (not `site`, which is a Python standard module): `build.py` (command line, writing files), `pages.py` (pure functions from rows to HTML strings, escaped with `html.escape`), `static/search.js`, `static/style.css`. The attribution text is one constant shared with `model.report`.
 - Reads `data/model/{flights,observations,snapshots}.parquet` with DuckDB (session time zone UTC), like `model.report`. No new Python dependency, no npm, no framework.
-- Writes into a temporary folder beside `--out`, then swaps it in. An existing `--out` is replaced only if it carries the generator's marker file (`.timeline-site`), so `--out data` can never delete the archive copy. `site/` goes into `.gitignore`.
-- Search keys are built in Python, from the airline and number fields as published (no parsing of a combined string; codes like `6H`, `ENT` and numbers like `0115A` exist): each flight gets `data-k` with the code plus number as published and without leading zeros, for example `ly001 ly1`, plus the city and airport. `search.js` (about 15 lines) lowercases the query, removes spaces and shows flights with a key that starts with it, so typing narrows the list.
+- Writes into `<out>.building` beside `--out`, then swaps: the old site moves to `<out>.old`, the new one moves in, the old one is deleted. Each of the three folders is replaced or deleted only if it carries the generator's marker file (`.timeline-site`, written first), so `--out data` can never delete the archive copy and a crash leaves either the old site or the new one in place. `site/`, `site.building/` and `site.old/` go into `.gitignore`.
+- Search keys are built in Python, from the airline and number fields as published (no parsing of a combined string; codes like `6H`, `ENT` and numbers like `0115A` exist): each flight gets `data-k` with the code plus number as published and without leading zeros, the number alone both ways, then the city and airport, for example `ly001 ly1 001 1 newyork jfk`. `search.js` (about 15 lines) lowercases the query, removes spaces and shows flights with a key that starts with it, so typing narrows the list.
 - `<meta name="robots" content="noindex">` on every page.
 
 ## Tests and mutation checks
@@ -122,9 +121,13 @@ Nothing new in AWS: the build is local and reads the local model. Hosting cost i
 
 Accepted: wording fixed for first sightings, `dropped`, `vanished`, negative leads and cancellations followed by another status; partial days; gaps left to the model, in neutral words; no zip before the terms are read, observed sessions instead; anchors always in full form from the first scheduled time and airport; a same-number line; Israel-time conversion with explicit UTC, tested under an Israeli zone; "between X and Y" after a long pause; counts as flight numbers listed; search keys built in Python, no Node in CI; a session plan with the stop rule; a safe `--out`; determinism across processes; case-insensitive banned phrases and exact sentences per case; stored boards, not checks; right-to-left Hebrew; a stop on a missing scheduled time; `--cov=timeline`; no A to Z strip; one attribution constant.
 
+## Code review (2026-10-29, Opus; Fable was over its limit)
+
+Fixed: anchors carry the first scheduled date (a retime past midnight beside the next day's flight of the same time stopped the whole build); the lead time uses both ends of the bracket, so "less than an hour" and "after" are said only when both ends support them, with "before" and "around" otherwise; the censored sentence no longer assumes a pause in collection; "partial" and the methodology now say only what the code checks (some flight numbers may be missing); a flight cancelled again says so; the vanished statistic from the early sample is gone; "last stored" instead of "last check"; the number alone is a search key ("991"); `<out>.building` and `<out>.old` are touched only with the marker, and the swap moves the old site aside first; tests and mutation entries for the five behaviours no test caught (the retimed label, the between threshold, pauses only on the days they touch, partial on the index, the footer's last-seen time); the clock-change test runs under an Israeli zone.
+
 ## Deviations
 
 - **The index says what its counts are.** The first build put "Flight numbers listed" only in a column header; the test for counts caught it, and the index now says that counts are flight numbers, a flight sold under several numbers counting once per number.
-- **Four guard tests beyond the plan**: a retimed flight's anchor uses its first scheduled time; an anchor does not change when the same number appears again; two flights sharing an anchor stop the build (through `render`, since a valid model cannot produce it); a search query that tells "starts with" from "contains" (`york`).
+- **Four guard tests beyond the plan**: a retimed flight's anchor uses its first scheduled time; an anchor does not change when the same number appears again; two flights sharing an anchor stop the build (through `render`); a search query that tells "starts with" from "contains" (`york`). I wrote then that a valid model cannot produce a shared anchor; the code review showed it can (a retime past midnight), and anchors now carry the date.
 - **One folder check, `refuse_foreign`**, called before any work and again before the swap.
 - **The site on real data** (21 boards, 27 to 29 October): 7 day pages, 3,018 flight numbers each on one page, 2.3 MB; 26 October and 1 November are partial; 31 October's low count is a Saturday, not a gap.
