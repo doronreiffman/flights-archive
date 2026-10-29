@@ -105,7 +105,8 @@ def outcome_sentence(f: dict, page_date: date) -> str | None:
 
 # --- HTML ------------------------------------------------------------------------------------------
 
-UNOFFICIAL = "Unofficial; not affiliated with the Israel Airports Authority."
+UNOFFICIAL = ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, "
+              "data.gov.il or the State of Israel.")
 SITE_NAME = "flights-archive: Ben Gurion board history"
 TIMES_NOTE = ("Scheduled and estimated times are the board's, in Israel local time as published. "
               "The times we saw things are Israel time too.")

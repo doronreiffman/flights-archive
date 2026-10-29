@@ -30,13 +30,13 @@ Resources:
 ### Code changes
 
 - **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow.
-- **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html` file after stripping tags, unescaping entities and collapsing whitespace, so a phrase split by markup or a line break is still caught. It exits non-zero and names file and phrase on a hit.
+- **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html`, `.css` and `.js` file (the types the upload sends) as written and with tags stripped, a phrase in either counting; entities are unescaped and whitespace collapsed in both, so a phrase in an attribute, split by markup or broken across lines is still caught. It exits non-zero and names file and phrase on a hit.
 - **`scripts/publish.sh`**, in this order, uploading nothing if a check fails:
   1. the AWS identity check `scripts/sync.sh` uses;
-  2. `site/` must carry the build's `.timeline-site` marker;
+  2. `site/` must carry the build's `.timeline-site` marker, and its full path must hold no `[`, `]`, `?` or `*`;
   3. the banned-phrase check over `site/`;
   4. bucket and distribution from the stack's outputs; the bucket name must start with `flights-archive-site-sitebucket-` (so never the archive bucket, where a delete would add markers that hide locked snapshots, and never `None` from a missing output), and the distribution ID must be non-empty;
-  5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css`, then `*.js` as `text/javascript`, each with `--delete` (which, under the filters, removes only stale files of that type). Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
+  5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css; charset=utf-8`, then `*.js` as `text/javascript; charset=utf-8`, each with `--delete` (which, under the filters, removes only stale files of that type) and `Cache-Control: max-age=300`. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
   6. a CloudFront invalidation of the literal `'/*'`.
 - **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. The owner reads the date on the live page and states it with each upload's go; a date other than 30/08/2025 stops the upload until the terms are read again.
 - **Takedown**: `aws s3 rm s3://<site bucket>/ --recursive`, then invalidate `'/*'`; minutes, and the stack can go later.
@@ -45,7 +45,7 @@ Resources:
 
 - `tests/test_site_template.py`: the bucket's four blocks and ownership; no `*` principal anywhere; the policy grants only `s3:GetObject` to the CloudFront service principal under the `AWS:SourceArn` condition on this distribution; the origin's `RegionalDomainName` and empty identity; the access control's signing; HTTPS redirect; GET and HEAD only; default root object; the managed policy IDs.
 - `tests/test_publish.py`, against a fake `aws` as `tests/test_sync.py` does: identity first; a wrong account, a missing marker, a banned phrase, the archive bucket's name or a missing output each upload nothing; the happy path runs the three syncs with their includes, content types and `--delete` against the stack's bucket, then invalidates the literal `/*`, all under `--profile flights-sam`.
-- `tests/test_timeline_check.py`: a phrase found across a tag, a line break and an entity; a clean site passes; the new footer words on every page.
+- `tests/test_timeline_check.py`: a phrase found across a tag, a line break and an entity, in an attribute, in a script past a `<` comparison and inside markup in a script string; a clean site passes; an empty or missing folder fails. The footer's new words are checked on every page of a synthetic build (`tests/test_timeline_build.py`).
 - CI lints both templates with `--regions il-central-1` (cfn-lint checks only us-east-1 by default).
 - `scripts/mutation_check.py`: an entry for each refusal in `publish.sh`, the tag stripping, the footer words, the policy's `SourceArn` condition, the regional origin and the HTTPS redirect.
 
@@ -80,3 +80,11 @@ Resources:
 ## Design review (2026-10-29, Opus; the owner's waiver covers all q15 reviews, Fable over its limit)
 
 Accepted, all thirteen: the regional origin and empty identity; the bucket-name guard before `--delete`; cfn-lint for il-central-1; the terms-date flag dropped; content types set, not guessed; an allowlist upload; the 403 noted; `'/*'` quoted; tag-stripped scanning; the footer's test and anti-goal; a takedown command; one scan, not two; the PUT basis. The unverified list was closed against cfn-lint's schema and AWS's pricing and invalidation pages.
+
+## Deviations
+
+- **The phrase check scans `.css` and `.js` as well as `.html`**: the upload sends all three, and a script can put text on the page.
+- **CSS and JavaScript also carry `charset=utf-8`**: harmless for today's ASCII files, right if one ever holds Hebrew.
+- **An in-process test for the check's entry point**: the subprocess tests prove `python -m timeline.check` works, but coverage cannot see inside them (70% on `check.py` until the in-process test).
+- **Code review (2026-10-29, Opus; the owner's waiver covers q15)**, nothing blocking; fixed: the check also reads each file as written, so attribute text and a script's `<` comparison can no longer hide a phrase; `publish.sh` refuses a folder whose path holds `[`, `]`, `?` or `*` (the CLI matches its filters against the full path with fnmatch: a `[ ]` pair makes the allowlist match nothing, and unmatched files upload; `?` and `*` still match themselves and are refused to be safe); `SITE_DIR` is read from where the script was run, and a missing folder stops it; the tests run the script from another folder, so its `cd` is exercised; pages carry `Cache-Control: max-age=300`, so a browser shows an upload within minutes (CloudFront then also keeps them five minutes: a few more S3 GETs, under a cent); `docs/terms.md` no longer says the footer and the real-site scan are still to come.
+- **Re-review of those fixes (Opus)**, nothing blocking; fixed: tags are stripped in scripts too, so markup inside a script string cannot hide a phrase (the first fix had narrowed stripping to pages); the default folder (`<repo>/site` with no `SITE_DIR`) has a test run from another folder; the comments now say only a `[ ]` pair breaks the filters.

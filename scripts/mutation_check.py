@@ -2,7 +2,8 @@
 
     .venv/bin/python scripts/mutation_check.py
 
-Each mutation names the file it breaks and the test files that must catch it. Files are restored
+Each mutation names the file it breaks and the test files that must catch it. It edits source files
+in place while it runs: run nothing else from this checkout until it finishes. Files are restored
 afterwards. Exit code 1 if any mutation goes unnoticed.
 """
 import subprocess
@@ -19,6 +20,9 @@ SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 PAGES = ("src/timeline/pages.py", ["tests/test_timeline_pages.py", "tests/test_timeline_build.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
+CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
+SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
+PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -150,6 +154,35 @@ COLLECTOR_MUTATIONS = {
     "day by first scheduled time": (SITE, 'by_day.setdefault(f["sched_local_final"].date(), []).append(f)', 'by_day.setdefault(f["sched_local_first"].date(), []).append(f)'),
     "search matches anywhere in a key": (SEARCH, 'keys.split(" ").some((key) => key.startsWith(q))', "keys.includes(q)"),
     "search keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
+    "endorsement words dropped from the footer": (PAGES, 'UNOFFICIAL = ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, "\n              "data.gov.il or the State of Israel.")', 'UNOFFICIAL = "Unofficial; not affiliated with the Israel Airports Authority."'),
+    "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
+    "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
+    "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
+    "line breaks not collapsed": (CHECK, 'return re.sub(r"\\s+", " ", html.unescape(text)).lower()', "return html.unescape(text).lower()"),
+    "entities not unescaped": (CHECK, 'return re.sub(r"\\s+", " ", html.unescape(text)).lower()', 'return re.sub(r"\\s+", " ", text).lower()'),
+    "scan is case-sensitive": (CHECK, 'return re.sub(r"\\s+", " ", html.unescape(text)).lower()', 'return re.sub(r"\\s+", " ", html.unescape(text))'),
+    "an empty site passes": (CHECK, '    if not any(p.suffix == ".html" for p in files):', "    if False:"),
+    "scripts not scanned": (CHECK, 'SCANNED = {".html", ".css", ".js"}', 'SCANNED = {".html"}'),
+    "site readable by anyone": (SITE_TEMPLATE, "            Principal:\n              Service: cloudfront.amazonaws.com", '            Principal: "*"'),
+    "site policy without the distribution condition": (SITE_TEMPLATE, '            Condition:\n              StringEquals:\n                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}"\n', ""),
+    "global bucket name as origin": (SITE_TEMPLATE, "DomainName: !GetAtt SiteBucket.RegionalDomainName", "DomainName: !GetAtt SiteBucket.DomainName"),
+    "site served over http": (SITE_TEMPLATE, "ViewerProtocolPolicy: redirect-to-https", "ViewerProtocolPolicy: allow-all"),
+    "site bucket public policies allowed": (SITE_TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),
+    "origin requests unsigned": (SITE_TEMPLATE, "SigningBehavior: always", "SigningBehavior: never"),
+    "publish identity not checked": (PUBLISH, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
+    "publish without the build marker": (PUBLISH, 'if [ ! -f "$SITE/.timeline-site" ]; then', "if false; then"),
+    "publish without the phrase check": (PUBLISH, 'if ! PYTHONPATH=src "$PYTHON" -m timeline.check "$SITE"; then', "if false; then"),
+    "any bucket synced to": (PUBLISH, '  "$BUCKET_PREFIX"?*) ;;', "  *) ;;"),
+    "bare bucket prefix accepted": (PUBLISH, '  "$BUCKET_PREFIX"?*) ;;', '  "$BUCKET_PREFIX"*) ;;'),
+    "missing distribution accepted": (PUBLISH, 'if [ -z "$distribution" ] || [ "$distribution" = None ]; then', "if false; then"),
+    "content type guessed": (PUBLISH, ' --content-type "$2" \\\n', " \\\n"),
+    "upload without an allowlist": (PUBLISH, "--delete --exclude '*' --include \"$1\"", '--delete --include "$1"'),
+    "invalidation path unquoted": (PUBLISH, "--paths '/*'", "--paths /*"),
+    "folder path not guarded against filter characters": (PUBLISH, "  *'['* | *']'* | *'?'* | *'*'*)", "  NEVER-MATCHES)"),
+    "browser cache lifetime dropped": (PUBLISH, "--cache-control 'max-age=300' ", ""),
+    "site folder read from the repo root": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "$ROOT" && cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
+    "script runs from the caller's folder": (PUBLISH, 'cd "$ROOT"\n', ""),
+    "default site folder from the caller's folder": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

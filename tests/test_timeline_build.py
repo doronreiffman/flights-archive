@@ -13,9 +13,10 @@ from model import build as model_build
 from model.report import ATTRIBUTION
 from model_helpers import at, row, write_snapshot
 from timeline import build
+from timeline.check import BANNED
 
-UNOFFICIAL = "Unofficial; not affiliated with the Israel Airports Authority"
-BANNED = ("cancelled at", "canceled at", "delayed by", "operated by", "took off", "pause in our collection")
+UNOFFICIAL = ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, "
+              "data.gov.il or the State of Israel.")
 
 
 def make_site(tmp_path, snapshots) -> Path:

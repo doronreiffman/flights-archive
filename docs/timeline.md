@@ -30,7 +30,7 @@ It comes first because it uses what only an archive has: the history that the li
 ## Anti-goals (a failure even if it works)
 
 - Wording that claims more than the board showed: "cancelled at", "delayed by", "operated by", "took off", or a first sighting by us presented as the flight's first listing. The only cancellation claim is "first observed CANCELED on the public board", with its bracket.
-- Anything that looks like the official board or the Israel Airports Authority: no IAA name in the title, no logos, an "Unofficial; not affiliated with the Israel Airports Authority" line on every page.
+- Anything that looks like the official board or the Israel Airports Authority: no IAA name in the title, no logos, an "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." line on every page (clause 8 of `docs/terms.md`).
 - A flight silently missing: every `flights` row appears on exactly one day page; a row with no final scheduled time stops the build (none exist today).
 
 ## Pages
