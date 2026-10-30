@@ -166,14 +166,18 @@ WARNING_CASES = [
     (-59.05, None, True, "D", "unknown"),                        # rule 2, ASY 991
     (-50.0, -10.0, False, "D", "none: cancelled less than an hour after it was scheduled to leave"),
     (-70.0, -30.0, False, "D", "none: cancelled about an hour after it was scheduled to leave"),
+    (-60.0, -30.0, False, "D", "none: cancelled about an hour after it was scheduled to leave"),   # -lo exactly 60
+    (-150.0, -120.0, False, "D", "none: cancelled about 2 hours after it was scheduled to leave"),  # -hi exactly 120
     (-142.75, -126.75, False, "D", "none: cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
     (-142.75, -126.75, False, "A", "none: cancelled about 2 hours after it was scheduled to land"),
     (-200.0, -100.0, True, "D", "none: cancelled after it was scheduled to leave"),                  # rule 4
     (75.95, 2600.48, True, "D", "between 1 and 44 hours"),       # rule 5, LY 5409
     (445.95, 2970.48, True, "A", "between 7 and 50 hours"),      # rule 5, LY 5410
+    (60.0, 2000.0, True, "D", "between 1 and 34 hours"),         # rule 5, boundary 60
     (0.0, 2000.0, True, "D", "up to 34 hours"),                  # rule 6, boundary 0
     (-64.05, 2460.48, True, "D", "unknown: no records for that time"),  # rule 7, BZ 254
     (400.0, 416.0, False, "D", "at least 6 hours"),              # rule 8
+    (60.0, 75.0, False, "D", "at least 1 hour"),                 # rule 8, boundary 60
     (0.0, 59.0, False, "D", "less than an hour"),                # rule 9, boundary 0
     (45.0, 74.0, False, "D", "about an hour"),                   # rule 10
     (59.9, 60.0, False, "D", "about an hour"),                   # rule 10, boundary 60
