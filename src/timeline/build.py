@@ -75,7 +75,7 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     shown = [i for i in infos if i.state != "ahead"][-CHART_DAYS:]
     chart_days = shown + [i for i in infos if i.state == "ahead"]
     censored = {f["flight_id"]: f["cancel_lead_censored"] for f in table}
-    cancelled, known = flights.headline_counts(flights_)
+    cancelled, known = flights.headline_counts(flights_, last_check)
 
     files = {"index.html": views.front_page(cancelled, known, flights.featured(rows, censored),
                                             flights.recent_cancellations(flights_), chart_days, infos,

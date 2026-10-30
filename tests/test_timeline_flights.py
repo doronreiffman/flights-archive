@@ -114,7 +114,7 @@ def test_a_row_ready_to_show():
     assert rows(f) == [Row(
         flight_id="f1", airline="LY", flight_no="001", airline_name=EL_AL, direction="D", airport="JFK",
         city="New York", city_he="ניו יורק", day=date(2026, 10, 29), sched_first=local(29, 16, 45),
-        sched_final=local(29, 16, 45), label="DEPARTED", delayed=False, warning=None, warning_note=None,
+        sched_final=local(29, 16, 45), sched_utc_final=utc(29, 14, 45), label="DEPARTED", delayed=False, warning=None, warning_note=None,
         label_note=None, changed_back=None, last_expected="last expected 17:09", page="flight/LY001-D.html",
         anchor="2026-10-29-1645-JFK", group_id="g1",
         lines=(("Earliest record (27 Oct 20:04)", "on time, terminal 3"),))]
@@ -228,7 +228,19 @@ def test_headline_counts_flights_with_a_known_outcome():
           flight("unknown", local(29, 11, 0), outcome="gap")]
     assert [r.label for r in rows(*fs)] == ["DEPARTED", "LANDED", "CANCELLED", "CANCELLED", "UPCOMING",
                                             "NO FINAL UPDATE", "UNKNOWN"]
-    assert flights.headline_counts(flights.group_flights(rows(*fs))) == (1, 3)
+    assert flights.headline_counts(flights.group_flights(rows(*fs)), LAST_FETCH) == (1, 3)
+
+
+def test_headline_counts_only_flights_whose_scheduled_time_has_passed():
+    """A cancellation still ahead is left out of both counts, and so is a flight that left before its time; one
+    scheduled at the very time of the last record has passed. Decided on the model's UTC, as the labels are."""
+    fs = [flight("departed", local(29, 8, 0)),
+          flight("cancelled", local(29, 10, 0), **CLEAN),
+          flight("at the last record", LAST_FETCH + timedelta(hours=2), **CLEAN),  # sched_utc_final == LAST_FETCH
+          flight("cancelled ahead", local(31, 10, 0), **CLEAN),
+          flight("left early", local(30, 0, 30))]  # DEPARTED, scheduled 22:30 UTC on 29 October
+    assert [r.label for r in rows(*fs)] == ["DEPARTED", "CANCELLED", "CANCELLED", "CANCELLED", "DEPARTED"]
+    assert flights.headline_counts(flights.group_flights(rows(*fs)), LAST_FETCH) == (2, 3)
 
 
 # --- the featured flight and recent cancellations --------------------------------------------------

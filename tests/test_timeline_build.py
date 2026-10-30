@@ -211,8 +211,20 @@ def test_a_cancellation_reads_the_same_on_the_front_page_and_its_flight_page(sit
     assert '<p class="warn">Warning: at least 25 hours.</p>' in page
     assert "Between 27 Oct 08:00 and 27 Oct 08:15 Cancelled" in text(page)
     assert '<h2><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in index  # the story box
-    assert "So far, 1 of 1 flights with a known outcome were listed as cancelled." in text(index)
+    assert "So far" not in text(index)  # IZ 991 is due on 28 October, after the last record: not counted yet
     assert "<td>at least 25 hours</td>" in read(site, "cancellations.html")
+
+
+def test_the_headline_counts_only_flights_whose_scheduled_time_has_passed(tmp_path):
+    """LY 001 and IZ 991 were due at 08:00 UTC on 28 October, before the last record at 08:15; LY 002, listed as
+    cancelled for the 29th, is still ahead and left out of both counts."""
+    iz = dict(airline="IZ", flight_no="991", airport="ATH", city_en="ATHENS")
+    ly2 = dict(flight_no="002", sched_local="2026-10-29T10:00:00")
+    site = make_site(tmp_path, [
+        (at(7, 45, day=28), [row(), row(**iz), row(**ly2)]),
+        (at(8, 0, day=28), [row(), row(**iz, status="CANCELED"), row(**ly2, status="CANCELED")]),
+        (at(8, 15, day=28), [row(status="DEPARTED"), row(**iz, status="CANCELED"), row(**ly2, status="CANCELED")])])
+    assert "So far, 1 of 2 flights with a known outcome were listed as cancelled." in text(read(site, "index.html"))
 
 
 def test_the_story_is_the_latest_cancellation_with_a_known_warning(tmp_path):

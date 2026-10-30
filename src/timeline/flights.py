@@ -31,6 +31,7 @@ class Row:
     day: date  # the date of sched_final: the day the row is shown on
     sched_first: datetime  # Israel wall-clock, as in the model
     sched_final: datetime
+    sched_utc_final: datetime  # the model's naive UTC: past or ahead is decided on it
     label: str
     delayed: bool
     warning: str | None
@@ -108,7 +109,8 @@ def make_rows(flights: list[dict], obs: list[dict], last_fetch: datetime, gap_ho
             flight_id=f["flight_id"], airline=f["airline"], flight_no=f["flight_no"],
             airline_name=f["airline_name"], direction=f["direction"], airport=f["airport"],
             city=string.capwords(f["city_en"]), city_he=f["city_he"], day=day,
-            sched_first=f["sched_local_first"], sched_final=f["sched_local_final"], label=label,
+            sched_first=f["sched_local_first"], sched_final=f["sched_local_final"],
+            sched_utc_final=f["sched_utc_final"], label=label,
             delayed=any(o["status"] == "DELAYED" for o in own),
             warning=words.warning(f), warning_note=words.warning_note(f), label_note=words.label_note(f),
             changed_back=words.changed_back(f, label), last_expected=words.last_expected(f, day),
@@ -165,9 +167,10 @@ def day_infos(flights_: list[tuple[Row, ...]], last_fetch: datetime, partial_day
             for day, ls in sorted(labels.items())]
 
 
-def headline_counts(flights_: list[tuple[Row, ...]]) -> tuple[int, int]:
-    """(cancelled, known): flights labelled CANCELLED, and flights labelled DEPARTED, LANDED or CANCELLED."""
-    labels = [fl[0].label for fl in flights_]
+def headline_counts(flights_: list[tuple[Row, ...]], last_fetch: datetime) -> tuple[int, int]:
+    """(cancelled, known) over the flights whose scheduled time has passed (UTC, at or before the last record):
+    those labelled CANCELLED, and those labelled DEPARTED, LANDED or CANCELLED."""
+    labels = [fl[0].label for fl in flights_ if fl[0].sched_utc_final <= last_fetch]
     return labels.count(words.CANCELLED), sum(label in KNOWN for label in labels)
 
 
