@@ -1,6 +1,7 @@
 """Break each rule on purpose and confirm a test fails. Run from the repo root:
 
-    .venv/bin/python scripts/mutation_check.py
+    .venv/bin/python scripts/mutation_check.py              # every mutation
+    .venv/bin/python scripts/mutation_check.py "words: "    # only those whose name contains one of the arguments
 
 Each mutation names the file it breaks and the test files that must catch it. It edits source files
 in place while it runs: run nothing else from this checkout until it finishes. Files are restored
@@ -18,6 +19,7 @@ STORE = ("src/collector/store.py", ["tests/test_store.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 PAGES = ("src/timeline/pages.py", ["tests/test_timeline_pages.py", "tests/test_timeline_build.py"])
+WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
@@ -187,16 +189,32 @@ COLLECTOR_MUTATIONS = {
     "site folder read from the repo root": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "$ROOT" && cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
     "script runs from the caller's folder": (PUBLISH, 'cd "$ROOT"\n', ""),
     "default site folder from the caller's folder": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
+    "words: warning rules out of order": (WORDS, "    if hi < 0 and not censored:", '    if lo >= 60:\n        return 8, f"at least {hours(_down(lo))}"\n    if hi < 0 and not censored:'),
+    "words: censored range rounded down at the top": (WORDS, "    return math.ceil(minutes / 60)", "    return math.floor(minutes / 60)"),
+    "words: first sight treated as censored range": (WORDS, "    if hi is None:", "    if False:"),
+    "words: around said as less than an hour": (WORDS, '    return 11, "around the scheduled time"', '    return 11, "less than an hour"'),
+    "words: NO FINAL UPDATE from local time": (WORDS, "return UPCOMING if sched_utc_final > last_fetch else NO_FINAL_UPDATE", "return UPCOMING if il_time(sched_utc_final).replace(tzinfo=None) > last_fetch else NO_FINAL_UPDATE"),
+    "words: equal time is upcoming": (WORDS, "return UPCOMING if sched_utc_final > last_fetch else NO_FINAL_UPDATE", "return UPCOMING if sched_utc_final >= last_fetch else NO_FINAL_UPDATE"),
+    "words: one_in without halves up": (WORDS, "return math.floor(r + 0.5) if r < 20 else 5 * math.floor(r / 5 + 0.5)", "return round(r) if r < 20 else 5 * round(r / 5)"),
+    "words: changed back on a NULL flag": (WORDS, '    if not f["uncanceled"]:', '    if f["uncanceled"] is False:'),
+    "words: warning on a departed flight": (WORDS, '    if f["outcome"] != "canceled":\n        return None\n    return _warning_rule(f)[1]', "    return _warning_rule(f)[1]"),
+    "words: Israel time from a naive conversion": (WORDS, "return utc_naive.replace(tzinfo=timezone.utc).astimezone(ISRAEL)", "return utc_naive.astimezone(ISRAEL)"),
+    "words: dates never shown": (WORDS, 'return f"{local:%H:%M}" if local.date() == page_date else', 'return f"{local:%H:%M}" if True else'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
 
 
-def main() -> int:
+def main(wanted: list[str]) -> int:
+    """Run every mutation, or with `wanted` only those whose name contains one of its strings."""
+    chosen = {name: m for name, m in MUTATIONS.items() if not wanted or any(w in name for w in wanted)}
+    if not chosen:
+        print(f"No mutation name contains any of {wanted}.")
+        return 2
     originals = {}
     missed = []
     try:
-        for name, ((rel, tests), old, new) in MUTATIONS.items():
+        for name, ((rel, tests), old, new) in chosen.items():
             path = ROOT / rel
             original = originals.setdefault(path, path.read_text())
             if original.count(old) != 1:
@@ -221,4 +239,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
