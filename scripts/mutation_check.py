@@ -226,6 +226,13 @@ COLLECTOR_MUTATIONS = {
     "views: noindex dropped": (VIEWS, """'<meta name="robots" content="noindex">\\n'""", "''"),
     "views: day link without anchor": (VIEWS, """f'<a href="{root}{e(r.page)}#{e(r.anchor)}">""", """f'<a href="{root}{e(r.page)}">"""),
     "views: bare warning beside a label": (VIEWS, """parts.append(f'<span class="warn">{e(words.warning_sentence(r.warning))}</span>')""", """parts.append(f'<span class="warn">{e(r.warning)}</span>')"""),
+    "views: headline at zero": (VIEWS, "    if headline:\n", "    if True:\n"),
+    "views: search data not escaped": (VIEWS, r'.replace("<", "\\u003c")', ""),
+    "views: recent not capped": (VIEWS, "_cancellations_table(recent[:RECENT], \"\")", "_cancellations_table(recent, \"\")"),
+    "views: unknown left off the chart": (VIEWS, "        parts = _count_parts(info)\n", '        parts = [p for p in _count_parts(info) if "unknown" not in p]\n'),
+    "views: last updated in UTC": (VIEWS, "    updated = words.il_time(last_record)", "    updated = last_record"),
+    "views: day list from the chart's days": (VIEWS, "for x in all_days)", "for x in chart_days)"),
+    "views: incomplete not said on the chart": (VIEWS, '("incomplete", info.partial)) if on]', '("incomplete", False)) if on]'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

@@ -1,13 +1,14 @@
 """The redesigned site's pages (docs/site-redesign.md: "Pages", "Words", "Codeshares", "Names"), from display rows
 made with flights.make_rows. Expected values by hand; the how-it-works copy is the plan's Appendix A, verbatim."""
 import html
+import json
 import re
 from datetime import date, datetime
 
 import pytest
 
 from model.report import ATTRIBUTION
-from test_timeline_flights import CLEAN, LAST_FETCH, first, flight, local, utc
+from test_timeline_flights import CLEAN, LAST_FETCH, first, flight, local, then, utc
 from test_timeline_words import TO3459_OBS
 from timeline import check, flights, views, words
 from timeline.flights import DayInfo
@@ -439,6 +440,284 @@ def test_how_it_works_carries_the_full_attribution_and_the_footer():
     assert all(t in text(page) for t in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE))
 
 
+# --- front page ------------------------------------------------------------------------------------
+
+CHART_DAYS = [DayInfo(date(2026, 10, 27), 348, 4, 12, "past", True),
+              DayInfo(date(2026, 10, 28), 370, 8, 190, "past", False),
+              DayInfo(date(2026, 10, 29), 418, 7, 0, "past", False),
+              DayInfo(date(2026, 10, 30), 289, 1, 0, "today", False),
+              DayInfo(date(2026, 10, 31), 161, 0, 0, "ahead", False),
+              DayInfo(date(2026, 11, 1), 40, 0, 0, "ahead", True)]
+ALL_DAYS = [DayInfo(date(2026, 10, 26), 120, 0, 3, "past", True), *CHART_DAYS]  # 26 Oct: not on the chart
+HOSTILE = {"n": ["zz1"], "p": ["</script><b>"], "t": "ZZ 1, Tel Aviv to </script>`'\"", "u": "flight/ZZ1-D.html"}
+DESCRIPTION = ("Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning "
+               f"there was. Built by {words.BUILT_BY}.")
+ASY_UNKNOWN = dict(airline="ASY", flight_no="991", outcome="canceled", cancel_lead_min=30.0, cancel_lead_max_min=None,
+                   cancel_lead_censored=None, uncanceled=None)  # rule 2: "unknown"
+
+
+def entries():
+    return [*flights.search_entries(to3459_rows()), HOSTILE]
+
+
+def recent_default():
+    """TO 3459 (no warning) and IZ 992 (at least 23 hours), newest first."""
+    rs = rows(flight("to", local(29, 17, 10), **TO, **TO_CANCELLED),
+              flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", direction="A", **AT_LEAST_23))
+    return flights.recent_cancellations(flights.group_flights(rs))
+
+
+def twelve_cancelled():
+    """LY 100 to LY 111, cancelled departures on 28 October, an hour apart from 06:00; newest first."""
+    fs = [flight(f"c{i}", local(28, 6 + i, 0), flight_no=str(100 + i), **CLEAN) for i in range(12)]
+    return flights.recent_cancellations(flights.group_flights(rows(*fs)), n=12)
+
+
+def front(cancelled=20, known=951, story="TO 3459", recent=None, chart_days=None, all_days=None, data=None,
+          last=LAST_FETCH):
+    story_row = to3459_rows()[1] if story == "TO 3459" else story
+    return views.front_page(cancelled, known, story_row, recent_default() if recent is None else recent,
+                            CHART_DAYS if chart_days is None else chart_days,
+                            ALL_DAYS if all_days is None else all_days, entries() if data is None else data, last)
+
+
+def unknown_only_front():
+    """Review Focus 3: the only cancellation's warning is unknown (ASY 991's shape, cancelled from its earliest
+    record), so it is the story by the fallback rule."""
+    f = flight("asy", local(29, 13, 30), **ASY_UNKNOWN)
+    r = rows(f, obs=[first(f) | {"status": "CANCELED"}])[0]
+    return front(1, 900, story=r, recent=[(r,)])
+
+
+def delayed_story_front():
+    """A story whose change lines include the airport's "delayed"."""
+    f = flight("late", local(29, 23, 0), outcome="canceled", cancel_lead_min=358.0, cancel_lead_max_min=374.0,
+               cancel_lead_censored=False)
+    start = first(f)
+    late = then(start, utc(29, 13, 2, 45), status="DELAYED")
+    gone = then(late, utc(29, 15, 2, 45), status="CANCELED")
+    r = rows(f, obs=[start, late, gone])[0]
+    return front(1, 900, story=r, recent=[(r,)])
+
+
+def meta(page: str, attribute: str) -> str:
+    """The content of the head's <meta> with this name or property, unescaped."""
+    return html.unescape(re.search(rf'<meta {attribute} content="([^"]*)">', page).group(1))
+
+
+def section(page: str, start: str, end: str) -> str:
+    i = page.index(start)
+    return page[i:page.index(end, i)]
+
+
+def chart_day(chart: str, day: str) -> str:
+    """One day of the chart: its link and everything inside."""
+    return re.search(rf'<a href="day/{day}.html"[^>]*>.*?</a>', chart, re.S).group(0)
+
+
+def test_front_page_head():
+    page = front()
+    head = page[:page.index("</head>")]
+    assert "<title>Cancelled flights at Tel Aviv airport (Ben Gurion)</title>" in head
+    assert meta(head, 'name="description"') == DESCRIPTION
+    assert meta(head, 'property="og:title"') == "Cancelled flights at Tel Aviv airport (Ben Gurion)"
+    assert meta(head, 'property="og:description"') == DESCRIPTION
+    assert meta(head, 'property="og:type"') == "website"
+    assert "og:image" not in page
+    assert '<script src="search.js" defer></script>' in head
+    assert '<link rel="stylesheet" href="style.css">' in head
+
+
+def test_front_page_title_and_lede():
+    page = front()
+    assert "<h1>Cancelled flights at Tel Aviv airport</h1>" in page
+    assert ('<p class="lede">A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and '
+            "which ones were cancelled.</p>") in page
+
+
+def test_front_page_headline():
+    page = front(20, 951)
+    assert ('<p class="headline">So far, 20 of 951 flights with a known outcome were listed as cancelled. '
+            "That's about 1 in 50.</p>") in html.unescape(page)
+    assert words.headline(20, 951) in text(page)
+
+
+def test_no_headline_without_cancellations():
+    page = front(0, 900, story=None, recent=[])
+    assert 'class="headline"' not in page and "So far" not in page
+
+
+def test_the_story_box():
+    box = section(front(), '<section class="story">', "</section>")
+    assert ('<h2><a href="flight/TO3459-D.html#2026-10-29-1710-ORY"><span class="d">TO 3459, Tel Aviv to Paris'
+            "</span></a></h2>") in box
+    assert "Thursday 29 October 2026, scheduled to leave 17:10" in text(box)
+    assert [text(li) for li in re.findall(r"<li>(.*?)</li>", box)] == [
+        "Earliest record (27 Oct 20:04) on time, terminal 1",
+        "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
+        "17:32 Expected to leave at 17:38 instead",
+        "18:32 Expected to leave at 18:45 instead",
+        "Between 19:16 and 19:32 Cancelled",
+    ]
+    assert '<ol class="changes">' in box and '<span class="t">Between 19:16 and 19:32</span>' in box
+
+
+def test_no_story_box_without_a_story():
+    assert 'class="story"' not in front(story=None)
+
+
+def test_search_box_hidden_until_the_script_runs():
+    page = front()
+    box = re.search(r'<input id="search"[^>]*>', page).group(0)
+    assert re.search(r"\shidden[\s>]", box)
+    assert 'placeholder="Flight number or city, e.g. LY 001 or Paris"' in box
+    assert f'{box}\n<ul id="search-results" hidden></ul>' in page  # ruling 2: the results list right after it
+
+
+def test_search_data_in_the_page():
+    data = entries()
+    page = front(data=data)
+    assert f'<script type="application/json" id="flights-data">{views.search_json(data)}</script>' in page
+    inside = re.search(r'<script type="application/json" id="flights-data">(.*?)</script>', page, re.S).group(1)
+    assert json.loads(inside) == data  # a name containing </script> does not end the element
+    assert "\\u003c/script>" in inside and "</script" not in inside
+
+
+def test_search_json():
+    assert views.search_json([{"t": "</script>", "n": ["a"]}]) == '[{"n": ["a"], "t": "\\u003c/script>"}]'
+    assert views.search_json([{"t": "פריז"}]) == '[{"t": "פריז"}]'  # not \\u escapes: half the bytes
+
+
+def test_recent_cancellations():
+    page = front()
+    table = section(page, '<table class="cancellations">', "</table>")
+    assert cells(table) == [
+        ["Date", "Flight", "Route", "Warning"],
+        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land 13:50", "at least 23 hours"],
+        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave 17:10",
+         "none: cancelled about 2 hours after it was scheduled to leave"],
+    ]
+    assert '<a href="flight/IZ992-A.html#2026-10-30-1350-JFK">' in table
+    assert '<a href="flight/TO3459-D.html#2026-10-29-1710-ORY">' in table
+    assert page.index("<h2>Recent cancellations</h2>") < page.index(table)
+    assert '<p><a href="cancellations.html">All cancellations</a></p>' in page
+
+
+def test_recent_cancellations_at_most_ten():
+    page = front(recent=twelve_cancelled())
+    shown = [row[1] for row in cells(page)[1:]]
+    assert shown == [f"LY {n}" for n in range(111, 101, -1)]  # the first ten given, in their order
+
+
+def test_chart_one_bar_per_day_inside_its_link():
+    chart = views.chart_svg(CHART_DAYS)
+    assert chart.count('<svg class="bar"') == len(CHART_DAYS) == chart.count("<a href=")
+    for info in CHART_DAYS:
+        assert '<svg class="bar"' in chart_day(chart, f"{info.day:%Y-%m-%d}")
+
+
+def test_chart_counts_beside_each_bar():
+    chart = views.chart_svg(CHART_DAYS)
+    assert "Wed 28 Oct 370 flights · 8 cancelled · 190 unknown" in text(chart_day(chart, "2026-10-28"))
+    assert "Thu 29 Oct 418 flights · 7 cancelled" in text(chart_day(chart, "2026-10-29"))
+    assert "unknown" not in chart_day(chart, "2026-10-29")
+    assert "Sat 31 Oct 161 flights" in text(chart_day(chart, "2026-10-31"))
+
+
+def test_chart_counts_equal_the_day_pages():
+    chart = views.chart_svg(CHART_DAYS)
+    for info in CHART_DAYS:
+        line = re.search(r'<p class="count">(.*?)</p>', views.day_page(info, [])).group(1)
+        assert line in text(chart_day(chart, f"{info.day:%Y-%m-%d}"))
+
+
+def test_chart_bar_in_three_parts():
+    """Cancelled, unknown, the rest, in flights on one scale: the longest day fills the bar's width."""
+    chart = views.chart_svg(CHART_DAYS)
+    day = chart_day(chart, "2026-10-28")
+    assert 'viewBox="0 0 418 8"' in day
+    assert re.findall(r'<rect class="(\w+)" x="(\d+)" y="0" width="(\d+)" height="8"/>', day) == [
+        ("cancelled", "0", "8"), ("unknown", "8", "190"), ("rest", "198", "172")]
+    assert re.findall(r'<rect class="(\w+)" x="(\d+)" y="0" width="(\d+)"', chart_day(chart, "2026-10-31")) == [
+        ("rest", "0", "161")]
+
+
+def test_chart_today_ahead_and_incomplete():
+    chart = views.chart_svg(CHART_DAYS)
+    classes = {day: re.search(rf'<a href="day/{day}.html" class="([^"]*)">', chart).group(1)
+               for day in ("2026-10-27", "2026-10-28", "2026-10-30", "2026-10-31", "2026-11-01")}
+    assert classes == {"2026-10-27": "past partial", "2026-10-28": "past", "2026-10-30": "today",
+                       "2026-10-31": "ahead", "2026-11-01": "ahead partial"}
+    assert "incomplete" in text(chart_day(chart, "2026-10-27"))
+    assert "today" in text(chart_day(chart, "2026-10-30"))
+    assert "ahead" in text(chart_day(chart, "2026-10-31"))
+    assert text(chart_day(chart, "2026-11-01")).endswith("ahead incomplete")
+    plain = text(chart_day(chart, "2026-10-28"))
+    assert not any(word in plain for word in ("incomplete", "today", "ahead"))
+
+
+def test_chart_accessible_name_states_the_days_and_counts():
+    chart = views.chart_svg(CHART_DAYS)
+    label = html.unescape(re.search(r'<svg class="chart"[^>]* aria-label="([^"]*)"', chart).group(1))
+    assert label == (
+        "Flights each day. Tue 27 Oct, incomplete: 348 flights, 4 cancelled, 12 unknown. "
+        "Wed 28 Oct: 370 flights, 8 cancelled, 190 unknown. Thu 29 Oct: 418 flights, 7 cancelled. "
+        "Fri 30 Oct, today: 289 flights, 1 cancelled. Sat 31 Oct, ahead: 161 flights. "
+        "Sun 1 Nov, ahead, incomplete: 40 flights.")
+
+
+def test_front_page_draws_the_chart_days_and_lists_every_day():
+    page = front()
+    chart = section(page, '<svg class="chart"', "\n</svg>")
+    assert chart.count('<svg class="bar"') == len(CHART_DAYS)
+    assert "day/2026-10-26.html" not in chart  # every day, but only the chosen days on the chart
+    assert page.index("<h2>Flights each day</h2>") < page.index('<svg class="chart"')
+    days = section(page, '<p class="days">', "</p>")
+    assert re.findall(r'<a href="(day/[\d-]+\.html)">', days) == [f"day/{x.day:%Y-%m-%d}.html" for x in ALL_DAYS]
+    assert '<a href="day/2026-10-26.html">Mon 26 Oct</a>' in days
+
+
+def test_last_updated_in_israel_time():
+    assert '<p class="updated">Last updated 30 Oct 2026, 00:02</p>' in front(last=datetime(2026, 10, 29, 22, 2, 45))
+
+
+def test_built_by_line():
+    page = front()
+    line = section(page, '<p class="built">', "</p>")
+    assert text(line) == f"Built by {words.BUILT_BY} · How this works · Code on GitHub"
+    assert '<a href="how-it-works.html">How this works</a>' in line
+    assert f'<a href="{words.CODE_URL}">Code on GitHub</a>' in line
+
+
+def test_front_page_order():
+    page = front()
+    order = ["<h1>", 'class="lede"', 'class="headline"', 'class="story"', '<input id="search"',
+             'id="search-results"', 'id="flights-data"', "Recent cancellations", 'href="cancellations.html"',
+             "Flights each day", '<svg class="chart"', 'class="days"', 'class="updated"', 'class="built"', "<footer>"]
+    assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
+
+
+def test_front_page_without_cancellations():
+    """Review Focus 3: headline and story left out, everything else present."""
+    page = views.front_page(0, 900, None, [], CHART_DAYS, CHART_DAYS, entries(), LAST_FETCH)
+    assert 'class="headline"' not in page and 'class="story"' not in page
+    assert '<input id="search"' in page and '<ul id="search-results" hidden></ul>' in page
+    assert 'id="flights-data"' in page and '<svg class="chart"' in page and '<p class="days">' in page
+    assert "<h2>Recent cancellations</h2>" in page and "No flights listed as cancelled so far." in text(page)
+    assert "<table" not in page
+    assert "Last updated 30 Oct 2026, 00:02" in text(page)
+    assert all(t in text(page) for t in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE))
+
+
+def test_front_page_whose_only_cancellation_has_an_unknown_warning():
+    """Review Focus 3: it still builds, with the flight as its story."""
+    page = unknown_only_front()
+    assert "So far, 1 of 900 flights with a known outcome were listed as cancelled." in text(page)
+    box = section(page, '<section class="story">', "</section>")
+    assert "Earliest record (27 Oct 20:04) already cancelled, terminal 3" in text(box)
+    assert cells(page)[1][-1] == "unknown"
+
+
 # --- the upload check's phrases on every page these tests build ------------------------------------
 
 def every_page() -> dict[str, str]:
@@ -463,6 +742,12 @@ def every_page() -> dict[str, str]:
         "cancellations": cancellations_page(),
         "how it works": views.how_it_works_page(ATTRIBUTION, [GAP, LATER_GAP]),
         "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), flights.group_flights(rs[1:2])),
+        "front page": front(),
+        "front page, ten cancellations": front(recent=twelve_cancelled()),
+        "front page, no cancellations": views.front_page(0, 900, None, [], CHART_DAYS, ALL_DAYS, entries(),
+                                                         LAST_FETCH),
+        "front page, a warning unknown": unknown_only_front(),
+        "front page, a delayed story": delayed_story_front(),
     }
 
 

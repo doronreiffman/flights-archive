@@ -9,6 +9,7 @@ cancellations table's Warning column, whose previous cell ends with a scheduled 
 from __future__ import annotations
 
 import html
+import json
 from collections import Counter
 from datetime import date, datetime
 
@@ -16,6 +17,7 @@ from . import flights, words
 from .flights import DayInfo, Row
 
 HOME = "Cancelled flights at Tel Aviv airport"
+NONE_CANCELLED = "No flights listed as cancelled so far."
 
 
 def e(value) -> str:
@@ -98,14 +100,25 @@ def _newest_first(rows: list[Row]) -> list[Row]:
     return sorted(by_place, key=lambda r: r.sched_final, reverse=True)  # stable: ties keep the airport order
 
 
-def _counts(info: DayInfo) -> str:
-    """A day's flights in plain numbers: "418 flights · 7 cancelled · 190 unknown", zeros left out."""
+def _count_parts(info: DayInfo) -> list[str]:
+    """A day's flights in plain numbers, zeros left out: ["418 flights", "7 cancelled", "190 unknown"]."""
     parts = [f"{info.total} flight" + ("" if info.total == 1 else "s")]
     if info.cancelled:
         parts.append(f"{info.cancelled} cancelled")
     if info.unknown:
         parts.append(f"{info.unknown} unknown")
-    return " · ".join(parts)
+    return parts
+
+
+def _counts(info: DayInfo) -> str:
+    """The day page's count line: "418 flights · 7 cancelled · 190 unknown"; the chart says the same."""
+    return " · ".join(_count_parts(info))
+
+
+def _changes(r: Row) -> str:
+    """What changed, oldest first, the time in a left column."""
+    items = [f'<li><span class="t">{e(left)}</span> {e(what)}</li>' for left, what in r.lines]
+    return "\n".join(['<ol class="changes">', *items, "</ol>"])
 
 
 # --- flight page -----------------------------------------------------------------------------------
@@ -149,9 +162,7 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool) -> str:
                    "(same time, terminal and check-in desks).</p>")
     if r.lines:
         out.append("<details open>" if r.label == words.CANCELLED else "<details>")
-        out.append("<summary>What changed</summary>\n<ol class=\"changes\">")
-        out += [f'<li><span class="t">{e(left)}</span> {e(what)}</li>' for left, what in r.lines]
-        out.append("</ol>\n</details>")
+        out += ["<summary>What changed</summary>", _changes(r), "</details>"]
     out.append("</div>")
     return "\n".join(out)
 
@@ -219,8 +230,7 @@ def _cancellations_table(cancelled: list[tuple[Row, ...]], root: str) -> str:
 def cancellations_page(flights_: list[tuple[Row, ...]]) -> str:
     """Every cancelled flight among `flights_`, newest first."""
     cancelled = flights.recent_cancellations(flights_, n=len(flights_))
-    table = (_cancellations_table(cancelled, "") if cancelled
-             else "<p>No flights listed as cancelled so far.</p>")
+    table = _cancellations_table(cancelled, "") if cancelled else f"<p>{NONE_CANCELLED}</p>"
     body = [_back(""), "<h1>All cancellations</h1>", "<p>Every flight listed as cancelled, newest first.</p>", table]
     return layout("All cancellations", "\n".join(body), "")
 
@@ -264,3 +274,108 @@ def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -
 <h2>How it's built</h2>
 <p>The program runs on AWS Lambda and saves each version once, to storage where it is locked for ten years. A Python data model turns the saved versions into one history per flight, and this site is generated from that model. Every rule has tests, and the tests are themselves checked by breaking the code on purpose and confirming that a test fails. The code is <a href="{e(words.CODE_URL)}">on GitHub</a>.</p>"""
     return layout("How this works", body, "")
+
+
+# --- front page ------------------------------------------------------------------------------------
+
+TITLE = f"{HOME} (Ben Gurion)"
+LEDE = ("A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, "
+        "and which ones were cancelled.")
+DESCRIPTION = ("Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning "
+               f"there was. Built by {words.BUILT_BY}.")
+SEARCH_HINT = "Flight number or city, e.g. LY 001 or Paris"
+RECENT = 10  # cancellations on the front page; the rest are on cancellations.html
+
+# The chart's sizes, in px: text keeps its own size on any screen, and only the bars stretch (a share of the width).
+_DATE_W = 84  # the date column; the counts and the bar start here
+_DAY_H = 34  # one day: the date and counts, then the bar with one mark under the date
+_MARK_H = 12  # each further mark under the date
+
+
+def search_json(entries: list[dict]) -> str:
+    """The search entries as JSON for a script element: every "<" escaped, so a name containing "</script>" cannot
+    end the element."""
+    return json.dumps(entries, sort_keys=True, ensure_ascii=False).replace("<", "\\u003c")
+
+
+def _marks(info: DayInfo) -> list[str]:
+    """The words under a day's date: "today" for the Israel date of the last record, "ahead" for later days,
+    "incomplete" for a day the partial rule flags."""
+    return [word for word, on in (("today", info.state == "today"), ("ahead", info.state == "ahead"),
+                                  ("incomplete", info.partial)) if on]
+
+
+def chart_svg(days: list[DayInfo]) -> str:
+    """One horizontal bar per day, top to bottom, each linked to its day page: the date with its marks, the counts in
+    text ("370 flights · 8 cancelled · 190 unknown", as on the day page), and the bar in three parts (cancelled,
+    unknown, the rest) on one scale, the busiest day filling the bar's width. The classes carry the look: the day's
+    state (past, today, ahead) and partial; the parts cancelled, unknown, rest. The accessible name states every
+    day's counts, so the numbers never rest on color."""
+    top = max((info.total for info in days), default=1)
+    out, said, y = [], [], 0
+    for info in days:
+        parts = _count_parts(info)
+        name, marks = _short_date(info.day), _marks(info)
+        said.append(f"{', '.join([name, *marks])}: {', '.join(parts)}.")
+        shares = (("cancelled", info.cancelled), ("unknown", info.unknown),
+                  ("rest", info.total - info.cancelled - info.unknown))
+        bars, x = [], 0
+        for cls, n in shares:
+            if n:
+                bars.append(f'<rect class="{cls}" x="{x}" y="0" width="{n}" height="8"/>')
+            x += n
+        classes = " ".join([info.state] + ["partial"] * info.partial)
+        out += [f'<a href="day/{info.day:%Y-%m-%d}.html" class="{classes}">',
+                f'<text x="0" y="{y + 11}" class="date">{name}</text>',
+                f'<text x="{_DATE_W}" y="{y + 11}">{" · ".join(parts)}</text>',
+                f'<svg class="bar" x="{_DATE_W}" y="{y + 15}" width="72%" height="8" viewBox="0 0 {top} 8" '
+                f'preserveAspectRatio="none">{"".join(bars)}</svg>',
+                *(f'<text x="0" y="{y + 23 + _MARK_H * i}" class="mark">{mark}</text>' for i, mark in enumerate(marks)),
+                "</a>"]
+        y += _DAY_H + _MARK_H * max(len(marks) - 1, 0)
+    label = " ".join(["Flights each day.", *said])
+    # role="group", not "img": an image's children are hidden from screen readers, and these are links.
+    return "\n".join([f'<svg class="chart" width="100%" height="{y}" font-size="12" role="group" '
+                      f'aria-label="{e(label)}">', *out, "</svg>"])
+
+
+def _story(r: Row) -> str:
+    """One cancelled flight's story: its title linked to its row, the day and scheduled time, and what changed."""
+    return "\n".join(['<section class="story">',
+                      f'<h2><a href="{e(r.page)}#{e(r.anchor)}">{d(flights.page_title([r]))}</a></h2>',
+                      f"<p>{_long_date(r.day)}, {e(words.scheduled(r.direction, r.sched_final, r.day))}</p>",
+                      _changes(r), "</section>"])
+
+
+def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple[Row, ...]],
+               chart_days: list[DayInfo], all_days: list[DayInfo], entries: list[dict], last_record: datetime) -> str:
+    """The front page, top to bottom as docs/site-redesign.md lists it. The caller chooses: the headline's counts,
+    the story (None for none), the recent cancellations newest first (at most RECENT shown), the chart's days and
+    every day for the list under it, the search entries, and the last record's time (the model's naive UTC)."""
+    head = "\n".join([f'<meta name="description" content="{e(DESCRIPTION)}">',
+                      f'<meta property="og:title" content="{e(TITLE)}">',
+                      f'<meta property="og:description" content="{e(DESCRIPTION)}">',
+                      '<meta property="og:type" content="website">',
+                      '<script src="search.js" defer></script>'])
+    body = [f"<h1>{e(HOME)}</h1>", f'<p class="lede">{e(LEDE)}</p>']
+    headline = words.headline(cancelled, known)
+    if headline:
+        body.append(f'<p class="headline">{e(headline)}</p>')
+    if story is not None:
+        body.append(_story(story))
+    updated = words.il_time(last_record)
+    day_links = " · ".join(f'<a href="day/{x.day:%Y-%m-%d}.html">{_short_date(x.day)}</a>' for x in all_days)
+    body += [f'<input id="search" type="search" hidden placeholder="{e(SEARCH_HINT)}" '
+             'aria-label="Find a flight by number or city">',
+             '<ul id="search-results" hidden></ul>',
+             f'<script type="application/json" id="flights-data">{search_json(entries)}</script>',
+             "<h2>Recent cancellations</h2>",
+             _cancellations_table(recent[:RECENT], "") if recent else f"<p>{NONE_CANCELLED}</p>",
+             '<p><a href="cancellations.html">All cancellations</a></p>',
+             "<h2>Flights each day</h2>",
+             chart_svg(chart_days),
+             f'<p class="days">Every day: {day_links}</p>',
+             f'<p class="updated">Last updated {updated.day} {updated:%b %Y, %H:%M}</p>',
+             f'<p class="built">Built by {e(words.BUILT_BY)} · <a href="how-it-works.html">How this works</a> · '
+             f'<a href="{e(words.CODE_URL)}">Code on GitHub</a></p>']
+    return layout(TITLE, "\n".join(body), "", head)
