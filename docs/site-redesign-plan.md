@@ -409,7 +409,7 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
 > - DELAYED: shown beside another label when the airport's list said "delayed" at some point.
 >
 > ## How much warning
-> For a cancelled flight, the warning is how long before its scheduled time the list already showed it as cancelled. The list refreshes about every 15 minutes, so the change is known to within that window. Where records are missing, the warning is a range ("between 7 and 50 hours"). When a flight was already cancelled the first time it appeared in the records, only a lower limit is known ("at least 23 hours"). For the same reason, the time of a cancellation is always given as a range. The airline may have told passengers earlier than the list showed.
+> For a cancelled flight, the warning is how long before its scheduled time the list already showed it as cancelled. The list refreshes about every 15 minutes, so the change is usually known to within that window, and always to within an hour. Where records are missing, the warning is a range ("between 7 and 50 hours"). When a flight was already cancelled the first time it appeared in the records, only a lower limit is known ("at least 23 hours"); "at least" is also used when the change was seen an hour or more ahead, rounded down. For the same reason, the time of a cancellation is always given as a range. The airline may have told passengers earlier than the list showed.
 >
 > ## Why there are no delay figures
 > The list gives an expected time for each flight. It doesn't say whether that is when the plane leaves the gate or when it takes off. Until that is settled, this site shows the airport's times as they are and doesn't turn them into delay figures.
