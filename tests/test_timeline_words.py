@@ -164,13 +164,13 @@ WARNING_CASES = [
     (60.0, None, True, "D", "at least 1 hour"),                  # rule 1 boundary
     (59.9, None, True, "D", "unknown"),                          # rule 2
     (-59.05, None, True, "D", "unknown"),                        # rule 2, ASY 991
-    (-50.0, -10.0, False, "D", "none: cancelled less than an hour after it was scheduled to leave"),
-    (-70.0, -30.0, False, "D", "none: cancelled about an hour after it was scheduled to leave"),
-    (-60.0, -30.0, False, "D", "none: cancelled about an hour after it was scheduled to leave"),   # -lo exactly 60
-    (-150.0, -120.0, False, "D", "none: cancelled about 2 hours after it was scheduled to leave"),  # -hi exactly 120
-    (-142.75, -126.75, False, "D", "none: cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
-    (-142.75, -126.75, False, "A", "none: cancelled about 2 hours after it was scheduled to land"),
-    (-200.0, -100.0, True, "D", "none: cancelled after it was scheduled to leave"),                  # rule 4
+    (-50.0, -10.0, False, "D", "none: listed as cancelled less than an hour after it was scheduled to leave"),
+    (-70.0, -30.0, False, "D", "none: listed as cancelled about an hour after it was scheduled to leave"),
+    (-60.0, -30.0, False, "D", "none: listed as cancelled about an hour after it was scheduled to leave"),   # -lo exactly 60
+    (-150.0, -120.0, False, "D", "none: listed as cancelled about 2 hours after it was scheduled to leave"),  # -hi exactly 120
+    (-142.75, -126.75, False, "D", "none: listed as cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
+    (-142.75, -126.75, False, "A", "none: listed as cancelled about 2 hours after it was scheduled to land"),
+    (-200.0, -100.0, True, "D", "none: listed as cancelled after it was scheduled to leave"),                  # rule 4
     (75.95, 2600.48, True, "D", "between 1 and 44 hours"),       # rule 5, LY 5409
     (445.95, 2970.48, True, "A", "between 7 and 50 hours"),      # rule 5, LY 5410
     (60.0, 2000.0, True, "D", "between 1 and 34 hours"),         # rule 5, boundary 60
@@ -218,8 +218,8 @@ def test_warning_note(lo, hi, censored, note):
 
 
 SENTENCE_CASES = [
-    ("none: cancelled about 2 hours after it was scheduled to leave",
-     "No warning: cancelled about 2 hours after it was scheduled to leave."),
+    ("none: listed as cancelled about 2 hours after it was scheduled to leave",
+     "No warning: listed as cancelled about 2 hours after it was scheduled to leave."),
     ("unknown: no records for that time", "Warning unknown: no records for that time."),
     ("unknown", "Warning unknown."),
     ("at least 23 hours", "Warning: at least 23 hours."),

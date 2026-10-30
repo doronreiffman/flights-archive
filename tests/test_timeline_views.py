@@ -17,7 +17,7 @@ SINCE = date(2026, 10, 27)
 TO = dict(airline="TO", flight_no="3459", airline_name="TRANSAVIA FRANCE", airport="ORY", city_en="PARIS",
           city_he="פריז")
 TO_CANCELLED = dict(outcome="canceled", cancel_lead_min=-142.75, cancel_lead_max_min=-126.75,
-                    cancel_lead_censored=False)  # rule 3: "none: cancelled about 2 hours after …"
+                    cancel_lead_censored=False)  # rule 3: "none: listed as cancelled about 2 hours after …"
 AT_LEAST_23 = dict(outcome="canceled", cancel_lead_min=1400.95, cancel_lead_max_min=None,
                    cancel_lead_censored=None, uncanceled=None)  # rule 1, IZ 992's shape
 
@@ -122,7 +122,7 @@ def test_the_cancelled_row_is_open_with_its_warning_and_changes():
     row = row_block(to3459_page(), "2026-10-29-1710-ORY")
     assert "<details open>" in row
     assert text(row).startswith("Thu 29 Oct scheduled to leave 17:10 · last expected 18:45 CANCELLED")
-    assert "No warning: cancelled about 2 hours after it was scheduled to leave." in text(row)
+    assert "No warning: listed as cancelled about 2 hours after it was scheduled to leave." in text(row)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
         "Earliest record (27 Oct 20:04) on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
@@ -317,7 +317,7 @@ def test_day_page_without_partial_or_unknown_lines():
 def test_day_page_departures_then_arrivals_in_scheduled_order():
     page = text(day_page())
     order = ["Departures", "09:00 DL 7426, AM 7895 to New York (JFK) DEPARTED",
-             "17:10 TO 3459 to Paris (ORY) CANCELLED No warning: cancelled about 2 hours after it was scheduled "
+             "17:10 TO 3459 to Paris (ORY) CANCELLED No warning: listed as cancelled about 2 hours after it was scheduled "
              "to leave.", "20:00 LY 003 to New York (JFK) DEPARTED",
              "Arrivals", "05:00 LY 002 from New York (JFK) LANDED"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
@@ -358,7 +358,7 @@ def test_cancellations_newest_first():
         ["Date", "Flight", "Route", "Warning"],
         ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land 13:50", "at least 23 hours"],
         ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave 17:10",
-         "none: cancelled about 2 hours after it was scheduled to leave"],
+         "none: listed as cancelled about 2 hours after it was scheduled to leave"],
         ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave 09:00", "at least 6 hours"],
     ]
 
@@ -603,7 +603,7 @@ def test_recent_cancellations():
         ["Date", "Flight", "Route", "Warning"],
         ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land 13:50", "at least 23 hours"],
         ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave 17:10",
-         "none: cancelled about 2 hours after it was scheduled to leave"],
+         "none: listed as cancelled about 2 hours after it was scheduled to leave"],
     ]
     assert '<a href="flight/IZ992-A.html#2026-10-30-1350-JFK">' in table
     assert '<a href="flight/TO3459-D.html#2026-10-29-1710-ORY">' in table

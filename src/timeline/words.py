@@ -124,12 +124,12 @@ def _warning_rule(f: dict) -> tuple[int, str]:
         return (1, f"at least {hours(_down(lo))}") if lo >= 60 else (2, "unknown")
     if hi < 0 and not censored:  # a non-censored range is at most an hour wide; -hi is its nearer end
         if -lo < 60:
-            return 3, f"none: cancelled less than an hour {after}"
+            return 3, f"none: listed as cancelled less than an hour {after}"
         if -hi < 120:
-            return 3, f"none: cancelled about an hour {after}"
-        return 3, f"none: cancelled about {hours(_down(-hi))} {after}"
+            return 3, f"none: listed as cancelled about an hour {after}"
+        return 3, f"none: listed as cancelled about {hours(_down(-hi))} {after}"
     if hi < 0:
-        return 4, f"none: cancelled {after}"
+        return 4, f"none: listed as cancelled {after}"
     if censored and lo >= 60:
         return 5, f"between {_down(lo)} and {hours(_up(hi))}"
     if censored and lo >= 0:

@@ -65,11 +65,11 @@
     (60.0, None, True, "D", "at least 1 hour"),                  # rule 1 boundary
     (59.9, None, True, "D", "unknown"),                          # rule 2
     (-59.05, None, True, "D", "unknown"),                        # rule 2, ASY 991
-    (-50.0, -10.0, False, "D", "none: cancelled less than an hour after it was scheduled to leave"),
-    (-70.0, -30.0, False, "D", "none: cancelled about an hour after it was scheduled to leave"),
-    (-142.75, -126.75, False, "D", "none: cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
-    (-142.75, -126.75, False, "A", "none: cancelled about 2 hours after it was scheduled to land"),
-    (-200.0, -100.0, True, "D", "none: cancelled after it was scheduled to leave"),                  # rule 4
+    (-50.0, -10.0, False, "D", "none: listed as cancelled less than an hour after it was scheduled to leave"),
+    (-70.0, -30.0, False, "D", "none: listed as cancelled about an hour after it was scheduled to leave"),
+    (-142.75, -126.75, False, "D", "none: listed as cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
+    (-142.75, -126.75, False, "A", "none: listed as cancelled about 2 hours after it was scheduled to land"),
+    (-200.0, -100.0, True, "D", "none: listed as cancelled after it was scheduled to leave"),                  # rule 4
     (75.95, 2600.48, True, "D", "between 1 and 44 hours"),       # rule 5, LY 5409
     (445.95, 2970.48, True, "A", "between 7 and 50 hours"),      # rule 5, LY 5410
     (0.0, 2000.0, True, "D", "up to 34 hours"),                  # rule 6, boundary 0
@@ -87,7 +87,7 @@ def test_warning_rules(lo, hi, censored, direction, text): ...  # words.warning(
   Also, by exact value:
   - `warning` is None for `outcome="departed"` even with cancellation fields set.
   - `warning_note`: rules 1 and 2 give "The earliest record already showed it as cancelled."; rules 4 to 7 give "No records for part of that time."; rules 3 and 8 to 11 give None.
-  - `warning_sentence`: "none: cancelled about 2 hours after it was scheduled to leave" → "No warning: cancelled about 2 hours after it was scheduled to leave."; "unknown: no records for that time" → "Warning unknown: no records for that time."; "unknown" → "Warning unknown."; "at least 23 hours" → "Warning: at least 23 hours."
+  - `warning_sentence`: "none: listed as cancelled about 2 hours after it was scheduled to leave" → "No warning: listed as cancelled about 2 hours after it was scheduled to leave."; "unknown: no records for that time" → "Warning unknown: no records for that time."; "unknown" → "Warning unknown."; "at least 23 hours" → "Warning: at least 23 hours."
   - `main_label`: departed → DEPARTED, landed → LANDED, canceled → CANCELLED, gap/vanished/dropped → UNKNOWN; open with `sched_utc_final` 2026-10-29 22:10 and `last_fetch` 2026-10-29 22:02:45 → UPCOMING; 21:55 → NO FINAL UPDATE; equal → NO FINAL UPDATE; "teleported" raises.
   - The Israel-zone trap: under `israeli_machine`, a flight dict with `sched_local_final` 2026-10-29 23:55 and `sched_utc_final` 2026-10-29 21:55, last fetch 22:02:45, gives NO FINAL UPDATE (only UTC values are passed in).
   - `label_note`: gap → "No records for the time it left the airport's list."; vanished with `sched_utc_final - last_seen_at` = 6 h 20 min → "Removed from the airport's list 6 hours before it was scheduled, with no final status. Not necessarily cancelled; it may have moved to another time."; 1 h 5 min → "… 1 hour before …"; dropped → "Removed from the airport's list with no final status."; others None.
@@ -234,7 +234,7 @@ def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -
 - [ ] **Step 1: Write the failing tests** (rows made with `flights.make_rows` from small dicts):
   - `layout`: `<html lang="en">`, the noindex meta, `<title>` escaped, and a footer holding `SOURCE_SHORT`, `UNOFFICIAL`, `TIMES_NOTE`, links to `{root}how-it-works.html` and `CODE_URL` ("Code on GitHub"), and "Built by " + `BUILT_BY`.
   - `d("<script>")` == `'<span class="d">&lt;script&gt;</span>'`.
-  - Flight page for TO 3459 with three rows (27 Oct DEPARTED, last expected 17:09; 29 Oct CANCELLED with TO3459 lines; 1 Nov UPCOMING), `since=date(2026,10,27)`: title text "TO 3459, Tel Aviv to Paris"; "TRANSAVIA FRANCE" inside a data span followed by "(as the airport lists it)"; the airport line "lands at Paris (ORY)" (an arrival's says "leaves from New York (JFK)"); Hebrew city as `<span lang="he" dir="rtl">`; summary "Since 27 October: departed once, cancelled once, one upcoming."; rows newest first; the 29 Oct row is `<details open` with `id="2026-10-29-1710-ORY"`, "No warning: cancelled about 2 hours after it was scheduled to leave.", and the five change lines; the 27 Oct row shows "last expected 17:09"; `DELAY_SENTENCE` appears exactly once.
+  - Flight page for TO 3459 with three rows (27 Oct DEPARTED, last expected 17:09; 29 Oct CANCELLED with TO3459 lines; 1 Nov UPCOMING), `since=date(2026,10,27)`: title text "TO 3459, Tel Aviv to Paris"; "TRANSAVIA FRANCE" inside a data span followed by "(as the airport lists it)"; the airport line "lands at Paris (ORY)" (an arrival's says "leaves from New York (JFK)"); Hebrew city as `<span lang="he" dir="rtl">`; summary "Since 27 October: departed once, cancelled once, one upcoming."; rows newest first; the 29 Oct row is `<details open` with `id="2026-10-29-1710-ORY"`, "No warning: listed as cancelled about 2 hours after it was scheduled to leave.", and the five change lines; the 27 Oct row shows "last expected 17:09"; `DELAY_SENTENCE` appears exactly once.
   - Summary words: counts per label in `LABEL_ORDER`: DEPARTED/LANDED/CANCELLED as "departed once", "landed twice", "cancelled 3 times"; UPCOMING as "one upcoming", "two upcoming", "3 upcoming"; NO FINAL UPDATE as "one with no final update"; UNKNOWN as "one unknown".
   - A number with two cities (LY 5115 to KUT and BUS): title "LY 5115, from Tel Aviv", each row shows its city, no Hebrew city in the header.
   - Codeshare line in a row: "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)." with each number linked to its page and anchor.
