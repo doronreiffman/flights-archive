@@ -9,8 +9,7 @@ import shutil
 
 import pytest
 
-from model.report import ATTRIBUTION
-from timeline.words import UNOFFICIAL
+from timeline.words import SOURCE_SHORT, UNOFFICIAL
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "publish.sh"
 OURS = "arn:aws:iam::137953273942:user/doron-admin"
@@ -19,10 +18,11 @@ ARCHIVE_BUCKET = "flights-archive-archivebucket-onpwo5ns74tw"
 AWS_FLAGS = ["--profile", "flights-sam", "--region", "il-central-1"]
 
 
-def make_site(tmp_path, page="<p>First observed CANCELED on the public board</p>", marker=True, name="site"):
+def make_site(tmp_path, page="<p>So far, 2 of 40 flights with a known outcome were listed as cancelled.</p>",
+              marker=True, name="site"):
     site = tmp_path / name
     (site / "day").mkdir(parents=True)
-    footer = f"<footer><p>{ATTRIBUTION}</p><p>{UNOFFICIAL}</p></footer>"
+    footer = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p></footer>"
     (site / "index.html").write_text("<p>index</p>" + footer)
     (site / "day" / "2026-10-28.html").write_text(page + footer)
     (site / "style.css").write_text("p{}")
