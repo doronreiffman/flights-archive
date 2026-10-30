@@ -147,7 +147,7 @@ Flight pages: 949 today; each grows by a row a day.
 
 ### Day page (`day/YYYY-MM-DD.html`)
 
-Reached from the chart and the day list. Title "Thursday 29 October 2026"; a count line in the chart's words ("418 flights · 7 cancelled · N unknown"); the "incomplete" line when the `partial` rule flags the day; when the day has UNKNOWN flights, "No records for the time N of these flights left the airport's list."; then departures and arrivals in scheduled order, one row per flight: time, numbers, route, labels, warning for cancelled ones. Each row links to the flight page at its anchor. No change lines here, so day pages stay small.
+Reached from the chart and the day list. Title "Thursday 29 October 2026"; a count line in the chart's words ("418 flights · 7 cancelled · N unknown"); the "incomplete" line when the `partial` rule flags the day; when the day has UNKNOWN flights, "No known outcome for N of these flights."; then departures and arrivals in scheduled order, one row per flight: time, numbers, route, labels, warning for cancelled ones. Each row links to the flight page at its anchor. No change lines here, so day pages stay small.
 
 ### All cancellations (`cancellations.html`)
 
