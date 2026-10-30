@@ -219,6 +219,13 @@ def test_the_phrase_rules_still_read_the_airports_data(tmp_path):
     assert check.scan(site) == [("index.html", "delayed by"), ("index.html", "took off")]
 
 
+def test_the_word_rules_skip_the_title_and_the_phrase_rules_read_it(tmp_path):
+    """A flight page's <title> is its page_title: the airport's data with a few fixed words."""
+    site = make(tmp_path, {"index.html": "<title>WE 12, Tel Aviv to US</title><p>ok</p>",
+                           "day/x.html": "<title>LY 1, delayed by WE</title><p>ok</p>"})
+    assert check.scan(site) == [("day/x.html", "delayed by")]
+
+
 def test_a_data_span_with_markup_inside_is_read(tmp_path):
     site = make(tmp_path, {"index.html": '<span class="d">US <b>1</b></span>'})
     assert check.scan(site) == [("index.html", "us")]

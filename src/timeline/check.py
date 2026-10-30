@@ -9,10 +9,11 @@ Runs before every upload (scripts/publish.sh). Phrases (BANNED, the placeholder)
 written (attributes, a script's `<` comparisons) and with tags stripped (markup inside a page or a script string),
 a phrase in either counting; entities are unescaped and whitespace collapsed in both, so an entity or a line break
 cannot hide one either. Words ("we", "our", "us"; "I"; "board" and the like) are matched whole, in the page's text
-with tags stripped, after the airport's data is blanked out (DATA): an airline named "US-BANGLA AIRLINES" must not
-stop an upload. Attributes hold the airport's codes in addresses and anchors, so they are not read for words; a
-script or a style sheet has no attributes and is also read as written. A page built before a footer change lacks
-the current wording and fails. Exit 0 clean, 1 on a hit or a missing line, 2 when there are no pages to check.
+with tags stripped, after the airport's data and the page titles that carry it are blanked out (DATA): an airline
+named "US-BANGLA AIRLINES" must not stop an upload. Attributes hold the airport's codes in addresses and anchors,
+so they are not read for words; a script or a style sheet has no attributes and is also read as written. A page
+built before a footer change lacks the current wording and fails. Exit 0 clean, 1 on a hit or a missing line, 2
+when there are no pages to check.
 """
 import html
 import re
@@ -33,10 +34,12 @@ PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)  # every file
 I_WORD = re.compile(r"\bI\b")  # pages other than EXPLAINER, outside the built-by line
 # pages other than EXPLAINER, the built-by line included
 COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|receipt|receipts)\b", re.I)
-# The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside) and the front page's
-# search data (every "<" escaped). A span with markup inside, or any other element, is read like the site's text.
+# The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside), the front page's
+# search data (every "<" escaped) and each page's <title> (escaped; a flight page's title is the airline code, number
+# and city with a few fixed words). A span with markup inside, or any other element, is read like the site's text.
 DATA = re.compile(r'<span class="d">[^<]*</span>'
-                  r'|<script type="application/json" id="flights-data">[^<]*</script>')
+                  r'|<script type="application/json" id="flights-data">[^<]*</script>'
+                  r'|<title>[^<]*</title>')
 
 
 class NoPages(Exception):
