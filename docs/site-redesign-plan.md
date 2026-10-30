@@ -86,7 +86,7 @@ def test_warning_rules(lo, hi, censored, direction, text): ...  # words.warning(
 
   Also, by exact value:
   - `warning` is None for `outcome="departed"` even with cancellation fields set.
-  - `warning_note`: rules 1 and 2 give "The earliest record already showed it as cancelled."; rules 4 to 7 give "No records for part of that time."; rules 3 and 8 to 11 give None.
+  - `warning_note`: rules 1 and 2 give "The earliest record already showed it as cancelled."; rules 4 to 6 give "No records for part of that time."; rules 3 and 8 to 11 give None.
   - `warning_sentence`: "none: listed as cancelled about 2 hours after it was scheduled to leave" → "No warning: listed as cancelled about 2 hours after it was scheduled to leave."; "unknown: no records for that time" → "Warning unknown: no records for that time."; "unknown" → "Warning unknown."; "at least 23 hours" → "Warning: at least 23 hours."
   - `main_label`: departed → DEPARTED, landed → LANDED, canceled → CANCELLED, gap/vanished/dropped → UNKNOWN; open with `sched_utc_final` 2026-10-29 22:10 and `last_fetch` 2026-10-29 22:02:45 → UPCOMING; 21:55 → NO FINAL UPDATE; equal → NO FINAL UPDATE; "teleported" raises.
   - The Israel-zone trap: under `israeli_machine`, a flight dict with `sched_local_final` 2026-10-29 23:55 and `sched_utc_final` 2026-10-29 21:55, last fetch 22:02:45, gives NO FINAL UPDATE (only UTC values are passed in).
@@ -409,7 +409,7 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
 > - DELAYED: shown beside another label when the airport's list said "delayed" at some point.
 >
 > ## How much warning
-> For a cancelled flight, the warning is how long before its scheduled time the list already showed it as cancelled. The list refreshes about every 15 minutes, so the change is usually known to within that window, and always to within an hour. Where records are missing, the warning is a range ("between 7 and 50 hours"). When a flight was already cancelled the first time it appeared in the records, only a lower limit is known ("at least 23 hours"); "at least" is also used when the change was seen an hour or more ahead, rounded down. For the same reason, the time of a cancellation is always given as a range. The airline may have told passengers earlier than the list showed.
+> For a cancelled flight, the warning is how long before its scheduled time the list already showed it as cancelled. The list refreshes about every 15 minutes, so the change is usually known to within that window, and always to within an hour. For the same reason, the time of a cancellation is always given as a range. Where records are missing, the warning is a range ("between 7 and 50 hours"). When a flight was already cancelled the first time it appeared in the records, only a lower limit is known ("at least 23 hours"); "at least" is also used when the change was seen an hour or more ahead, rounded down. The airline may have told passengers earlier than the list showed.
 >
 > ## Why there are no delay figures
 > The list gives an expected time for each flight. It doesn't say whether that is when the plane leaves the gate or when it takes off. Until that is settled, this site shows the airport's times as they are and doesn't turn them into delay figures.
