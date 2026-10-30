@@ -27,7 +27,6 @@ def test_fixed_texts_are_the_specs_words():
     assert words.SOURCE_SHORT == "Flight data: Israel Airports Authority, published on data.gov.il."
     assert words.TIMES_NOTE == "Times are Israel time."
     assert words.PLACEHOLDER == "[owner's wording]"
-    assert words.BUILT_BY == words.PLACEHOLDER
     assert words.CODE_URL == "https://github.com/doronreiffman/flights-archive"
     assert words.DELAY_SENTENCE == (
         "Expected times are the airport's own. This site doesn't turn them into delay figures, "

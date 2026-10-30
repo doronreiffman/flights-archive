@@ -451,7 +451,7 @@ CHART_DAYS = [DayInfo(date(2026, 10, 27), 348, 4, 12, "past", True),
 ALL_DAYS = [DayInfo(date(2026, 10, 26), 120, 0, 3, "past", True), *CHART_DAYS]  # 26 Oct: not on the chart
 HOSTILE = {"n": ["zz1"], "p": ["</script><b>"], "t": "ZZ 1, Tel Aviv to </script>`'\"", "u": "flight/ZZ1-D.html"}
 DESCRIPTION = ("Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning "
-               f"there was. Built by {words.BUILT_BY}.")
+               f"there was. Built by {words.BUILT_BY.removesuffix('.')}.")
 ASY_UNKNOWN = dict(airline="ASY", flight_no="991", outcome="canceled", cancel_lead_min=30.0, cancel_lead_max_min=None,
                    cancel_lead_censored=None, uncanceled=None)  # rule 2: "unknown"
 
@@ -526,6 +526,14 @@ def test_front_page_head():
     assert "og:image" not in page
     assert '<script src="search.js" defer></script>' in head
     assert '<link rel="stylesheet" href="style.css">' in head
+
+
+@pytest.mark.parametrize("built_by", ["Doron Reiffman.", "Doron Reiffman"])
+def test_description_ends_with_one_full_stop_whatever_the_built_by_line_ends_with(monkeypatch, built_by):
+    monkeypatch.setattr(words, "BUILT_BY", built_by)
+    head = front()[:front().index("</head>")]
+    for attribute in ('name="description"', 'property="og:description"'):
+        assert meta(head, attribute).endswith("there was. Built by Doron Reiffman."), attribute
 
 
 def test_front_page_title_and_lede():
@@ -751,27 +759,21 @@ def every_page() -> dict[str, str]:
     }
 
 
-PHRASES = (*check.BANNED, "minutes late", "hours late")
-COLLECTION_WORDS = ("board", "snapshot", "stored", "observed", "receipt")
-
-
 def hits(name: str, page: str) -> list[str]:
-    """What the upload check would refuse, and the redesign's word rules: phrases read as timeline.check reads a
+    """What the upload check would refuse, the built-by placeholder aside: phrases read as timeline.check reads a
     page (lower case, as written and with tags as spaces, entities unescaped, whitespace collapsed), so a label
-    beside a text cannot join into one; whole words in the text with tags as spaces."""
+    beside a text cannot join into one; the word rules through the check's own code, so the two cannot drift
+    ("how it works" is the explainer page, every other name an ordinary page)."""
     flat = check.flatten(check.strip_tags(page))
-    found = [p for p in PHRASES if p in flat or p in check.flatten(page)]
-    found += [w for w in ("we", "our", "us") if re.search(rf"\b{w}\b", flat)]
-    if name != "how it works":
-        found += [w for w in COLLECTION_WORDS if re.search(rf"\b{w}\b", flat)]
-        found += ["I"] if re.search(r"\bI\b", re.sub(r"\s+", " ", html.unescape(check.strip_tags(page)))) else []
-    return found
+    found = [p for p in check.BANNED if p in flat or p in check.flatten(page)]
+    return found + check._word_hits(check.EXPLAINER if name == "how it works" else "page.html", page)
 
 
 def test_hits_finds_a_label_joined_to_a_bare_warning():
     """The reason for the rule: "CANCELLED" then "at least 23 hours" reads as "cancelled at"."""
     assert hits("x", '<span class="label">CANCELLED</span><p>at least 23 hours</p>') == ["cancelled at"]
-    assert hits("x", "<p>Our list</p><p>stored</p><p>I</p>") == ["our", "stored", "I"]
+    assert sorted(hits("x", "<p>Our list</p><p>stored</p><p>I</p>")) == ["I", "our", "stored"]
+    assert hits("x", "<p>snapshots, receipts and boards</p>") == ["boards", "receipts", "snapshots"]
 
 
 @pytest.mark.parametrize("name", list(every_page()))
@@ -779,3 +781,20 @@ def test_no_page_trips_the_word_rules(name):
     page = every_page()[name]
     assert "<body>" in page
     assert hits(name, page) == []
+
+
+BUILT_BY_WITH_I = "Doron Reiffman. I built this to learn"
+
+
+def test_a_built_by_line_saying_i_passes_the_helper_and_the_upload_check(tmp_path, monkeypatch):
+    """The owner's wording may say "I": timeline.check takes the built-by line out before its "I" rule, and so
+    does hits(). Both modules are patched, as the owner's one edit to words.py reaches both."""
+    for module in (words, check):
+        monkeypatch.setattr(module, "BUILT_BY", BUILT_BY_WITH_I)
+    pages = every_page()
+    for i, (name, page) in enumerate(pages.items()):
+        assert f"Built by {BUILT_BY_WITH_I}" in page, name
+        assert hits(name, page) == [], name
+        (tmp_path / (check.EXPLAINER if name == "how it works" else f"page-{i}.html")).write_text(page, encoding="utf-8")
+    assert check.scan(tmp_path) == [] and check.missing_notices(tmp_path) == []
+    assert check.main([str(tmp_path)]) == 0

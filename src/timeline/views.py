@@ -281,8 +281,15 @@ def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -
 TITLE = f"{HOME} (Ben Gurion)"
 LEDE = ("A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, "
         "and which ones were cancelled.")
-DESCRIPTION = ("Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning "
-               f"there was. Built by {words.BUILT_BY}.")
+
+
+def description() -> str:
+    """The front page's description, read when the page is built; a built-by line that ends with a full stop
+    does not get a second one."""
+    return ("Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning "
+            f"there was. Built by {words.BUILT_BY.removesuffix('.')}.")
+
+
 SEARCH_HINT = "Flight number or city, e.g. LY 001 or Paris"
 RECENT = 10  # cancellations on the front page; the rest are on cancellations.html
 
@@ -352,9 +359,10 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
     """The front page, top to bottom as docs/site-redesign.md lists it. The caller chooses: the headline's counts,
     the story (None for none), the recent cancellations newest first (at most RECENT shown), the chart's days and
     every day for the list under it, the search entries, and the last record's time (the model's naive UTC)."""
-    head = "\n".join([f'<meta name="description" content="{e(DESCRIPTION)}">',
+    about = description()
+    head = "\n".join([f'<meta name="description" content="{e(about)}">',
                       f'<meta property="og:title" content="{e(TITLE)}">',
-                      f'<meta property="og:description" content="{e(DESCRIPTION)}">',
+                      f'<meta property="og:description" content="{e(about)}">',
                       '<meta property="og:type" content="website">',
                       '<script src="search.js" defer></script>'])
     body = [f"<h1>{e(HOME)}</h1>", f'<p class="lede">{e(LEDE)}</p>']
