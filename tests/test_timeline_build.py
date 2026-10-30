@@ -1,7 +1,9 @@
 """The whole site, built from small synthetic models through the real model build (docs/site-redesign.md: "Pages",
 "How it is built", "Tests and checks")."""
 import html
+import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -152,6 +154,31 @@ def test_one_number_leaving_twice_at_one_time_gets_two_anchors_on_one_page(tmp_p
     assert sorted(ids) == ["2026-10-28-1630-BUS", "2026-10-28-1630-KUT"]
     day = read(site, "day/2026-10-28.html")
     assert "#2026-10-28-1630-BUS" in day and "#2026-10-28-1630-KUT" in day
+
+
+def test_every_link_and_search_address_leads_to_a_written_page_and_an_existing_anchor(tmp_path):
+    """Every relative href (pages, the style sheet, #anchors) and every search entry's address, read from the page
+    it is on, names a file the build wrote and, after a "#", an id on that page."""
+    cancelled = row(airline="IZ", flight_no="991", sched_local="2026-10-28T10:00:00", airport="ATH", city_en="ATHENS",
+                    status="CANCELED", status_he="מבוטל")
+    site = make_site(tmp_path, [(MIXED[0][0], [*MIXED[0][1], CANCELS]), (MIXED[1][0], [*MIXED[1][1], cancelled])])
+    written = {p.relative_to(site).as_posix() for p in site.rglob("*") if p.is_file()}
+    pages = all_pages(site)
+    ids = {name: {html.unescape(i) for i in re.findall(r'\sid="([^"]*)"', page)} for name, page in pages.items()}
+    links = [(name, html.unescape(href)) for name, page in pages.items() for href in re.findall(r'\shref="([^"]*)"', page)]
+    data = re.search(r'<script type="application/json" id="flights-data">(.*?)</script>', pages["index.html"], re.S)
+    entries = json.loads(data.group(1))
+    assert len(entries) == sum(name.startswith("flight/") for name in written) == 7
+    links += [("index.html", entry["u"]) for entry in entries]
+    relative = [(name, href) for name, href in links if not re.match(r"[a-z][a-z0-9+.-]*:", href)]
+    assert any(name.startswith("day/") and href.startswith("../flight/") and "#" in href for name, href in relative)
+    broken = []
+    for name, href in relative:
+        path, _, anchor = href.partition("#")
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(name), path)) if path else name
+        if target not in written or (anchor and anchor not in ids.get(target, set())):
+            broken.append((name, href))
+    assert broken == []
 
 
 # --- the build stops rather than lose a row or overwrite a page -------------------------------------
