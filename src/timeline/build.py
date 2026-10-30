@@ -1,4 +1,4 @@
-"""Build the history timeline: python -m timeline.build --model data/model --out site (docs/timeline.md)"""
+"""Build the site: python -m timeline.build --model data/model --out site (docs/site-redesign.md, "How it is built")"""
 from __future__ import annotations
 
 import argparse
@@ -10,15 +10,16 @@ from pathlib import Path
 import duckdb
 
 from model.report import ATTRIBUTION
-from model.rules import GAP_HOURS, RETIME_WINDOW_HOURS
+from model.rules import GAP_HOURS
 
-from . import pages
+from . import flights, views, words
 
 STATIC = Path(__file__).parent / "static"
 MARKER = ".timeline-site"
 # The board keeps a past flight at least this long and lists a flight this far ahead (CLAUDE.md, measured).
 BOARD_KEEPS = timedelta(hours=22)
 BOARD_AHEAD = timedelta(hours=72)
+CHART_DAYS = 14  # past days (today included) with flights on the front page's chart; every later day is added
 OBS_COLUMNS = ("flight_id", "snap_rn", "observed_at", "prev_observed_at", "change_kind", "changed_fields",
                "sched_local", "est_local", "status", "status_he", "terminal", "counters", "zone",
                "airline_name", "airport_name", "city_en", "city_he", "country_en", "country_he")
@@ -32,54 +33,67 @@ def _rows(con, sql: str) -> list[dict]:
 
 def _utc(day: date) -> datetime:
     """Midnight starting a local Israel date, as naive UTC like the model's times."""
-    return datetime.combine(day, time(), tzinfo=pages.ISRAEL).astimezone(timezone.utc).replace(tzinfo=None)
+    return datetime.combine(day, time(), tzinfo=words.ISRAEL).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def load(model_dir: Path) -> tuple[list[dict], list[dict], list[dict]]:
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
     src = {t: str(model_dir / f"{t}.parquet").replace("'", "''") for t in ("flights", "observations", "snapshots")}
-    flights = _rows(con, f"SELECT * FROM '{src['flights']}' ORDER BY sched_local_final, direction, airline, flight_no, flight_id")
+    table = _rows(con, f"SELECT * FROM '{src['flights']}' ORDER BY sched_local_final, direction, airline, flight_no, flight_id")
     obs = _rows(con, f"SELECT {', '.join(OBS_COLUMNS)} FROM '{src['observations']}' ORDER BY flight_id, snap_rn")
     snaps = _rows(con, f"""SELECT fetched_at, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s
                            FROM '{src['snapshots']}' ORDER BY snap_rn""")
-    return flights, obs, snaps
+    return table, obs, snaps
 
 
-def render(flights: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, str]:
-    """Every page of the site, by path. Pure: the same rows give the same text."""
-    undated = [f"{f['airline']} {f['flight_no']}" for f in flights if f["sched_local_final"] is None]
+def _partial_days(days: set[date], first_check: datetime, last_check: datetime) -> set[date]:
+    """Days the records may not hold whole: they began after the board stopped listing the day's earliest
+    flights, or ended before it listed the day's latest."""
+    out = set()
+    for day in days:
+        start, end = _utc(day), _utc(day + timedelta(days=1))
+        partial = first_check > start + BOARD_KEEPS or last_check < end - BOARD_AHEAD
+        if partial:
+            out.add(day)
+    return out
+
+
+def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, str]:
+    """Every page of the site, by path, from the model's flights table, observations and snapshots as `load`
+    returns them. Pure: the same rows give the same text."""
+    undated = [f"{f['airline']} {f['flight_no']}" for f in table if f["sched_local_final"] is None]
     if undated:
         raise ValueError(f"{len(undated)} flights have no final scheduled time ({undated[:10]}); "
                          "every flight must land on a day page")
     first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]
     gaps = [(s["prev"], s["fetched_at"]) for s in snaps if (s["gap_before_s"] or 0) > GAP_HOURS * 3600]
-    obs_by_flight: dict[str, list[dict]] = {}
-    for o in obs:
-        obs_by_flight.setdefault(o["flight_id"], []).append(o)
-    by_group: dict[str, list[dict]] = {}
-    for f in flights:
-        by_group.setdefault(f["codeshare_group_id"], []).append(f)
-    by_day: dict[date, list[dict]] = {}
-    for f in flights:
-        by_day.setdefault(f["sched_local_final"].date(), []).append(f)
+    rows = flights.make_rows(table, obs, last_check, GAP_HOURS)
+    flights.check_unique(rows)
+    flights_ = flights.group_flights(rows)
+    infos = flights.day_infos(flights_, last_check, _partial_days({r.day for r in rows}, first_check, last_check))
+    shown = [i for i in infos if i.state != "ahead"][-CHART_DAYS:]
+    chart_days = shown + [i for i in infos if i.state == "ahead"]
+    censored = {f["flight_id"]: f["cancel_lead_censored"] for f in table}
+    cancelled, known = flights.headline_counts(flights_)
 
-    files, days = {}, []
-    for day in sorted(by_day):
-        start, end = _utc(day), _utc(day + timedelta(days=1))
-        partial = first_check > start + BOARD_KEEPS or last_check < end - BOARD_AHEAD
-        window = (start - BOARD_AHEAD, end + BOARD_KEEPS)
-        day_gaps = [(a, b) for a, b in gaps if a < window[1] and b > window[0]]
-        anchors = [pages.anchor(f["airline"], f["flight_no"], f["direction"], f["sched_local_first"], f["airport"])
-                   for f in by_day[day]]
-        if len(set(anchors)) != len(anchors):
-            raise ValueError(f"two flights on {day} share an anchor: {sorted(a for a in anchors if anchors.count(a) > 1)}")
-        files[f"day/{day:%Y-%m-%d}.html"] = pages.day_page(day, by_day[day], obs_by_flight, by_group, day_gaps, partial,
-                                                           last_check, ATTRIBUTION, GAP_HOURS)
-        dep = sum(f["direction"] == "D" for f in by_day[day])
-        days.append({"day": day, "dep": dep, "arr": len(by_day[day]) - dep, "partial": partial})
-    files["index.html"] = pages.index_page(days, gaps, first_check, last_check, ATTRIBUTION)
-    files["methodology.html"] = pages.methodology_page(ATTRIBUTION, GAP_HOURS, RETIME_WINDOW_HOURS)
+    files = {"index.html": views.front_page(cancelled, known, flights.featured(rows, censored),
+                                            flights.recent_cancellations(flights_), chart_days, infos,
+                                            flights.search_entries(rows), last_check)}
+    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps)
+    files["cancellations.html"] = views.cancellations_page(flights_)
+    by_day: dict[date, list[tuple[flights.Row, ...]]] = {}
+    for fl in flights_:
+        by_day.setdefault(fl[0].day, []).append(fl)
+    for info in infos:
+        files[f"day/{info.day:%Y-%m-%d}.html"] = views.day_page(info, by_day[info.day])
+    by_page: dict[str, list[flights.Row]] = {}
+    for r in rows:
+        by_page.setdefault(r.page, []).append(r)
+    partners = flights.partners(rows)
+    since = words.il_time(first_check).date()  # the Israel date of the first record
+    for page, page_rows in sorted(by_page.items()):
+        files[page] = views.flight_page(page_rows, partners, since)
     for name in ("search.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
     return files
@@ -121,10 +135,11 @@ def write_site(files: dict[str, str], out_dir: Path) -> None:
 
 def build(model_dir: Path, out_dir: Path) -> dict[str, int]:
     refuse_foreign(out_dir)  # before doing any work
-    flights, obs, snaps = load(model_dir)
-    files = render(flights, obs, snaps)
+    table, obs, snaps = load(model_dir)
+    files = render(table, obs, snaps)
     write_site(files, out_dir)
-    return {"days": sum(p.startswith("day/") for p in files), "flights": len(flights)}
+    return {"days": sum(p.startswith("day/") for p in files), "flight_pages": sum(p.startswith("flight/") for p in files),
+            "flights": len(table)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -136,7 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no model under {args.model}; run model.build first", file=sys.stderr)
         return 2
     counts = build(args.model, args.out)
-    print(f"{counts['days']} day pages, {counts['flights']} flight numbers -> {args.out}/index.html")
+    print(f"{counts['days']} day pages, {counts['flight_pages']} flight pages, {counts['flights']} flight numbers "
+          f"-> {args.out}/index.html")
     return 0
 
 

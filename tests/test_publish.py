@@ -10,7 +10,7 @@ import shutil
 import pytest
 
 from model.report import ATTRIBUTION
-from timeline.pages import UNOFFICIAL
+from timeline.words import UNOFFICIAL
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "publish.sh"
 OURS = "arn:aws:iam::137953273942:user/doron-admin"

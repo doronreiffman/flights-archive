@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from model.report import ATTRIBUTION
-from timeline.pages import UNOFFICIAL
+from timeline.words import UNOFFICIAL
 
 BANNED = ("cancelled at", "canceled at", "delayed by", "operated by", "took off", "pause in our collection")
 SCANNED = {".html", ".css", ".js"}  # every file type scripts/publish.sh uploads

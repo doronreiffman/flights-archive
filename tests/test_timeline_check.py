@@ -7,7 +7,7 @@ import pytest
 
 from model.report import ATTRIBUTION
 from timeline import check
-from timeline.pages import UNOFFICIAL
+from timeline.words import UNOFFICIAL
 
 SRC = Path(__file__).parent.parent / "src"
 FOOTER = f"<footer><p>{ATTRIBUTION}</p><p>{UNOFFICIAL}</p></footer>"
