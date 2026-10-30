@@ -114,6 +114,8 @@ td { text-align: left; vertical-align: top; padding: .6rem .75rem .6rem 0; borde
 th:last-child, td:last-child { padding-right: 0; }
 .cancellations td:first-child { color: var(--muted); white-space: nowrap; }
 .cancellations td:nth-child(2) { font-weight: 600; white-space: nowrap; }
+/* The numbers are data spans, whose pre-wrap would beat the cell's nowrap: no break inside "LY 5410". */
+.cancellations td:nth-child(2) .d { white-space: pre; }
 
 /* --- chart (front page): text keeps the SVG's 12 px; its colors come from the checked tokens ------- */
 .chart { display: block; margin: .25rem 0 .75rem; }

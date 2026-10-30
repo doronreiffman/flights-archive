@@ -107,6 +107,12 @@ def test_published_double_spaces_show():
     assert declared((), ".d").get("white-space") == "pre-wrap"
 
 
+def test_flight_numbers_in_the_table_never_break():
+    """The flight cell is nowrap, but each number is a `.d` span whose own pre-wrap would let "LY 5410" break at its
+    space when the table squeezes the column; `pre` keeps the published spacing and stops the break."""
+    assert declared((), ".cancellations td:nth-child(2) .d").get("white-space") == "pre"
+
+
 def test_hebrew_city_is_isolated():
     assert declared((), '[dir="rtl"]').get("unicode-bidi") == "isolate"
 

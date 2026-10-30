@@ -246,6 +246,7 @@ COLLECTOR_MUTATIONS = {
     "style: chart text given a size": (STYLE, ".chart { display: block;", ".chart { font-size: 16px; display: block;"),
     "style: a label without its color": (STYLE, ".l-delayed { color: var(--delay-fg); background: var(--delay-bg); }", ""),
     "style: a web font": (STYLE, "/* --- page ", "@import url(font.css);\n/* --- page "),
+    "style: flight numbers may wrap": (STYLE, ".cancellations td:nth-child(2) .d { white-space: pre; }", ".cancellations td:nth-child(2) .d { white-space: pre-wrap; }"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
