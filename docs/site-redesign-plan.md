@@ -86,7 +86,7 @@ def test_warning_rules(lo, hi, censored, direction, text): ...  # words.warning(
 
   Also, by exact value:
   - `warning` is None for `outcome="departed"` even with cancellation fields set.
-  - `warning_note`: rules 1 and 2 give "It was already cancelled at the earliest record."; rules 4 to 7 give "No records for part of that time."; rules 3 and 8 to 11 give None.
+  - `warning_note`: rules 1 and 2 give "The earliest record already showed it as cancelled."; rules 4 to 7 give "No records for part of that time."; rules 3 and 8 to 11 give None.
   - `warning_sentence`: "none: cancelled about 2 hours after it was scheduled to leave" → "No warning: cancelled about 2 hours after it was scheduled to leave."; "unknown: no records for that time" → "Warning unknown: no records for that time."; "unknown" → "Warning unknown."; "at least 23 hours" → "Warning: at least 23 hours."
   - `main_label`: departed → DEPARTED, landed → LANDED, canceled → CANCELLED, gap/vanished/dropped → UNKNOWN; open with `sched_utc_final` 2026-10-29 22:10 and `last_fetch` 2026-10-29 22:02:45 → UPCOMING; 21:55 → NO FINAL UPDATE; equal → NO FINAL UPDATE; "teleported" raises.
   - The Israel-zone trap: under `israeli_machine`, a flight dict with `sched_local_final` 2026-10-29 23:55 and `sched_utc_final` 2026-10-29 21:55, last fetch 22:02:45, gives NO FINAL UPDATE (only UTC values are passed in).
