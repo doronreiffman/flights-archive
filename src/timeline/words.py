@@ -17,7 +17,7 @@ UNOFFICIAL = ("Unofficial; not affiliated with or endorsed by the Israel Airport
 SOURCE_SHORT = "Flight data: Israel Airports Authority, published on data.gov.il."
 TIMES_NOTE = "Times are Israel time."
 PLACEHOLDER = "[owner's wording]"  # the upload check refuses a site that still contains it
-BUILT_BY = PLACEHOLDER
+BUILT_BY = "Doron Reiffman (linkedin.com/in/doronreiffman)"
 CODE_URL = "https://github.com/doronreiffman/flights-archive"
 DELAY_SENTENCE = ("Expected times are the airport's own. This site doesn't turn them into delay figures, "
                   "because the airport doesn't say whether they mean leaving the gate or taking off.")
