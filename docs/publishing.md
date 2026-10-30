@@ -58,10 +58,10 @@ Resources:
 
 ## Cost (monthly)
 
-- S3 storage at $0.025 per GB-month (AWS price list, il-central-1, published 2026-10-15): well under a cent for today's 2.4 MB, about $0.03 near 1 GB.
-- S3 requests: every build rewrites every file, so each upload PUTs all of them (about 11) plus a few LISTs, at $0.0055 per 1,000; CloudFront caches the GETs. Under a cent.
+- S3 storage at $0.025 per GB-month (AWS price list, il-central-1, published 2026-10-15): well under a cent for the 3.9 MB site of 2026-10-30, about $0.03 near 1 GB.
+- S3 requests: every build rewrites every file, so each upload PUTs all of them (961 on 2026-10-30, more as new flight numbers and days appear) plus a few LISTs, at $0.0055 per 1,000 (AWS Price List API, il-central-1, read 2026-10-29; `docs/receipts.md`, "Cost (monthly)"): about half a cent an upload. CloudFront caches the GETs.
 - CloudFront: inside the always-free 1 TB and 10 million requests a month; invalidations: the first 1,000 paths a month are free, and `/*` counts as one path (https://aws.amazon.com/cloudfront/pricing/pay-as-you-go, https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
-- Total: under $0.05 a month. Guard: the account's "My Monthly Cost Budget", $5, emails at 85% and 100% of actual and 100% of forecast (`aws budgets describe-budgets` and `describe-notifications-for-budget`, read 2026-10-29).
+- Total: under $0.05 a month at up to about nine uploads a month; uploading every day would come to about $0.16. Guard: the account's "My Monthly Cost Budget", $5, emails at 85% and 100% of actual and 100% of forecast (`aws budgets describe-budgets` and `describe-notifications-for-budget`, read 2026-10-29).
 
 ## Unverified until the deploy
 

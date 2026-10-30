@@ -97,14 +97,14 @@ The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once t
 
 ## Timeline
 
-`src/timeline/` turns the model into a static site: one page per scheduled day, and a timeline per flight number of what the public board showed and when it was first seen. The wording never claims more than the board showed (no cancellation times, delays or operators), and every page cites the source and says it is unofficial. Design and limits: [timeline.md](timeline.md). Local only for now; the owner's reading of the data.gov.il terms is that they allow publishing it ([terms.md](terms.md)).
+`src/timeline/` turns the model into a static site: a front page that leads with cancellations (how many, the recent ones, how much warning each got) and a flight search, a page per flight number with every day it was scheduled and what changed, and a page per day. The wording never claims more than the airport's list showed (a cancellation's time is a range and its warning a range or a lower bound; no delays or operators), and every page cites the source and says it is unofficial. Pages, words and checks: [site-redesign.md](site-redesign.md); v1 and the publishing decision: [timeline.md](timeline.md). Local only for now; the owner's reading of the data.gov.il terms is that they allow publishing it ([terms.md](terms.md)).
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
 .venv/bin/python -m http.server -d site 8000   # then open http://localhost:8000
 ```
 
-Publishing (not deployed yet): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases, and the source and unofficial lines on every page. Both write to AWS, so each runs on the owner's go; design, takedown and cost in [publishing.md](publishing.md).
+Publishing (not deployed yet): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases and words, the built-by placeholder (which stops every upload until the owner writes that line), and the source and unofficial lines on every page. Both write to AWS, so each runs on the owner's go; design, takedown and cost in [publishing.md](publishing.md).
 
 ## Cost
 
