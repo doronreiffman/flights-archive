@@ -93,7 +93,7 @@ def label_note(f: dict) -> str | None:
 
 def changed_back(f: dict, label: str) -> str | None:
     """A line under the final label when the flight was shown as cancelled, then as something else."""
-    if not f["uncanceled"]:  # NULL (cancelled at its earliest record, never shown otherwise) counts as false
+    if not f["uncanceled"]:  # NULL (cancelled from its earliest record on) counts as false
         return None
     if label == CANCELLED:
         return "Cancelled, changed back, then cancelled again."
@@ -117,7 +117,7 @@ def last_expected(f: dict, page_date: date | None) -> str | None:
 def _warning_rule(f: dict) -> tuple[int, str]:
     """The spec's warning table, in order; the first matching rule wins, so each condition leaves out what an
     earlier rule already took. `lo` is from the first record showing the flight cancelled to its scheduled time,
-    `hi` from the record before that (None when it was already cancelled at the earliest record); hi >= lo."""
+    `hi` from the record before that (None when the earliest record already showed it cancelled); hi >= lo."""
     lo, hi, censored = f["cancel_lead_min"], f["cancel_lead_max_min"], f["cancel_lead_censored"]
     after = f"after it was scheduled to {_verb(f['direction'])}"
     if hi is None:
@@ -158,7 +158,7 @@ def warning_note(f: dict) -> str | None:
         return None
     rule = _warning_rule(f)[0]
     if rule in (1, 2):
-        return "It was already cancelled at the earliest record."
+        return "The earliest record already showed it as cancelled."
     if 4 <= rule <= 7:
         return "No records for part of that time."
     return None

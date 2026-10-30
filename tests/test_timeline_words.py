@@ -35,12 +35,6 @@ def test_fixed_texts_are_the_specs_words():
     assert str(words.ISRAEL) == "Asia/Jerusalem"
 
 
-def test_delay_sentence_passes_the_upload_check():
-    """The sentence sits on flight pages; a banned phrase in it would stop every upload."""
-    text = words.DELAY_SENTENCE.lower()
-    assert [p for p in (*check.BANNED, "minutes late", "hours late") if p in text] == []
-
-
 def test_labels_and_their_order():
     assert words.LABEL_ORDER == ("DEPARTED", "LANDED", "CANCELLED", "UPCOMING", "NO FINAL UPDATE", "UNKNOWN")
     assert words.LABEL_ORDER == (words.DEPARTED, words.LANDED, words.CANCELLED, words.UPCOMING,
@@ -109,7 +103,7 @@ def test_no_final_update_decided_in_utc(israeli_machine):
 SCHED = datetime(2026, 10, 29, 16, 30)
 
 
-@pytest.mark.parametrize("outcome, last_seen_at, note", [
+LABEL_NOTE_CASES = [
     ("gap", SCHED - timedelta(hours=9), "No records for the time it left the airport's list."),
     ("vanished", SCHED - timedelta(hours=6, minutes=20),
      "Removed from the airport's list 6 hours before it was scheduled, with no final status. "
@@ -119,17 +113,23 @@ SCHED = datetime(2026, 10, 29, 16, 30)
      "Not necessarily cancelled; it may have moved to another time."),
     ("dropped", SCHED - timedelta(minutes=20), "Removed from the airport's list with no final status."),
     ("departed", SCHED, None), ("landed", SCHED, None), ("canceled", SCHED, None), ("open", SCHED, None),
-])
+]
+
+
+@pytest.mark.parametrize("outcome, last_seen_at, note", LABEL_NOTE_CASES)
 def test_label_note(outcome, last_seen_at, note):
     assert words.label_note({"outcome": outcome, "sched_utc_final": SCHED, "last_seen_at": last_seen_at}) == note
 
 
-@pytest.mark.parametrize("uncanceled, label, line", [
+CHANGED_BACK_CASES = [
     (True, "LANDED", "Shown as cancelled for a while, then changed back."),
     (True, "CANCELLED", "Cancelled, changed back, then cancelled again."),
-    (None, "CANCELLED", None),  # NULL: already cancelled at the earliest record, never shown otherwise
+    (None, "CANCELLED", None),  # NULL: the earliest record already showed it cancelled, never shown otherwise
     (False, "LANDED", None),
-])
+]
+
+
+@pytest.mark.parametrize("uncanceled, label, line", CHANGED_BACK_CASES)
 def test_changed_back(uncanceled, label, line):
     assert words.changed_back({"uncanceled": uncanceled}, label) == line
 
@@ -140,12 +140,15 @@ def test_scheduled():
     assert words.scheduled("D", datetime(2026, 10, 29, 17, 10), date(2026, 10, 30)) == "scheduled to leave 29 Oct 17:10"
 
 
-@pytest.mark.parametrize("est, sched, text", [
+LAST_EXPECTED_CASES = [
     (datetime(2026, 10, 29, 17, 9), datetime(2026, 10, 29, 16, 45), "last expected 17:09"),
     (datetime(2026, 10, 29, 16, 45), datetime(2026, 10, 29, 16, 45), None),
     (None, datetime(2026, 10, 29, 16, 45), None),
     (datetime(2026, 10, 29, 17, 9), None, None),
-])
+]
+
+
+@pytest.mark.parametrize("est, sched, text", LAST_EXPECTED_CASES)
 def test_last_expected(est, sched, text):
     assert words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY) == text
 
@@ -157,7 +160,7 @@ def cancelled(lo, hi, censored, direction="D", outcome="canceled"):
             "cancel_lead_censored": censored}
 
 
-@pytest.mark.parametrize("lo, hi, censored, direction, text", [
+WARNING_CASES = [
     (1400.95, None, True, "A", "at least 23 hours"),            # rule 1, IZ 992
     (60.0, None, True, "D", "at least 1 hour"),                  # rule 1 boundary
     (59.9, None, True, "D", "unknown"),                          # rule 2
@@ -177,7 +180,10 @@ def cancelled(lo, hi, censored, direction="D", outcome="canceled"):
     (59.9, 60.0, False, "D", "about an hour"),                   # rule 10, boundary 60
     (-10.0, 6.0, False, "D", "around the scheduled time"),       # rule 11
     (-10.0, 0.0, False, "D", "around the scheduled time"),       # rule 11, hi exactly 0
-])
+]
+
+
+@pytest.mark.parametrize("lo, hi, censored, direction, text", WARNING_CASES)
 def test_warning_rules(lo, hi, censored, direction, text):
     assert words.warning(cancelled(lo, hi, censored, direction)) == text
 
@@ -187,7 +193,7 @@ def test_no_warning_unless_cancelled():
     assert words.warning_note(cancelled(1400.95, None, True, outcome="departed")) is None
 
 
-EARLIEST = "It was already cancelled at the earliest record."
+EARLIEST = "The earliest record already showed it as cancelled."
 PART = "No records for part of that time."
 
 
@@ -208,27 +214,33 @@ def test_warning_note(lo, hi, censored, note):
     assert words.warning_note(cancelled(lo, hi, censored)) == note
 
 
-@pytest.mark.parametrize("text, sentence", [
+SENTENCE_CASES = [
     ("none: cancelled about 2 hours after it was scheduled to leave",
      "No warning: cancelled about 2 hours after it was scheduled to leave."),
     ("unknown: no records for that time", "Warning unknown: no records for that time."),
     ("unknown", "Warning unknown."),
     ("at least 23 hours", "Warning: at least 23 hours."),
-])
+]
+
+
+@pytest.mark.parametrize("text, sentence", SENTENCE_CASES)
 def test_warning_sentence(text, sentence):
     assert words.warning_sentence(text) == sentence
 
 
 # --- headline --------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("cancelled_n, known, n", [
+ONE_IN_CASES = [
     (20, 951, 50),
     (1, 22, 20),
     (2, 45, 25),   # 22.5: halves up to the next multiple of 5
     (1, 19, 19),
     (2, 25, 13),   # 12.5: halves up
     (0, 10, None),
-])
+]
+
+
+@pytest.mark.parametrize("cancelled_n, known, n", ONE_IN_CASES)
 def test_one_in(cancelled_n, known, n):
     assert words.one_in(cancelled_n, known) == n
 
@@ -237,3 +249,32 @@ def test_headline():
     assert words.headline(20, 951) == ("So far, 20 of 951 flights with a known outcome were listed as cancelled. "
                                        "That's about 1 in 50.")
     assert words.headline(0, 951) is None
+
+
+# --- the upload check ------------------------------------------------------------------------------
+
+def site_texts() -> list[str]:
+    """Every fixed text of the module, and what each sentence function says over this file's cases."""
+    texts = [words.UNOFFICIAL, words.SOURCE_SHORT, words.TIMES_NOTE, words.PLACEHOLDER, words.BUILT_BY,
+             words.CODE_URL, words.DELAY_SENTENCE, *words.LABEL_ORDER]
+    for lo, hi, censored, direction, _ in WARNING_CASES:
+        f = cancelled(lo, hi, censored, direction)
+        texts += [words.warning(f), words.warning_note(f), words.warning_sentence(words.warning(f))]
+    texts += [words.warning_sentence(text) for text, _ in SENTENCE_CASES]
+    texts += [words.label_note({"outcome": o, "sched_utc_final": SCHED, "last_seen_at": seen})
+              for o, seen, _ in LABEL_NOTE_CASES]
+    texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
+    texts += [words.headline(c, known) for c, known, _ in ONE_IN_CASES]
+    texts += [words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY)
+              for est, sched, _ in LAST_EXPECTED_CASES]
+    texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
+    return [t for t in texts if t is not None]
+
+
+def test_no_text_trips_the_upload_check():
+    """These texts go on every kind of page; a banned phrase in one would stop every upload. Lower-cased
+    substrings, as timeline.check matches them."""
+    texts = site_texts()
+    assert len(texts) > 60  # the cases above, not an empty list
+    phrases = (*check.BANNED, "minutes late", "hours late")
+    assert [(t, p) for t in texts for p in phrases if p in t.lower()] == []
