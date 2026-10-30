@@ -2,7 +2,7 @@
 
 Grade: production-lean, same as the v1 site (`docs/timeline.md`): deterministic, tested, mutation-checked; plain static HTML, CSS and a little JavaScript.
 
-Status: design v2, 2026-10-30. Worked out with the owner over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Not built. When built, it replaces the "Pages", "Wording" and parts of "How it is built" in `docs/timeline.md`, and that file is rewritten to match.
+Status: design v2, 2026-10-30. Worked out with the owner over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Built 2026-10-30 (plan: `docs/site-redesign-plan.md`; what building changed: "Deviations" at the end); not public yet. It replaces the "Pages", "Wording", "How it is built" and "Tests and mutation checks" sections of `docs/timeline.md`, which now point here.
 
 Mockups the owner approved for look and wording, with real data from the 2026-10-30 00:02 build: `docs/site-redesign/front-page-mockup.html` and `docs/site-redesign/flight-page-mockup.html` (open in a browser; the heading above each card is mockup chrome). Where a mockup and the rules below differ, the rules win. Known differences: the mockups title-case airline and airport names, leave out "last expected", the earliest-record and gap lines, "Times are Israel time" (front page), "Last updated", the story box's place in the page list, and use a footer that would fail the check.
 
@@ -37,7 +37,7 @@ The site is the owner's portfolio piece for a job search: a recruiter or hiring 
 
 ## Words (owner, 2026-10-30)
 
-These replace the "Wording" section of `docs/timeline.md`. They put the CLAUDE.md claims-discipline line ("first observed CANCELED on the public board") into plain words while keeping its substance: ranges and lower bounds, no single cancellation time, no delay or operator claims. When this ships, CLAUDE.md's claims line, `docs/terms.md` (the clause 4 paragraph names the wording rules as how the site avoids misleading presentation) and README.md (which still quotes "when we first saw it" and "first observed CANCELED on the public board") are updated in the same change.
+These replace the "Wording" section of `docs/timeline.md`. They put CLAUDE.md's former claims-discipline line ("first observed CANCELED on the public board") into plain words while keeping its substance: ranges and lower bounds, no single cancellation time, no delay or operator claims. CLAUDE.md's claims line, `docs/terms.md` (the clause 4 paragraph names these rules as how the site avoids misleading presentation) and README.md were updated to match when the build was finished.
 
 - "Cancelled", not "CANCELED". "How this works" says once what it means: the airport's own list showed the flight as cancelled. The front-page headline says "listed as cancelled" (the approved mockup).
 - "Scheduled to leave HH:MM" for departures, "scheduled to land HH:MM" for arrivals. Never "due".
@@ -98,12 +98,12 @@ The same text appears in the front page's "Warning" column and on the all-cancel
 
 One line per change, oldest first, the time in a left column:
 
-- First line: "Earliest record (27 Oct 20:04) · on time, terminal 1" (status, terminal, check-in desks: what the first record has).
+- First line: "Earliest record (27 Oct 20:04) · on time, terminal 1": what the first record has, of status, expected time (when it differs from the scheduled time), terminal, check-in desks and zone; empty ones are left out. A first record that already shows the flight cancelled reads "already cancelled" ("Earliest record (27 Oct 20:04) · already cancelled, terminal 3"), so its time reads as the record's, never as a cancellation time.
 - A change whose record came within an hour of the flight's previous appearance (`prev_observed_at`): that record's time, "17:32 · Expected to leave at 17:38 instead". An appearance with no change is not a line, so the previous line can be older than `prev_observed_at`.
-- More than an hour (`GAP_HOURS`) since `prev_observed_at`: "Between 27 Oct 20:24 and 29 Oct 14:29 · Check-in desks 345-348, zone B".
+- More than an hour (`GAP_HOURS`) since `prev_observed_at`: "Between 27 Oct 20:24 and 14:29 · Check-in desks 345-348, zone B" (TO 3459, on its 29 October row). A time in the change list carries its date only when it differs from the row's day.
 - The cancellation: always a range, "Between 19:16 and 19:32 · Cancelled", never a single time.
-- A retime: "Moved to a new scheduled time: 23:30 → 01:10 on 31 Oct".
-- Plain field names: expected time, status, terminal, check-in desks, check-in zone. Changes to the airline, airport, city or country names are left out (my call; they are spelling changes on the airport's side).
+- A retime: "Moved to a new scheduled time: 30 Oct 23:30 → 01:10" (on a 31 October row).
+- Plain field names: expected time, status, terminal, check-in desks, check-in zone. A field that empties says so: "no expected time", "no terminal", "no check-in desks", "no check-in zone" (each line starts with a capital: "No check-in desks"). Changes to the airline, airport, city or country names are left out (my call; they are spelling changes on the airport's side).
 
 ### Codeshares
 
@@ -159,9 +159,9 @@ Plain words, short sections; "I" allowed. Where the data comes from (the airport
 
 ### Footer (every page)
 
-Owner, 2026-10-30: "Flight data: Israel Airports Authority, published on data.gov.il." (new constant `SOURCE_SHORT`, beside `UNOFFICIAL` in `pages.py`), then `UNOFFICIAL` verbatim, then "Times are Israel time.", then "How this works", "Code on GitHub", "Built by [owner's wording]". The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) is on "How this works". `timeline.check` requires `SOURCE_SHORT` and `UNOFFICIAL` on every page and `ATTRIBUTION` on `how-it-works.html`; `docs/terms.md` (clauses 6 and 8) and `docs/publishing.md` change to match when this ships.
+Owner, 2026-10-30: "Flight data: Israel Airports Authority, published on data.gov.il." (constant `SOURCE_SHORT`, beside `UNOFFICIAL` in `src/timeline/words.py`), then `UNOFFICIAL` verbatim, then "Times are Israel time.", then "How this works", "Code on GitHub", "Built by [owner's wording]". The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) is on "How this works". `timeline.check` requires `SOURCE_SHORT` and `UNOFFICIAL` on every page and `ATTRIBUTION` on `how-it-works.html`; `docs/terms.md` (clauses 6 and 8) and `docs/publishing.md` were changed to match.
 
-The built-by text and the GitHub address come from one place in `pages.py`; until the owner writes the line it holds a marker the upload check refuses.
+The built-by text and the GitHub address come from one place, `BUILT_BY` and `CODE_URL` in `words.py`; until the owner writes the line it holds a marker the upload check refuses.
 
 ## Look
 
@@ -173,8 +173,8 @@ The built-by text and the GitHub address come from one place in `pages.py`; unti
 
 ## How it is built
 
-- Same pipeline: `python -m timeline.build --model data/model --out site`, DuckDB over the model's Parquet files, the marker-file swap, `timeline.check` before upload, `scripts/publish.sh`. `pages.py` stays pure functions from rows to HTML.
-- Search data: one entry per flight number and direction, with keys from `pages.search_keys` taken as the union over that number's rows (a number can have two cities) and its page address. Written as JSON inside a `<script type="application/json">` element on the front page, with `<` escaped as `<` so a name containing `</script>` cannot end the element.
+- Same pipeline: `python -m timeline.build --model data/model --out site`, DuckDB over the model's Parquet files, the marker-file swap, `timeline.check` before upload, `scripts/publish.sh`. The pages are pure functions from rows to HTML, in three modules: `words.py` (every sentence and label), `flights.py` (display rows, flights, counts, addresses, search entries) and `views.py` (the HTML).
+- Search data: one entry per flight number and direction, with keys from `flights.number_keys` and `flights.place_keys`, the place keys taken as the union over that number's rows (a number can have two cities) and its page address. Written as JSON inside a `<script type="application/json">` element on the front page, with `<` escaped as `\u003c` so a name containing `</script>` cannot end the element.
 - Page addresses unique per file, and the build stops if two flight numbers would map to the same file (`AB` + `12` against `A` + `B12`). Anchors unique per page (codeshare partners share anchor strings across pages, which is fine).
 - Same model, same bytes (determinism across processes, as now). The build time is the last record's time, never the clock.
 - Cost: no new AWS service. Hosting as estimated in `docs/timeline.md` "Publishing": well under a cent a month for today's 2.4 MB site, about $0.03 at most for a site near 1 GB.
@@ -252,3 +252,13 @@ Other look calls (Task 9):
 - The mockup's red pill (#d1352b on #fdecea, 4.32:1) fails the bar and was darkened as above. Its grey (#6e6e73) passes on the story box at 4.66:1; it was darkened slightly too, for margin.
 - On a phone (600 px and below) each cancellations-table entry stacks as flight and date, then route, then warning; the column headings are hidden there, so the sheet writes a muted "Warning: " before the warning text.
 - Pale chart bars (40% opacity): days "ahead" and "incomplete" days. "Today" is drawn like past days.
+
+Building (Tasks 1 to 10 of the plan), where the code settles or changes what the sections above say:
+
+- **`pages.py` became three modules**: `words.py`, `flights.py` and `views.py` (see "How it is built"); the references above follow.
+- **"What changed" examples follow the code**: a date only where it differs from the row's day, the retime line, the earliest line's fields, "already cancelled", and the "no …" forms for an emptied field.
+- **A warning beside a label is always a sentence** ("Warning: at least 23 hours."), on day pages and flight rows. The bare text ("at least 23 hours") appears only in the Warning column of the cancellations tables, whose previous cell ends with a scheduled time: the upload check reads a page as flat text across tags, so "CANCELLED" followed by "at least 23 hours" would read as the banned "cancelled at".
+- **"Unknown" on the chart and the day pages counts the UNKNOWN label only.** NO FINAL UPDATE flights are pending, not lost, and sit in "the rest".
+- **The upload check's word rules skip the airport's data**: the contents of `<span class="d">` (`views.d()`), the front page's search JSON and each page's `<title>`; the phrase rules still read everything. Plurals ("boards", "snapshots", "receipts") count as data-collection words. Check-in desks, zone and terminal are escaped but not marked as data, so a zone named "I" would stop an upload, loudly; the 2026-10-30 model's zones are A, B, C, D and G.
+- **Addresses are compared ignoring case**: the build also stops when two numbers' page addresses differ only in case, because the owner's Mac's disk would write both to one file.
+- **Titles**: a two-city arrival reads "LY 5116, to Tel Aviv"; the front page's story box names its own row's city even for a two-city number, since it shows one flight on one day.

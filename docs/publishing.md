@@ -7,11 +7,11 @@ Goal: one HTTPS link to the history site that the owner can send, for a few cent
 ## What you might not be asking
 
 - **Public is copyable.** Taking our copy down takes minutes; copies others make (archive.org, scrapers) can outlive it. The terms reading (`docs/terms.md`) is what makes this acceptable.
-- **`noindex` stays on every page** (`docs/timeline.md`, "How it is built"), so search engines will not list the site; people arrive by the link you share. Dropping it is a one-line change, owner's call.
-- **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). Every page already says when the board was last seen.
+- **`noindex` stays on every page** (`docs/site-redesign.md`, "Pages"), so search engines will not list the site; people arrive by the link you share. Dropping it is a one-line change, owner's call.
+- **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). The front page says when the data was last recorded ("Last updated …").
 - **The address is a random `dxxxx.cloudfront.net` name.** A custom domain is a later, separate decision with its own cost.
 - **Pay-as-you-go has no spending cap.** The account's existing "My Monthly Cost Budget" ($5, emails at 85% and 100% of actual, 100% of forecast) is the guard.
-- **Your name is not on the site**, and the site does not link to the code yet.
+- **Your name goes on the site.** Every page's footer and the front page carry a built-by line and a link to the code; the line holds a placeholder until you write it (`BUILT_BY`, `src/timeline/words.py`), and the upload check refuses the site while it does.
 
 ## Design
 
@@ -29,7 +29,7 @@ Resources:
 
 ### Code changes
 
-- **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow.
+- **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow. Since the redesign (q18) the footer reads `SOURCE_SHORT`, `UNOFFICIAL` and "Times are Israel time.", then "How this works", "Code on GitHub" and the built-by line; the full `ATTRIBUTION` moved to `how-it-works.html` (`docs/site-redesign.md`, "Footer (every page)").
 - **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html`, `.css` and `.js` file (the types the upload sends) as written and with tags stripped, a phrase in either counting; entities are unescaped and whitespace collapsed in both, so a phrase in an attribute, split by markup or broken across lines is still caught. It exits non-zero and names file and phrase on a hit.
 - **`scripts/publish.sh`**, in this order, uploading nothing if a check fails:
   1. the AWS identity check `scripts/sync.sh` uses;
@@ -88,5 +88,5 @@ Accepted, all thirteen: the regional origin and empty identity; the bucket-name 
 - **An in-process test for the check's entry point**: the subprocess tests prove `python -m timeline.check` works, but coverage cannot see inside them (70% on `check.py` until the in-process test).
 - **Code review (2026-10-29, Opus; the owner's waiver covers q15)**, nothing blocking; fixed: the check also reads each file as written, so attribute text and a script's `<` comparison can no longer hide a phrase; `publish.sh` refuses a folder whose path holds `[`, `]`, `?` or `*` (the CLI matches its filters against the full path with fnmatch: a `[ ]` pair makes the allowlist match nothing, and unmatched files upload; `?` and `*` still match themselves and are refused to be safe); `SITE_DIR` is read from where the script was run, and a missing folder stops it; the tests run the script from another folder, so its `cd` is exercised; pages carry `Cache-Control: max-age=300`, so a browser shows an upload within minutes (CloudFront then also keeps them five minutes: a few more S3 GETs, under a cent); `docs/terms.md` no longer says the footer and the real-site scan are still to come.
 - **Re-review of those fixes (Opus)**, nothing blocking; fixed: tags are stripped in scripts too, so markup inside a script string cannot hide a phrase (the first fix had narrowed stripping to pages); the default folder (`<repo>/site` with no `SITE_DIR`) has a test run from another folder; the comments now say only a `[ ]` pair breaks the filters.
-- **The check also requires the source line and the unofficial line on every page** (the owner's call, 2026-10-29, beyond the reviewed design): `missing_notices` in `src/timeline/check.py` reads both from their constants (`ATTRIBUTION`, `UNOFFICIAL`), so a site built before the footer change, which still has its marker and no banned phrase, cannot be uploaded.
+- **The check also requires the source line and the unofficial line on every page** (the owner's call, 2026-10-29, beyond the reviewed design): `missing_notices` in `src/timeline/check.py` reads both from their constants (then `ATTRIBUTION` and `UNOFFICIAL`), so a site built before the footer change, which still has its marker and no banned phrase, cannot be uploaded. Since the redesign (q18) it wants `SOURCE_SHORT` and `UNOFFICIAL` (`src/timeline/words.py`) on every page and the full `ATTRIBUTION` on `how-it-works.html` (checked when that page is there; the build always writes it), and `scan` refuses the built-by placeholder, so nothing goes out before the owner writes that line.
 - **The first deploy failed on account verification** (2026-10-29 20:50Z): CloudFront refuses new distributions until AWS Support verifies the account; the stack rolled back cleanly. State and next step: OPEN_ISSUES.md, "Site (q15)". A stack in ROLLBACK_COMPLETE cannot be updated, so the retry deletes its record first.

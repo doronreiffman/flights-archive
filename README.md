@@ -12,7 +12,7 @@ Keeps the history of the Ben Gurion airport flight board, which overwrites itsel
 
 The Israel Airports Authority publishes the airport's live departures and arrivals board as open data on data.gov.il. The board shows about one to two days back and three days ahead, and every refresh replaces the last one. When a flight goes from ON TIME to CANCELED, the board itself keeps no record of what it said before.
 
-This project keeps that record. It saves every version of the board, writes down what it saved and when, and turns the archive into a timeline for each flight: what the board said, and when we first saw it. That history answers questions the live board can't. The first is how far ahead cancellations appear.
+This project keeps that record. It saves every version of the board, writes down what it saved and when, and turns the archive into a history for each flight: what the board said, when each change appeared on it, and, for a cancelled flight, how much warning there was. That history answers questions the live board can't. The first is how far ahead cancellations appear.
 
 ## What it does today
 
@@ -37,7 +37,7 @@ flowchart LR
 - **Nothing stored is ever replaced, and every download leaves a receipt.** The snapshots are the project, so the collector writes each file once, S3 keeps every version, and the model trusts only boards with a receipt, or from before receipts began. [docs/receipts.md](docs/receipts.md)
 - **A polite collector that stops cold.** It identifies itself on every request, downloads the full board only when it changed (or every 30 minutes as a safety check), and on any sign of being blocked it stops and waits for a person. The data license excludes data obtained by working around a block. [docs/operations.md](docs/operations.md)
 - **Three clocks.** Board times are Israel wall-clock with no offset, our times are UTC, and the October clock change repeats an hour. Each conversion rule is written down and tested, including under an Israeli time zone. [docs/data-model.md](docs/data-model.md)
-- **Claims no stronger than the evidence.** The site says "first observed CANCELED on the public board", never "cancelled at", because the board is all we see. A check before every upload refuses a page that uses a banned phrasing, or that lacks the source line. [docs/timeline.md](docs/timeline.md), [docs/terms.md](docs/terms.md)
+- **Claims no stronger than the evidence.** The board is all we see, so the site says a flight was "listed as cancelled", never "cancelled at": a cancellation's time is always a range ("between 19:16 and 19:32"), and its warning a range or a lower bound ("at least 23 hours"). A check before every upload refuses a page that uses a banned phrasing, or that lacks the source line. [docs/site-redesign.md](docs/site-redesign.md), [docs/terms.md](docs/terms.md)
 - **Tests that are themselves tested.** 289 tests, and 156 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 29 October 2026). Both run in CI on every push.
 - **Cheap, boring infrastructure.** About $1 to $2 in the archive's first year ([operations.md](docs/operations.md#cost)) and under $0.05 a month for the site ([publishing.md](docs/publishing.md#cost-monthly)), each estimate written down with its sources.
 
