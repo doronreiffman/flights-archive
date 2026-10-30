@@ -68,7 +68,7 @@ Both sides of the UPCOMING comparison are the model's naive UTC values; comparin
 
 Second label: DELAYED, when the airport itself showed the status DELAYED in this flight row's own records (20 flight numbers since 27 October). Shown beside the main label: "LANDED · DELAYED", "NO FINAL UPDATE · DELAYED". It is the airport's word and carries no minutes.
 
-When the airport's last expected time differs from the scheduled time, the flight's row shows both: "scheduled to leave 16:45 · last expected 17:09". No difference is computed. Each flight page that shows a "last expected" carries one sentence, once: "Expected times are the airport's own. This site doesn't turn them into minutes late, because the airport doesn't say whether they mean leaving the gate or taking off."
+When the airport's last expected time differs from the scheduled time, the flight's row shows both: "scheduled to leave 16:45 · last expected 17:09". No difference is computed. Each flight page that shows a "last expected" carries one sentence, once: "Expected times are the airport's own. This site doesn't turn them into delay figures, because the airport doesn't say whether they mean leaving the gate or taking off."
 
 `uncanceled` NULL counts as false (it is NULL for the 11 flights already cancelled at their earliest record and never seen otherwise). When true, a line goes under whatever the final label is: "Shown as cancelled for a while, then changed back." If the final label is CANCELLED again: "Cancelled, changed back, then cancelled again." The warning shows only under a final CANCELLED and comes from the model's cancellation fields as they are.
 
