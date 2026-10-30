@@ -425,3 +425,7 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
 >
 > ## How it's built
 > The program runs on AWS Lambda and saves each version once, to storage where it is locked for ten years. A Python data model turns the saved versions into one history per flight, and this site is generated from that model. Every rule has tests, and the tests are themselves checked by breaking the code on purpose and confirming that a test fails. The code is on GitHub.
+
+## Deviations
+
+What building changed from this plan is in the spec's "Deviations" section (`docs/site-redesign.md`); the rulings made while building and reviewing it are in the commit messages (`git log --grep '^q18:'`).
