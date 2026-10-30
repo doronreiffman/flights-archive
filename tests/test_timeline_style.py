@@ -108,9 +108,16 @@ def test_published_double_spaces_show():
 
 
 def test_flight_numbers_in_the_table_never_break():
-    """The flight cell is nowrap, but each number is a `.d` span whose own pre-wrap would let "LY 5410" break at its
-    space when the table squeezes the column; `pre` keeps the published spacing and stops the break."""
+    """Each number is a `.d` span whose own pre-wrap would let "LY 5410" break at its space when the table squeezes
+    the column; `pre` keeps the published spacing and stops the break."""
     assert declared((), ".cancellations td:nth-child(2) .d").get("white-space") == "pre"
+
+
+def test_a_long_codeshare_list_wraps_after_its_commas():
+    """Only the numbers are kept whole: the flight cell itself sets no nowrap, on any screen, so a long list of
+    codeshare numbers wraps after a comma instead of widening the table past a phone's width."""
+    cell = [decls for _, sel, decls in RULES if ".cancellations td:nth-child(2)" in (s.strip() for s in sel.split(","))]
+    assert cell and all(decls.get("white-space") != "nowrap" for decls in cell)
 
 
 def test_hebrew_city_is_isolated():
