@@ -262,3 +262,13 @@ Building (Tasks 1 to 10 of the plan), where the code settles or changes what the
 - **The upload check's word rules skip the airport's data**: the contents of `<span class="d">` (`views.d()`), the front page's search JSON and each page's `<title>`; the phrase rules still read everything. Plurals ("boards", "snapshots", "receipts") count as data-collection words. Check-in desks, zone and terminal are escaped but not marked as data, so a zone named "I" would stop an upload, loudly; the 2026-10-30 model's zones are A, B, C, D and G.
 - **Addresses are compared ignoring case**: the build also stops when two numbers' page addresses differ only in case, because the owner's Mac's disk would write both to one file.
 - **Titles**: a two-city arrival reads "LY 5116, to Tel Aviv"; the front page's story box names its own row's city even for a two-city number, since it shows one flight on one day.
+
+## Deferred review findings (2026-10-30)
+
+Minor findings from the ten task reviews and the final review that the final review judged safe to leave; none blocks launch.
+
+- Tests: the featured() docstring says a missing censored flag counts as censored (only None does); the time-zone fixture is imported from a sibling test module (conftest.py would be cleaner); the style test guards one exact selector, so a broader `nowrap` rule would pass; the contrast test checks token pairs, not the rules that use them; items with tests but no mutation entry: the flight-cell wrap, the description's full stop, link integrity.
+- Code: search.js puts its functions on the page's global scope and throws (harmlessly, box stays hidden) on malformed search data; `load()` reads seven observation columns the pages no longer use; the day-page address is formatted in three places (the link test pins it); the CLI prints 3,125 table rows as "flight numbers".
+- Check: the word rules do not read attribute text (meta description, aria-label, placeholder); the `<title>` mask would also skip a future SVG `<title>`; "hours late" also matches "hours later" (fails loudly).
+- Docs: README.md:22 still describes v1's layout and README.md:41 gives the dated 289 tests / 156 mutations; both are the owner's text, refreshed at launch (q17).
+

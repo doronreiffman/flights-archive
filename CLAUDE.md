@@ -15,7 +15,7 @@ Personal portfolio project. Archives the Ben Gurion flight board from data.gov.i
 - Cheap, boring infrastructure; every proposal carries a monthly cost estimate.
 - Attribution: cite data.gov.il / Israel Airports Authority wherever the data is shown or published.
 
-## Current state (2026-10-29)
+## Current state (2026-10-30)
 
 - Collector (Lambda, stack `flights-archive`) live since 2026-10-29 about 14:30 Israel time. Polls `resource_show` every 2 min; downloads via `datastore_search` when `last_modified` moves (the board refreshes every 15 min, 30 s to about a minute after the quarter hour) or every 30 min; stores the raw reply gzipped at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` with metadata (fetched-at, resource-last-modified, rows, hashes). `state/collector.json` holds the last timestamp, hash, snapshot key and a "blocked" latch. Since 2026-10-29 17:02:50Z every full download also writes a write-once receipt (`receipts/`, `docs/receipts.md`); snapshots before it are `legacy`. CI runs the tests and `scripts/mutation_check.py` on every push; baseline 590 tests, 220 mutations, all caught. The mutation check edits source files in place: run nothing else from the checkout while it runs.
 - Snapshots: first 2026-10-27 18:04Z, then a 42 h hole (18:24Z to 2026-10-29 12:29Z), continuous since. The first days are therefore partial.
