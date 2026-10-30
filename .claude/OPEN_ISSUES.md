@@ -14,7 +14,7 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 - **Codeshare `time-only` groups (all arrivals) can merge two real flights** from the same airport at the same scheduled and estimated minute. Measure once a week of data exists: look for groups whose members' statuses diverge.
 - **Operating-carrier guess** is the lowest flight number in the group; pure convention, `operating_is_guess` marks it.
 - **`vanished` vs `dropped` threshold** is 1 h past the last appearance; with the gap outcome in place neither class has a real example yet.
-- **Collection gaps ignore `unchanged` receipts.** R4, R7 and R8 measure gaps by snapshot spacing, so a stall on data.gov.il's side (the board not changing for over an hour) reads as a collection hole. The v2 site states a gap as "There are no records from X to Y" (how-it-works) and a flight that left the list during one as UNKNOWN; that is true while every gap is a collection outage, and becomes false once the board stands still between two downloads (receipts would exist). Revisit that wording when q14 starts. Receipts record every full download since 2026-10-29 17:02:50Z; switching the rules to them is q14. The owner chose to publish the site first (2026-10-29; its v1 wording named both causes, the premise that no longer holds for v2); q14 starts with the first `unchanged` receipt, none so far (`docs/receipts.md`, "Model changes").
+- **Collection gaps ignore `unchanged` receipts.** R4, R7 and R8 measure gaps by snapshot spacing, so a stall on data.gov.il's side (the board not changing for over an hour) reads as a collection hole. The v2 site states a gap as "There are no records from X to Y" (how-it-works) and a flight that left the list during one as UNKNOWN; that is true while every gap is a collection outage, and becomes false once the board stands still between two downloads (receipts would exist). Revisit that wording when q14 starts. Receipts record every full download since 2026-10-29 17:02:50Z; switching the rules to them is q14. The owner chose to publish the site first (2026-10-29; its v1 wording named both causes, the premise that no longer holds for v2); q14 starts with the first `unchanged` receipt, the first arrived 2026-10-30 03:16:45Z (a 15-minute refresh with identical content; no model gap came from it, so the site's only gap sentence is still the 27-29 October outage). q14 is now due (`docs/receipts.md`, "Model changes").
 
 ## Collector
 
@@ -27,14 +27,13 @@ Living list of open blockers, deferred bugs and "fix someday" items. Replace an 
 
 ## Site (v2, q18)
 
-- **Upload refused until the owner writes the built-by line.** `BUILT_BY` in `src/timeline/words.py` holds `[owner's wording]`; `timeline.check` (run by `scripts/publish.sh`) refuses every page while it does. "I" is allowed in that line; a trailing full stop is handled.
 - **Owner's calls from the final review (2026-10-30):** (a) a flight cancelled, changed back, then cancelled again has its warning measured from the first cancellation (the spec's choice; the tables show only that warning); (b) a "no flight matches" line and back-button restore in search were offered, not built; (c) on phones the stacked warning cell reads "Warning: none: listed as cancelled …"; (d) look at the site at 375 px and in dark mode before the first upload (chart text near the right edge, pale bars, the stacked table, dark mode).
 - **A check-in zone named "I" would stop an upload** (the "I" rule reads change lines; zones today: A, B, C, D, G). It fails loudly; handle it then.
 - **Deferred minor review findings**, none blocking: `docs/site-redesign.md`, "Deferred review findings".
 
 ## Site (q15)
 
-- **Live but empty; first upload waits on three things.** Stack `flights-archive-site` deployed 2026-10-30 09:35Z (CREATE_COMPLETE; distribution EKYONH7DC85AD, bucket `flights-archive-site-sitebucket-bvnyiw82x01m`); https://dt4564wsgvijr.cloudfront.net answers 403 until files exist. The first upload needs (1) the owner's built-by line (`BUILT_BY`, `src/timeline/words.py`; the check refuses the placeholder), (2) q18 merged so the upload is the v2 site, (3) the owner's go with the terms page's update date read that day in their browser (`docs/terms.md`). Then: `sh scripts/sync.sh`, model build, timeline build, `sh scripts/publish.sh`, and the owner checks a day page, a flight and the search.
+- **Live and reached by link only.** First upload 2026-10-30 (961 files, 5.9 MB on disk) to https://dt4564wsgvijr.cloudfront.net; every page carries `noindex` and the repo is still private (q17 decides both). Freshness is by hand: `sh scripts/sync.sh`, model build, timeline build, `sh scripts/publish.sh`, each upload on the owner's go with the terms page date read that day. A scheduled rebuild is q2/q5.
 
 ## Repo hygiene (before the repo goes public)
 
