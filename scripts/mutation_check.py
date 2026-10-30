@@ -210,6 +210,7 @@ COLLECTOR_MUTATIONS = {
     "words: at least 1 hour only above 60 minutes": (WORDS, "    if lo >= 60:\n        return 8,", "    if lo > 60:\n        return 8,"),
     "words: an hour after said as less than an hour": (WORDS, "        if -lo < 60:", "        if -lo <= 60:"),
     "words: 2 hours after said as about an hour": (WORDS, "        if -hi < 120:", "        if -hi <= 120:"),
+    "words: records note on rule 7": (WORDS, "    if 4 <= rule <= 6:", "    if 4 <= rule <= 7:"),
     "flights: today from the UTC date": (FLIGHTS, "    today = words.il_time(last_fetch).date()", "    today = last_fetch.date()"),
     "flights: delayed from any day of the number": (FLIGHTS, 'delayed=any(o["status"] == "DELAYED" for o in own),', 'delayed=any(o["status"] == "DELAYED" for g in flights if (g["airline"], g["flight_no"], g["direction"]) == (f["airline"], f["flight_no"], f["direction"]) for o in by_flight.get(g["flight_id"], [])),'),
     "flights: group split ignores the label": (FLIGHTS, "    return r.day, r.group_id, r.label, r.delayed, r.warning", "    return r.day, r.group_id, r.delayed, r.warning"),

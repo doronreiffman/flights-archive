@@ -207,7 +207,7 @@ PART = "No records for part of that time."
     (-200.0, -100.0, True, PART),        # rule 4
     (75.95, 2600.48, True, PART),        # rule 5
     (0.0, 2000.0, True, PART),           # rule 6
-    (-64.05, 2460.48, True, PART),       # rule 7
+    (-64.05, 2460.48, True, None),       # rule 7: its text already says "no records for that time"
     (400.0, 416.0, False, None),         # rule 8
     (0.0, 59.0, False, None),            # rule 9
     (45.0, 74.0, False, None),           # rule 10

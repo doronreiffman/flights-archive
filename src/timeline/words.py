@@ -159,7 +159,7 @@ def warning_note(f: dict) -> str | None:
     rule = _warning_rule(f)[0]
     if rule in (1, 2):
         return "The earliest record already showed it as cancelled."
-    if 4 <= rule <= 7:
+    if 4 <= rule <= 6:  # rule 7's own text already says "no records for that time"
         return "No records for part of that time."
     return None
 
