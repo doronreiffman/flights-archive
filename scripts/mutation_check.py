@@ -21,6 +21,7 @@ SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 PAGES = ("src/timeline/pages.py", ["tests/test_timeline_pages.py", "tests/test_timeline_build.py"])
 WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
 FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
+VIEWS = ("src/timeline/views.py", ["tests/test_timeline_views.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
@@ -217,6 +218,14 @@ COLLECTOR_MUTATIONS = {
     "flights: records in input order": (FLIGHTS, 'own = sorted(by_flight.get(f["flight_id"], []), key=lambda o: o["snap_rn"])', 'own = by_flight.get(f["flight_id"], [])'),
     "flights: page date from the first scheduled time": (FLIGHTS, '        day = f["sched_local_final"].date()', '        day = f["sched_local_first"].date()'),
     "flights: address check minds case": (FLIGHTS, "numbers.setdefault(r.page.lower(), {})", "numbers.setdefault(r.page, {})"),
+    "views: data not escaped": (VIEWS, """f'<span class="d">{html.escape(str(value))}</span>'""", """f'<span class="d">{value}</span>'"""),
+    "views: cancelled row closed": (VIEWS, 'out.append("<details open>" if r.label == words.CANCELLED else "<details>")', 'out.append("<details>")'),
+    "views: delay sentence on every row": (VIEWS, """f'<p class="head">{" ".join(head)}</p>']""", """f'<p class="head">{" ".join(head)}</p>', f'<p class="note">{e(words.DELAY_SENTENCE)}</p>']"""),
+    "views: Hebrew city without lang": (VIEWS, """who.append(f'<span lang="he" dir="rtl">{d(top.city_he)}</span>')""", """who.append(f'<span>{d(top.city_he)}</span>')"""),
+    "views: footer without the short source": (VIEWS, 'f"<p>{e(words.SOURCE_SHORT)} {e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\\n"', 'f"<p>{e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\\n"'),
+    "views: noindex dropped": (VIEWS, """'<meta name="robots" content="noindex">\\n'""", "''"),
+    "views: day link without anchor": (VIEWS, """f'<a href="{root}{e(r.page)}#{e(r.anchor)}">""", """f'<a href="{root}{e(r.page)}">"""),
+    "views: bare warning beside a label": (VIEWS, """parts.append(f'<span class="warn">{e(words.warning_sentence(r.warning))}</span>')""", """parts.append(f'<span class="warn">{e(r.warning)}</span>')"""),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
