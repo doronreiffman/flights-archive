@@ -70,11 +70,11 @@ Second label: DELAYED, when the airport itself showed the status DELAYED in this
 
 When the airport's last expected time differs from the scheduled time, the flight's row shows both: "scheduled to leave 16:45 · last expected 17:09". No difference is computed. Each flight page that shows a "last expected" carries one sentence, once: "Expected times are the airport's own. This site doesn't turn them into delay figures, because the airport doesn't say whether they mean leaving the gate or taking off."
 
-`uncanceled` NULL counts as false (it is NULL for the 11 flights already cancelled at their earliest record and never seen otherwise). When true, a line goes under whatever the final label is: "Shown as cancelled for a while, then changed back." If the final label is CANCELLED again: "Cancelled, changed back, then cancelled again." The warning shows only under a final CANCELLED and comes from the model's cancellation fields as they are.
+`uncanceled` NULL counts as false (it is NULL for the 11 flights whose earliest record already showed them cancelled and that were never seen otherwise). When true, a line goes under whatever the final label is: "Shown as cancelled for a while, then changed back." If the final label is CANCELLED again: "Cancelled, changed back, then cancelled again." The warning shows only under a final CANCELLED and comes from the model's cancellation fields as they are.
 
 ### Warning (cancelled flights only)
 
-How long before its scheduled time the airport's list already showed the flight as cancelled. Inputs: `lo` = `cancel_lead_min` (minutes from the first record showing it cancelled to the scheduled time), `hi` = `cancel_lead_max_min` (from the last record before that one; NULL when the flight was already cancelled at its earliest record), `cancel_lead_censored` (more than an hour between those two records). `h(x)` is whole hours; "leave" or "land" by direction. The first matching rule wins:
+How long before its scheduled time the airport's list already showed the flight as cancelled. Inputs: `lo` = `cancel_lead_min` (minutes from the first record showing it cancelled to the scheduled time), `hi` = `cancel_lead_max_min` (from the last record before that one; NULL when the earliest record already showed the flight cancelled), `cancel_lead_censored` (more than an hour between those two records). `h(x)` is whole hours; "leave" or "land" by direction. The first matching rule wins:
 
 | # | Case | Warning text |
 |---|---|---|
