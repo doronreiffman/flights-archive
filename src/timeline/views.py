@@ -193,9 +193,8 @@ def day_page(info: DayInfo, flights_: list[tuple[Row, ...]]) -> str:
     body = [_back("../"), f"<h1>{_long_date(info.day)}</h1>", f'<p class="count">{_counts(info)}</p>']
     if info.partial:
         body.append("<p class=\"note\">Incomplete: some of this day's flights may be missing from the records.</p>")
-    if info.unknown:
-        body.append(f"<p class=\"note\">No records for the time {info.unknown} of these flights left the "
-                    "airport's list.</p>")
+    if info.unknown:  # every UNKNOWN flight; each flight page's label note gives its reason
+        body.append(f'<p class="note">No known outcome for {info.unknown} of these flights.</p>')
     for direction, heading in (("D", "Departures"), ("A", "Arrivals")):
         fls = sorted((fl for fl in flights_ if fl[0].direction == direction),
                      key=lambda fl: (fl[0].sched_final, fl[0].airline, fl[0].flight_no, fl[0].airport,

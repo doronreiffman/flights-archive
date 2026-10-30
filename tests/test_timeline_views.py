@@ -288,7 +288,7 @@ def test_day_page_head():
     assert '<a href="../index.html">← Cancelled flights at Tel Aviv airport</a>' in page
     assert '<p class="count">418 flights · 7 cancelled · 190 unknown</p>' in page
     assert "Incomplete: some of this day's flights may be missing from the records." in text(page)
-    assert "No records for the time 190 of these flights left the airport's list." in text(page)
+    assert '<p class="note">No known outcome for 190 of these flights.</p>' in page
     assert '<link rel="stylesheet" href="../style.css">' in page
 
 
@@ -301,10 +301,16 @@ def test_day_count_line_leaves_out_zeros(total, cancelled, unknown, line):
     assert f'<p class="count">{line}</p>' in day_page(total, cancelled, unknown)
 
 
+def test_day_page_unknown_line_for_one_flight():
+    """Vanished and dropped flights have records of leaving, so the line says only that the outcome is unknown;
+    each flight page gives the reason."""
+    assert '<p class="note">No known outcome for 1 of these flights.</p>' in day_page(unknown=1)
+
+
 def test_day_page_without_partial_or_unknown_lines():
     page = text(day_page(unknown=0, partial=False))
     assert "418 flights · 7 cancelled" in page and "TO 3459" in page
-    assert "Incomplete" not in page and "No records" not in page
+    assert "Incomplete" not in page and "No known outcome" not in page
 
 
 def test_day_page_departures_then_arrivals_in_scheduled_order():
