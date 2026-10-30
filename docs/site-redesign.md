@@ -80,7 +80,7 @@ How long before its scheduled time the airport's list already showed the flight 
 |---|---|---|
 | 1 | `hi` is NULL, `lo` ≥ 60 | "at least h(lo, down) hours" |
 | 2 | `hi` is NULL, `lo` < 60 | "unknown" |
-| 3 | `hi` < 0, not censored | "none: cancelled less than an hour after it was scheduled to leave" when −lo < 60; "none: cancelled about an hour after …" when −hi < 60 ≤ −lo; otherwise "none: cancelled about h(−hi, down) hours after …" (−hi is the nearer end; a non-censored range is at most an hour wide) |
+| 3 | `hi` < 0, not censored | "none: cancelled less than an hour after it was scheduled to leave" when −lo < 60; else "none: cancelled about an hour after …" when −hi < 120; else "none: cancelled about h(−hi, down) hours after …" (−hi is the nearer end; a non-censored range is at most an hour wide) |
 | 4 | `hi` < 0, censored | "none: cancelled after it was scheduled to leave" |
 | 5 | censored, `lo` ≥ 60 | "between h(lo, down) and h(hi, up) hours" |
 | 6 | censored, 0 ≤ `lo` < 60 | "up to h(hi, up) hours" |
@@ -92,7 +92,7 @@ How long before its scheduled time the airport's list already showed the flight 
 
 "1 hours" reads "1 hour". Boundaries: 0 and 60 belong to the row whose condition says "≥". On the 2026-10-30 model: IZ 992 "at least 23 hours" (rule 1), LY 5410 "between 7 and 50 hours" (5), LY 5409 "between 1 and 44 hours" (5), TO 3459 "none: cancelled about 2 hours after it was scheduled to leave" (3), ASY 991 "unknown" (2), BZ 254 "unknown: no records for that time" (7).
 
-The same text appears in the front page's "Warning" column, on the all-cancellations page, and on the flight page as "Warning: …." The flight page adds, for rules 1 and 2, "It was already cancelled at the earliest record."; for rules 4 to 7, "No records for part of that time."
+The same text appears in the front page's "Warning" column and on the all-cancellations page. The flight page turns it into a sentence: "none: X" becomes "No warning: X.", "unknown: X" becomes "Warning unknown: X.", "unknown" becomes "Warning unknown.", anything else "Warning: X." It adds, for rules 1 and 2, "It was already cancelled at the earliest record."; for rules 4 to 7, "No records for part of that time."
 
 ### What changed (the opened day on a flight page)
 
