@@ -3,7 +3,6 @@
 import html
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import date, datetime
@@ -274,16 +273,6 @@ def test_the_same_model_gives_the_same_bytes_in_separate_processes(tmp_path, sit
                        check=True, env=env, cwd=Path(__file__).parent.parent, capture_output=True)
         outs.append({p.relative_to(out).as_posix(): p.read_bytes() for p in sorted(out.rglob("*")) if p.is_file()})
     assert outs[0] == outs[1] and len(outs[0]) == 11
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="Node is not installed")
-def test_the_search_box_matches_by_prefix_ignoring_case_and_spaces():
-    script = Path(__file__).parent.parent / "src" / "timeline" / "static" / "search.js"
-    probe = (f"const s = require({str(script)!r});"
-             "console.log(JSON.stringify(['LY 1', 'ly001', '6H 115A', 'new york', 'jfk', 'LY2', '', 'ly1 0', 'york', '001', '1'].map("
-             "q => s.matches(q, 'ly001 ly1 001 1 newyork jfk'))))")
-    out = subprocess.run(["node", "-e", probe], check=True, capture_output=True, text=True).stdout.strip()
-    assert out == "[true,true,false,true,true,false,true,false,false,true,true]"
 
 
 def test_cli_builds_the_site_and_refuses_a_missing_model(tmp_path, site, capsys):

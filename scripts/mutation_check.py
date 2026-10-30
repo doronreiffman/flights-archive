@@ -22,7 +22,7 @@ WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
 FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
 VIEWS = ("src/timeline/views.py", ["tests/test_timeline_views.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
-SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
+SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
@@ -130,8 +130,15 @@ COLLECTOR_MUTATIONS = {
     "site: unique check skipped": (SITE, "    flights.check_unique(rows)\n", ""),
     "site: since from the UTC date": (SITE, "    since = words.il_time(first_check).date()", "    since = first_check.date()"),
     "site: featured without the censored flags": (SITE, 'censored = {f["flight_id"]: f["cancel_lead_censored"] for f in table}', 'censored = {f["flight_id"]: False for f in table}'),
-    "search matches anywhere in a key": (SEARCH, 'keys.split(" ").some((key) => key.startsWith(q))', "keys.includes(q)"),
-    "search keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
+    "search: places ranked before numbers": (SEARCH, "[...exact, ...numbers, ...places]", "[...exact, ...places, ...numbers]"),
+    "search: no exact tier": (SEARCH, "    if (entry.n.includes(q)) exact.push(entry);\n    else if", "    if"),
+    "search: no cap": (SEARCH, "found.slice(0, LIMIT)", "found"),
+    "search: no more line": (SEARCH, "  if (found.more > 0) {", "  if (false) {"),
+    "search: list never hidden": (SEARCH, "  list.hidden = items.length === 0;", "  list.hidden = false;"),
+    "search: matches anywhere in a key": (SEARCH, "keys.some((key) => key.startsWith(q))", "keys.some((key) => key.includes(q))"),
+    "search: query read as a pattern": (SEARCH, "keys.some((key) => key.startsWith(q))", 'keys.some((key) => new RegExp("^" + q).test(key))'),
+    "search: keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
+    "search: box shown before the data is read": (SEARCH, "    const entries = JSON.parse(data.textContent);", "    box.hidden = false;\n    const entries = JSON.parse(data.textContent);"),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
     "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
     "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
