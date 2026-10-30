@@ -200,6 +200,10 @@ COLLECTOR_MUTATIONS = {
     "words: warning on a departed flight": (WORDS, '    if f["outcome"] != "canceled":\n        return None\n    return _warning_rule(f)[1]', "    return _warning_rule(f)[1]"),
     "words: Israel time from a naive conversion": (WORDS, "return utc_naive.replace(tzinfo=timezone.utc).astimezone(ISRAEL)", "return utc_naive.astimezone(ISRAEL)"),
     "words: dates never shown": (WORDS, 'return f"{local:%H:%M}" if local.date() == page_date else', 'return f"{local:%H:%M}" if True else'),
+    "words: gap from the previous line": (WORDS, '        after = o["prev_observed_at"]', '        after = obs[i - 1]["observed_at"]'),
+    "words: cancellation given a single time": (WORDS, 'if _cancelled(o) or o["observed_at"] - after', 'if o["observed_at"] - after'),
+    "words: Hebrew-only change shown": (WORDS, '    if "status" in changed and not _cancelled(o):', '    if ("status" in changed or "status_he" in changed) and not _cancelled(o):'),
+    "words: retime not said": (WORDS, 'changed, retime = o["changed_fields"], o["change_kind"] == "retime"', 'changed, retime = o["changed_fields"], False'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

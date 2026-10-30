@@ -7,7 +7,7 @@ moment, and nothing here turns an expected time into a delay.
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -173,6 +173,85 @@ def warning_sentence(text: str) -> str:
     if text == "unknown":
         return "Warning unknown."
     return f"Warning: {text}."
+
+
+# --- what changed ----------------------------------------------------------------------------------
+
+# The airport's status words, lower case; "final" and "not final" quoted: the airport does not define them.
+STATUS_WORDS = {"ON TIME": "on time", "NOT FINAL": "“not final”", "FINAL": "“final”", "DELAYED": "delayed",
+                "LANDING": "landing", "LANDED": "landed", "DEPARTED": "departed", "CANCELED": "cancelled",
+                "EARLY": "early"}
+
+
+def _status(status: str) -> str:
+    return STATUS_WORDS.get(status, status.lower())
+
+
+def _cancelled(o: dict) -> bool:
+    return "status" in o["changed_fields"] and o["status"] == "CANCELED"
+
+
+def _earliest(o: dict, direction: str, page_date: date) -> str:
+    """What the earliest record has; empty values left out (the model keeps empty desks and zone as '')."""
+    parts = [_status(o["status"])]
+    if o["est_local"] is not None and o["est_local"] != o["sched_local"]:
+        parts.append(f"expected to {_verb(direction)} at {clock(o['est_local'], page_date)}")
+    if o["terminal"] is not None:
+        parts.append(f"terminal {o['terminal']}")
+    if o["counters"]:
+        parts.append(f"check-in desks {o['counters']}")
+    if o["zone"]:
+        parts.append(f"zone {o['zone']}")
+    return ", ".join(parts)
+
+
+def _change(o: dict, before: dict, direction: str, page_date: date) -> str | None:
+    """A record's changes, after the record `before` it; None when only the Hebrew status or a name's spelling
+    changed. A retime's expected time is said only when it differs from the new scheduled time."""
+    changed, retime = o["changed_fields"], o["change_kind"] == "retime"
+    parts = []
+    if retime:
+        parts.append(f"moved to a new scheduled time: {clock(before['sched_local'], page_date)} → "
+                     f"{clock(o['sched_local'], page_date)}")
+    if _cancelled(o):
+        parts.append("cancelled")
+    if "est_local" in changed and not (retime and o["est_local"] == o["sched_local"]):
+        parts.append(f"expected to {_verb(direction)} at {clock(o['est_local'], page_date)} instead"
+                     if o["est_local"] is not None else "no expected time")
+    if "status" in changed and not _cancelled(o):
+        parts.append(f"status {_status(o['status'])}")
+    if "terminal" in changed:
+        parts.append(f"terminal {o['terminal']}" if o["terminal"] is not None else "no terminal")
+    if "counters" in changed:
+        parts.append(f"check-in desks {o['counters']}" if o["counters"] else "no check-in desks")
+    if "zone" in changed:
+        parts.append(f"zone {o['zone']}" if o["zone"] else "no check-in zone")
+    if not parts:
+        return None
+    text = ", ".join(parts)
+    return text[0].upper() + text[1:]
+
+
+def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: float) -> list[tuple[str, str]]:
+    """What changed, oldest first: (left column, text) for the earliest record and each record that changed
+    something shown. The left column is the record's time when it came within `gap_hours` of the flight's
+    previous appearance (`prev_observed_at`: an appearance with no change is not a line, so this can be later
+    than the previous line), else "Between" that appearance and the record. A cancellation is always a range."""
+    lines = []
+    for i, o in enumerate(obs):
+        seen = clock(il_time(o["observed_at"]), page_date)
+        if o["change_kind"] == "first":
+            lines.append((f"Earliest record ({seen})", _earliest(o, direction, page_date)))
+            continue
+        text = _change(o, obs[i - 1], direction, page_date)
+        if text is None:
+            continue
+        after = o["prev_observed_at"]
+        if _cancelled(o) or o["observed_at"] - after > timedelta(hours=gap_hours):
+            lines.append((f"Between {clock(il_time(after), page_date)} and {seen}", text))
+        else:
+            lines.append((seen, text))
+    return lines
 
 
 # --- headline --------------------------------------------------------------------------------------
