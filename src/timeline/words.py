@@ -19,7 +19,7 @@ TIMES_NOTE = "Times are Israel time."
 PLACEHOLDER = "[owner's wording]"  # the upload check refuses a site that still contains it
 BUILT_BY = PLACEHOLDER
 CODE_URL = "https://github.com/doronreiffman/flights-archive"
-DELAY_SENTENCE = ("Expected times are the airport's own. This site doesn't turn them into minutes late, "
+DELAY_SENTENCE = ("Expected times are the airport's own. This site doesn't turn them into delay figures, "
                   "because the airport doesn't say whether they mean leaving the gate or taking off.")
 
 DEPARTED, LANDED, CANCELLED, UPCOMING, NO_FINAL_UPDATE, UNKNOWN = (

@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from timeline import words
+from timeline import check, words
 
 DAY = date(2026, 10, 29)
 
@@ -30,9 +30,15 @@ def test_fixed_texts_are_the_specs_words():
     assert words.BUILT_BY == words.PLACEHOLDER
     assert words.CODE_URL == "https://github.com/doronreiffman/flights-archive"
     assert words.DELAY_SENTENCE == (
-        "Expected times are the airport's own. This site doesn't turn them into minutes late, "
+        "Expected times are the airport's own. This site doesn't turn them into delay figures, "
         "because the airport doesn't say whether they mean leaving the gate or taking off.")
     assert str(words.ISRAEL) == "Asia/Jerusalem"
+
+
+def test_delay_sentence_passes_the_upload_check():
+    """The sentence sits on flight pages; a banned phrase in it would stop every upload."""
+    text = words.DELAY_SENTENCE.lower()
+    assert [p for p in (*check.BANNED, "minutes late", "hours late") if p in text] == []
 
 
 def test_labels_and_their_order():
