@@ -20,6 +20,7 @@ TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 PAGES = ("src/timeline/pages.py", ["tests/test_timeline_pages.py", "tests/test_timeline_build.py"])
 WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
+FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_build.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
@@ -205,6 +206,17 @@ COLLECTOR_MUTATIONS = {
     "words: Hebrew-only change shown": (WORDS, '    if "status" in changed and not _cancelled(o):', '    if ("status" in changed or "status_he" in changed) and not _cancelled(o):'),
     "words: retime not said": (WORDS, 'changed, retime = o["changed_fields"], o["change_kind"] == "retime"', 'changed, retime = o["changed_fields"], False'),
     "words: earliest record reads as a cancellation time": (WORDS, 'parts = ["already cancelled" if o["status"] == "CANCELED" else _status(o["status"])]', 'parts = [_status(o["status"])]'),
+    "flights: today from the UTC date": (FLIGHTS, "    today = words.il_time(last_fetch).date()", "    today = last_fetch.date()"),
+    "flights: delayed from any day of the number": (FLIGHTS, 'delayed=any(o["status"] == "DELAYED" for o in own),', 'delayed=any(o["status"] == "DELAYED" for g in flights if (g["airline"], g["flight_no"], g["direction"]) == (f["airline"], f["flight_no"], f["direction"]) for o in by_flight.get(g["flight_id"], [])),'),
+    "flights: group split ignores the label": (FLIGHTS, "    return r.day, r.group_id, r.label, r.delayed, r.warning", "    return r.day, r.group_id, r.delayed, r.warning"),
+    "flights: unknown not counted": (FLIGHTS, "unknown=ls.count(words.UNKNOWN),", "unknown=0,"),
+    "flights: featured ignores censoring": (FLIGHTS, "    clean = [r for r in cancelled if censored[r.flight_id] is False]", "    clean = cancelled"),
+    "flights: address collision not refused": (FLIGHTS, "        if len(nums) > 1:", "        if False:"),
+    "flights: place keys from one row only": (FLIGHTS, "for r in rs for k in place_keys(r.city, r.airport)", "for r in rs[:1] for k in place_keys(r.city, r.airport)"),
+    "flights: label from local time": (FLIGHTS, 'words.main_label(f["outcome"], f["sched_utc_final"], last_fetch)', 'words.main_label(f["outcome"], f["sched_local_final"], last_fetch)'),
+    "flights: records in input order": (FLIGHTS, 'own = sorted(by_flight.get(f["flight_id"], []), key=lambda o: o["snap_rn"])', 'own = by_flight.get(f["flight_id"], [])'),
+    "flights: page date from the first scheduled time": (FLIGHTS, '        day = f["sched_local_final"].date()', '        day = f["sched_local_first"].date()'),
+    "flights: address check minds case": (FLIGHTS, "numbers.setdefault(r.page.lower(), {})", "numbers.setdefault(r.page, {})"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
