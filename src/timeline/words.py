@@ -192,8 +192,9 @@ def _cancelled(o: dict) -> bool:
 
 
 def _earliest(o: dict, direction: str, page_date: date) -> str:
-    """What the earliest record has; empty values left out (the model keeps empty desks and zone as '')."""
-    parts = [_status(o["status"])]
+    """What the earliest record has; empty values left out (the model keeps empty desks and zone as '').
+    "Already cancelled": the time beside it is when the record was made, never a cancellation time."""
+    parts = ["already cancelled" if o["status"] == "CANCELED" else _status(o["status"])]
     if o["est_local"] is not None and o["est_local"] != o["sched_local"]:
         parts.append(f"expected to {_verb(direction)} at {clock(o['est_local'], page_date)}")
     if o["terminal"] is not None:

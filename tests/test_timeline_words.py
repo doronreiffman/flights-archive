@@ -337,10 +337,14 @@ CHANGE_CASES = [
     ([ON_TIME | {"est_local": None, "terminal": None}], "D", DAY, [("Earliest record (27 Oct 20:04)", "on time")]),
     ([ON_TIME, then(ON_TIME, utc(29, 15, 32, 45), utc(29, 15, 16, 45), est_local=None, terminal=None)], "D", DAY,
      [ON_TIME_LINE, ("17:32", "No expected time, no terminal")]),
+    # cancelled from the earliest record on: "already", so the time reads as the record's, not a cancellation's
+    ([first(utc(27, 18, 4, 46), local(29, 16, 45), status="CANCELED", terminal=3)], "D", DAY,
+     [("Earliest record (27 Oct 20:04)", "already cancelled, terminal 3")]),
     # a status changed back from cancelled is a plain status line
     ([CANCELLED_FIRST, then(CANCELLED_FIRST, utc(29, 15, 32, 45), utc(29, 15, 16, 45), status="NOT FINAL",
                             status_he="לא סופי")],
-     "D", DAY, [("Earliest record (27 Oct 20:04)", "cancelled, terminal 1"), ("17:32", "Status “not final”")]),
+     "D", DAY, [("Earliest record (27 Oct 20:04)", "already cancelled, terminal 1"),
+                ("17:32", "Status “not final”")]),
     # a retime: the previous record's scheduled time to this one's; an expected time equal to the new
     # scheduled time adds nothing, one that differs is said, with the record's other changes
     ([RETIMED, then(RETIMED, utc(30, 20, 32, 45), utc(30, 20, 16, 45), kind="retime",
