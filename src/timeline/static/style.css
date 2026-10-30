@@ -1,22 +1,171 @@
-:root { --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5d5d58; --line: #d9d8d2; --accent: #2f5d8a; --warn: #8a4b2f; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #161615; --fg: #ecebe6; --muted: #a8a7a0; --line: #3a3936; --accent: #8fb6dd; --warn: #e0a07f; }
+/* The site's look (docs/site-redesign.md, "Look"): one calm column, light by default, dark when the system asks.
+   Every text color pair clears 4.5:1 in both schemes (tests/test_timeline_style.py; the ratios are listed in the
+   doc's "Deviations"). Class names come from src/timeline/views.py. Nothing is loaded from elsewhere. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #18181a; --muted: #6b6b70; --line: #e3e3e8; --accent: #0a66c2; --card: #f4f4f6;
+  --cancel-fg: #b3261e; --cancel-bg: #fdecea;
+  --ok-fg: #1b6e34; --ok-bg: #e6f4ea;
+  --plain-fg: #4a4a4f; --plain-bg: #ececf0;
+  --delay-fg: #8a4f00; --delay-bg: #fff1db;
+  --unknown-fg: #6b6b70;
 }
-* { box-sizing: border-box; }
-body { margin: 0 auto; max-width: 60rem; padding: 0 1rem 3rem; background: var(--bg); color: var(--fg);
-       font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-header { padding: 1rem 0; border-bottom: 1px solid var(--line); }
-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
-a { color: var(--accent); }
-h1 { font-size: 1.6rem; margin: 1.5rem 0 .5rem; }
-h2 { font-size: 1.2rem; margin: 2rem 0 .5rem; }
-.partial { color: var(--warn); font-weight: 600; }
-#search { width: 100%; max-width: 24rem; padding: .5rem; margin: 1rem 0; font: inherit; }
-details { border-bottom: 1px solid var(--line); padding: .4rem 0; }
-summary { cursor: pointer; }
-summary .t { display: inline-block; min-width: 3.5rem; font-variant-numeric: tabular-nums; }
-summary .o { display: block; margin-left: 3.5rem; color: var(--muted); font-size: .92rem; }
-.note, .seen { margin: .4rem 0 .4rem 3.5rem; color: var(--muted); font-size: .92rem; }
-table { border-collapse: collapse; width: 100%; margin: .5rem 0; font-size: .92rem; }
-th, td { text-align: left; vertical-align: top; padding: .3rem .5rem; border-top: 1px solid var(--line); }
-td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151517; --fg: #ececee; --muted: #a3a3a8; --line: #34343a; --accent: #7ab8ff; --card: #232327;
+    --cancel-fg: #ffb3ab; --cancel-bg: #4d1c18;
+    --ok-fg: #8fd8a2; --ok-bg: #173a24;
+    --plain-fg: #d4d4da; --plain-bg: #303035;
+    --delay-fg: #ffcf85; --delay-bg: #3f2c0c;
+    --unknown-fg: #a3a3a8;
+  }
+}
+
+/* --- page ------------------------------------------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  max-width: 42rem; margin: 0 auto; padding: 0 1.5rem;
+  background: var(--bg); color: var(--fg);
+  font: 1rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+main { padding: 2.5rem 0 .5rem; }
+h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.02em; font-weight: 700; margin: 0 0 .75rem; }
+h2 { font-size: 1.25rem; line-height: 1.3; font-weight: 650; margin: 2.5rem 0 .75rem; }
+p { margin: 0 0 1rem; }
+a { color: var(--accent); text-underline-offset: .15em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+footer {
+  margin-top: 2.5rem; padding: 1.25rem 0 2.5rem; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: .875rem;
+}
+footer p { margin: 0 0 .5rem; }
+
+/* The airport's own strings keep their published spacing ("ARKIA  ISRAELI  AIRLINES"). */
+.d { white-space: pre-wrap; }
+/* The Hebrew city cannot reorder the English around it. */
+[dir="rtl"] { unicode-bidi: isolate; }
+/* The search box and its results stay hidden until the script shows them, whatever display rule applies. */
+[hidden] { display: none !important; }
+
+.back { margin: 0 0 1.25rem; font-size: .9rem; }
+.back a { text-decoration: none; }
+.back a:hover { text-decoration: underline; }
+.lede, .who { color: var(--muted); }
+.lede { font-size: 1.0625rem; margin-bottom: 1.5rem; }
+.headline { font-size: 1.125rem; font-weight: 500; margin-bottom: 1.75rem; }
+.summary { font-size: 1.0625rem; }
+.note, .updated, .built { color: var(--muted); font-size: .92rem; }
+.warn { color: var(--cancel-fg); font-size: .92rem; }
+.days { font-size: .94rem; line-height: 1.9; }
+
+/* --- labels: small rounded pills, always with their text ---------------------------------------- */
+.label {
+  display: inline-block; padding: .1rem .55rem; border: 1px solid transparent; border-radius: 999px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .03em; line-height: 1.45; white-space: nowrap;
+  text-indent: 0;
+}
+.l-departed, .l-landed { color: var(--ok-fg); background: var(--ok-bg); }
+.l-cancelled { color: var(--cancel-fg); background: var(--cancel-bg); }
+.l-upcoming, .l-no-final-update { color: var(--plain-fg); background: var(--plain-bg); }
+.l-unknown { color: var(--unknown-fg); border-color: currentColor; border-style: dashed; }
+.l-delayed { color: var(--delay-fg); background: var(--delay-bg); }
+
+/* --- one flight's story (front page) -------------------------------------------------------------- */
+.story { background: var(--card); border-radius: 12px; padding: 1.1rem 1.25rem 1.25rem; margin: 0 0 2rem; }
+.story h2 { font-size: 1.1rem; margin: 0 0 .2rem; }
+.story h2 a { text-decoration: none; }
+.story h2 a:hover { text-decoration: underline; }
+.story p { color: var(--muted); font-size: .94rem; margin: 0 0 .75rem; }
+
+/* --- what changed: the time in a left column, kept beside its line on any width ---------------- */
+.changes {
+  display: grid; grid-template-columns: fit-content(15rem) minmax(0, 1fr); row-gap: .45rem;
+  list-style: none; margin: .5rem 0 0; padding: 0; font-size: .94rem;
+}
+/* Each line borrows the list's two columns, so every time lines up; the fixed first value is for a browser
+   without subgrid. */
+.changes li {
+  grid-column: 1 / -1; display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr); grid-template-columns: subgrid;
+}
+.changes .t { color: var(--muted); padding-right: 1rem; }
+
+/* --- search (front page) ---------------------------------------------------------------------------- */
+#search {
+  width: 100%; margin: 0 0 .5rem; padding: .7rem .9rem; border: 1px solid var(--muted); border-radius: 10px;
+  font: inherit; color: var(--fg); background: var(--bg); -webkit-appearance: none; appearance: none;
+}
+#search::placeholder { color: var(--muted); opacity: 1; }
+#search:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+#search-results { list-style: none; margin: 0 0 1rem; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+#search-results li { padding: .5rem .9rem; border-top: 1px solid var(--line); }
+#search-results li:first-child { border-top: 0; }
+#search-results .more { color: var(--muted); font-size: .9rem; }
+
+/* --- cancellations table: columns size to their text, no fixed widths ------------------------------ */
+table { width: 100%; border-collapse: collapse; font-size: .94rem; margin: 0 0 .75rem; }
+th { text-align: left; font-size: .8rem; font-weight: 600; color: var(--muted); padding: 0 .75rem .4rem 0; }
+td { text-align: left; vertical-align: top; padding: .6rem .75rem .6rem 0; border-top: 1px solid var(--line); }
+th:last-child, td:last-child { padding-right: 0; }
+.cancellations td:first-child { color: var(--muted); white-space: nowrap; }
+.cancellations td:nth-child(2) { font-weight: 600; white-space: nowrap; }
+
+/* --- chart (front page): text keeps the SVG's 12 px; its colors come from the checked tokens ------- */
+.chart { display: block; margin: .25rem 0 .75rem; }
+.chart text { fill: var(--fg); }
+.chart text.date { font-weight: 600; }
+.chart text.mark { fill: var(--muted); }
+.chart a:hover text.date, .chart a:focus-visible text.date { fill: var(--accent); text-decoration: underline; }
+.chart a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chart .rest { fill: var(--accent); }
+.chart .cancelled { fill: var(--cancel-fg); }
+.chart .unknown { fill: var(--unknown-fg); }
+.chart .ahead .bar, .chart .partial .bar { opacity: .4; }
+
+/* --- flight page rows: the date, then everything under it lined up with the scheduled time ----------- */
+.row { border-top: 1px solid var(--line); padding: .9rem 0; scroll-margin-top: 1rem; }
+.row:target { box-shadow: inset 3px 0 0 var(--accent); padding-left: .9rem; }
+.head { margin: 0; padding-left: 6.75rem; text-indent: -6.75rem; }
+.head > * { text-indent: 0; }
+.head .date { display: inline-block; width: 6.5rem; font-weight: 650; }
+.head .sched, .head .place { color: var(--muted); }
+.row > :not(.head) { margin: .35rem 0 0 6.75rem; }
+summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: .92rem; }
+
+/* --- day page list: the time in a column, wrapped lines under the flight ------------------------------ */
+.flights { list-style: none; margin: 0; padding: 0; }
+.flights li { padding: .55rem 0 .55rem 3.75rem; text-indent: -3.75rem; border-top: 1px solid var(--line); }
+.flights li > * { text-indent: 0; }
+.flights .t { display: inline-block; width: 3.5rem; font-weight: 650; }
+.flights .warn { display: block; }
+
+/* --- phones ----------------------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  body { padding: 0 1rem; }
+  main { padding-top: 1.5rem; }
+  h1 { font-size: 1.6rem; }
+  .story { padding: 1rem; }
+  .changes { grid-template-columns: fit-content(8.5rem) minmax(0, 1fr); }
+  .changes .t { padding-right: .75rem; }
+  .head { padding-left: 0; text-indent: 0; }
+  .head .date { width: auto; }
+  .row > :not(.head) { margin-left: 0; }
+  /* Each cancellation stacks: flight and date, then the route, then the warning. */
+  .cancellations, .cancellations tbody, .cancellations td { display: block; }
+  .cancellations thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .cancellations tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .6rem;
+    padding: .7rem 0; border-top: 1px solid var(--line);
+  }
+  .cancellations td { padding: 0; border: 0; }
+  .cancellations td:nth-child(2) { order: -1; }
+  .cancellations td:nth-child(3), .cancellations td:nth-child(4) { flex-basis: 100%; }
+  .cancellations td:nth-child(4)::before { content: "Warning: "; color: var(--muted); }
+}

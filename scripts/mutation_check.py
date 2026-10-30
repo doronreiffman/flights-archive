@@ -23,6 +23,7 @@ FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
 VIEWS = ("src/timeline/views.py", ["tests/test_timeline_views.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
+STYLE = ("src/timeline/static/style.css", ["tests/test_timeline_style.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
@@ -235,6 +236,16 @@ COLLECTOR_MUTATIONS = {
     "views: last updated in UTC": (VIEWS, "    updated = words.il_time(last_record)", "    updated = last_record"),
     "views: day list from the chart's days": (VIEWS, "for x in all_days)", "for x in chart_days)"),
     "views: incomplete not said on the chart": (VIEWS, '("incomplete", info.partial)) if on]', '("incomplete", False)) if on]'),
+    "style: pale cancel text": (STYLE, "--cancel-fg: #b3261e;", "--cancel-fg: #e8827a;"),
+    "style: dim muted text in the dark": (STYLE, "--muted: #a3a3a8;", "--muted: #5c5c61;"),
+    "style: hidden box shown by a display rule": (STYLE, "[hidden] { display: none !important; }", "#search { display: block; }"),
+    "style: published double spaces collapsed": (STYLE, ".d { white-space: pre-wrap; }", ".d { }"),
+    "style: Hebrew city not isolated": (STYLE, '[dir="rtl"] { unicode-bidi: isolate; }', ""),
+    "style: chart text left black": (STYLE, ".chart text { fill: var(--fg); }\n", ""),
+    "style: chart text in an unchecked color": (STYLE, ".chart text { fill: var(--fg); }", ".chart text { fill: var(--line); }"),
+    "style: chart text given a size": (STYLE, ".chart { display: block;", ".chart { font-size: 16px; display: block;"),
+    "style: a label without its color": (STYLE, ".l-delayed { color: var(--delay-fg); background: var(--delay-bg); }", ""),
+    "style: a web font": (STYLE, "/* --- page ", "@import url(font.css);\n/* --- page "),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

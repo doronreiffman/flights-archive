@@ -228,3 +228,27 @@ Direction, with the owner's decisions of 2026-10-30:
 - D4: the delay sentence adopted. Settling "expected time" by the owner's own observation at the airport is not adopted: one flight settles nothing.
 - D2: the owner's premise stays; the success question for observed sessions moves to q13 (D10).
 - D8: adopted (published names with a note, unknown counts on the chart, NO FINAL UPDATE, the Hebrew city with `lang`).
+
+## Deviations
+
+Contrast (Task 9, `src/timeline/static/style.css`; checked by `tests/test_timeline_style.py`, WCAG 2 ratio, 4.5:1 required). Text color on background, light scheme then dark:
+
+- `--fg` on `--bg`: light #18181a on #ffffff, 17.73:1; dark #ececee on #151517, 15.46:1
+- `--muted` on `--bg`: light #6b6b70 on #ffffff, 5.30:1; dark #a3a3a8 on #151517, 7.26:1
+- `--accent` on `--bg`: light #0a66c2 on #ffffff, 5.69:1; dark #7ab8ff on #151517, 8.80:1
+- `--fg` on `--card`: light #18181a on #f4f4f6, 16.14:1; dark #ececee on #232327, 13.27:1
+- `--muted` on `--card`: light #6b6b70 on #f4f4f6, 4.83:1; dark #a3a3a8 on #232327, 6.23:1
+- `--cancel-fg` on `--cancel-bg` (CANCELLED pill): light #b3261e on #fdecea, 5.72:1; dark #ffb3ab on #4d1c18, 8.22:1
+- `--ok-fg` on `--ok-bg` (DEPARTED, LANDED): light #1b6e34 on #e6f4ea, 5.56:1; dark #8fd8a2 on #173a24, 7.51:1
+- `--plain-fg` on `--plain-bg` (UPCOMING, NO FINAL UPDATE): light #4a4a4f on #ececf0, 7.48:1; dark #d4d4da on #303035, 8.89:1
+- `--delay-fg` on `--delay-bg` (DELAYED): light #8a4f00 on #fff1db, 5.89:1; dark #ffcf85 on #3f2c0c, 9.21:1
+- `--unknown-fg` on `--bg` (UNKNOWN, a dashed outline pill): light #6b6b70 on #ffffff, 5.30:1; dark #a3a3a8 on #151517, 7.26:1
+- `--accent` on `--card` (the story box's link; added to the brief's ten): light #0a66c2 on #f4f4f6, 5.18:1; dark #7ab8ff on #232327, 7.55:1
+- `--cancel-fg` on `--bg` (the warning lines; added): light #b3261e on #ffffff, 6.54:1; dark #ffb3ab on #151517, 10.67:1
+- Chart text: counts in `--fg`, the "today", "ahead" and "incomplete" marks in `--muted`, a date under the pointer or keyboard focus in `--accent`, all on `--bg`, so the first three lines cover it; the test fails if any chart text fill is another token. The SVG's `font-size="12"` is left alone (no CSS font rule on the chart).
+
+Other look calls (Task 9):
+
+- The mockup's red pill (#d1352b on #fdecea, 4.32:1) fails the bar and was darkened as above. Its grey (#6e6e73) passes on the story box at 4.66:1; it was darkened slightly too, for margin.
+- On a phone (600 px and below) each cancellations-table entry stacks as flight and date, then route, then warning; the column headings are hidden there, so the sheet writes a muted "Warning: " before the warning text.
+- Pale chart bars (40% opacity): days "ahead" and "incomplete" days. "Today" is drawn like past days.
