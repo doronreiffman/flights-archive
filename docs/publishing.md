@@ -2,16 +2,16 @@
 
 Grade: portfolio project. Careful where it faces the public (wording, permissions, what the bucket exposes); quick everywhere else: uploads by hand, no custom domain, no automation.
 
-Goal: one HTTPS link to the history site that the owner can send, for a few cents a month, without touching the collector's stack.
+Goal: one HTTPS link to the history site that I can send, for a few cents a month, without touching the collector's stack.
 
-## What you might not be asking
+## What might not be obvious
 
 - **Public is copyable.** Taking our copy down takes minutes; copies others make (archive.org, scrapers) can outlive it. The terms reading (`docs/terms.md`) is what makes this acceptable.
-- **`noindex` stays on every page** (`docs/site-redesign.md`, "Pages"), so search engines will not list the site; people arrive by the link you share. Dropping it is a one-line change, owner's call.
+- **`noindex` stays on every page** (`docs/site-redesign.md`, "Pages"), so search engines will not list the site; people arrive by the link I share. Dropping it is a one-line change, my call.
 - **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). The front page says when the data was last recorded ("Last updated …").
 - **The address is a random `dxxxx.cloudfront.net` name.** A custom domain is a later, separate decision with its own cost.
 - **Pay-as-you-go has no spending cap.** The account's existing "My Monthly Cost Budget" ($5, emails at 85% and 100% of actual, 100% of forecast) is the guard.
-- **Your name goes on the site.** Every page's footer and the front page carry a built-by line and a link to the code; the line holds a placeholder until you write it (`BUILT_BY`, `src/timeline/words.py`), and the upload check refuses the site while it does.
+- **My name goes on the site.** Every page's footer and the front page carry a built-by line and a link to the code; the line held a placeholder until I wrote it (`BUILT_BY`, `src/timeline/words.py`); the upload check still refuses a site that contains the placeholder.
 
 ## Design
 
@@ -38,7 +38,7 @@ Resources:
   4. bucket and distribution from the stack's outputs; the bucket name must start with `flights-archive-site-sitebucket-` (so never the archive bucket, where a delete would add markers that hide locked snapshots, and never `None` from a missing output), and the distribution ID must be non-empty;
   5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css; charset=utf-8`, then `*.js` as `text/javascript; charset=utf-8`, each with `--delete` (which, under the filters, removes only stale files of that type) and `Cache-Control: max-age=300`. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
   6. a CloudFront invalidation of the literal `'/*'`.
-- **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. The owner reads the date on the live page and states it with each upload's go; a date other than 30/08/2025 stops the upload until the terms are read again.
+- **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. I read the date on the live page and state it with each upload's go; a date other than 30/08/2025 stops the upload until the terms are read again.
 - **Takedown**: `aws s3 rm s3://<site bucket>/ --recursive`, then invalidate `'/*'`; minutes, and the stack can go later.
 
 ### Tests and mutation checks
@@ -49,12 +49,12 @@ Resources:
 - CI lints both templates with `--regions il-central-1` (cfn-lint checks only us-east-1 by default).
 - `scripts/mutation_check.py`: an entry for each refusal in `publish.sh`, the tag stripping, the footer words, the policy's `SourceArn` condition, the regional origin and the HTTPS redirect.
 
-### Deploy, then publish (the owner's go for each)
+### Deploy, then publish (each only when I approve it)
 
 1. Identity check, then `aws cloudformation deploy --template-file site-template.yaml --stack-name flights-archive-site --profile flights-sam --region il-central-1`.
 2. `scripts/sync.sh`, model build, timeline build.
-3. The owner reads the terms page's update date and gives the go with it; `sh scripts/publish.sh`.
-4. The owner opens the link and checks a day page, a flight and the search.
+3. I read the terms page's update date and give the go with it; `sh scripts/publish.sh`.
+4. I open the link and check a day page, a flight and the search.
 
 ## Cost (monthly)
 
@@ -69,7 +69,7 @@ Resources:
 
 ## Rejected
 
-- GitHub Pages: free from a public repo, with no account verification, but the site is built on the owner's Mac from the private archive, so every build's pages would have to be committed to the repo, and the repo would have to go public before launch (q17). Rechecked 2026-10-29 after the repo-public decision (q16) and the CloudFront verification wait; the owner kept CloudFront.
+- GitHub Pages: free from a public repo, with no account verification, but the site is built on my Mac from the private archive, so every build's pages would have to be committed to the repo, and the repo would have to go public before launch (q17). Rechecked 2026-10-29 after the repo-public decision (q16) and the CloudFront verification wait; I kept CloudFront.
 - CloudFront's flat-rate Free plan: no overage charges, but a console opt-in and an eligibility check; revisit if traffic ever costs money.
 - S3 static website hosting: needs a public bucket and serves HTTP only.
 - Adding the site to `template.yaml`: one deploy would touch both the archive and the site.
@@ -77,7 +77,7 @@ Resources:
 - A build-time banned-phrase stop beside the upload check: one check, where publication happens, is what the terms record promises.
 - A `--terms-date` flag: it proves nothing a reader of `docs/terms.md` could not type.
 
-## Design review (2026-10-29, Opus; the owner's waiver covers all q15 reviews, Fable over its limit)
+## Design review (2026-10-29, Opus; my waiver covers all q15 reviews, Fable over its limit)
 
 Accepted, all thirteen: the regional origin and empty identity; the bucket-name guard before `--delete`; cfn-lint for il-central-1; the terms-date flag dropped; content types set, not guessed; an allowlist upload; the 403 noted; `'/*'` quoted; tag-stripped scanning; the footer's test and anti-goal; a takedown command; one scan, not two; the PUT basis. The unverified list was closed against cfn-lint's schema and AWS's pricing and invalidation pages.
 
@@ -86,7 +86,7 @@ Accepted, all thirteen: the regional origin and empty identity; the bucket-name 
 - **The phrase check scans `.css` and `.js` as well as `.html`**: the upload sends all three, and a script can put text on the page.
 - **CSS and JavaScript also carry `charset=utf-8`**: harmless for today's ASCII files, right if one ever holds Hebrew.
 - **An in-process test for the check's entry point**: the subprocess tests prove `python -m timeline.check` works, but coverage cannot see inside them (70% on `check.py` until the in-process test).
-- **Code review (2026-10-29, Opus; the owner's waiver covers q15)**, nothing blocking; fixed: the check also reads each file as written, so attribute text and a script's `<` comparison can no longer hide a phrase; `publish.sh` refuses a folder whose path holds `[`, `]`, `?` or `*` (the CLI matches its filters against the full path with fnmatch: a `[ ]` pair makes the allowlist match nothing, and unmatched files upload; `?` and `*` still match themselves and are refused to be safe); `SITE_DIR` is read from where the script was run, and a missing folder stops it; the tests run the script from another folder, so its `cd` is exercised; pages carry `Cache-Control: max-age=300`, so a browser shows an upload within minutes (CloudFront then also keeps them five minutes: a few more S3 GETs, under a cent); `docs/terms.md` no longer says the footer and the real-site scan are still to come.
+- **Code review (2026-10-29, Opus; my waiver covers q15)**, nothing blocking; fixed: the check also reads each file as written, so attribute text and a script's `<` comparison can no longer hide a phrase; `publish.sh` refuses a folder whose path holds `[`, `]`, `?` or `*` (the CLI matches its filters against the full path with fnmatch: a `[ ]` pair makes the allowlist match nothing, and unmatched files upload; `?` and `*` still match themselves and are refused to be safe); `SITE_DIR` is read from where the script was run, and a missing folder stops it; the tests run the script from another folder, so its `cd` is exercised; pages carry `Cache-Control: max-age=300`, so a browser shows an upload within minutes (CloudFront then also keeps them five minutes: a few more S3 GETs, under a cent); `docs/terms.md` no longer says the footer and the real-site scan are still to come.
 - **Re-review of those fixes (Opus)**, nothing blocking; fixed: tags are stripped in scripts too, so markup inside a script string cannot hide a phrase (the first fix had narrowed stripping to pages); the default folder (`<repo>/site` with no `SITE_DIR`) has a test run from another folder; the comments now say only a `[ ]` pair breaks the filters.
-- **The check also requires the source line and the unofficial line on every page** (the owner's call, 2026-10-29, beyond the reviewed design): `missing_notices` in `src/timeline/check.py` reads both from their constants (then `ATTRIBUTION` and `UNOFFICIAL`), so a site built before the footer change, which still has its marker and no banned phrase, cannot be uploaded. Since the redesign (q18) it wants `SOURCE_SHORT` and `UNOFFICIAL` (`src/timeline/words.py`) on every page and the full `ATTRIBUTION` on `how-it-works.html` (checked when that page is there; the build always writes it), and `scan` refuses the built-by placeholder, so nothing goes out before the owner writes that line.
-- **The first deploy failed on account verification** (2026-10-29 20:50Z): CloudFront refuses new distributions until AWS Support verifies the account; the stack rolled back cleanly. AWS's answer (2026-10-30): the account needed a valid payment method; once the owner added one, the record was deleted (a stack in ROLLBACK_COMPLETE cannot be updated) and the redeploy succeeded.
+- **The check also requires the source line and the unofficial line on every page** (my call, 2026-10-29, beyond the reviewed design): `missing_notices` in `src/timeline/check.py` reads both from their constants (then `ATTRIBUTION` and `UNOFFICIAL`), so a site built before the footer change, which still has its marker and no banned phrase, cannot be uploaded. Since the redesign (q18) it wants `SOURCE_SHORT` and `UNOFFICIAL` (`src/timeline/words.py`) on every page and the full `ATTRIBUTION` on `how-it-works.html` (checked when that page is there; the build always writes it), and `scan` refuses the built-by placeholder, so nothing could go out before I wrote that line.
+- **The first deploy failed on account verification** (2026-10-29 20:50Z): CloudFront refuses new distributions until AWS Support verifies the account; the stack rolled back cleanly. AWS's answer (2026-10-30): the account needed a valid payment method; once I added one, the record was deleted (a stack in ROLLBACK_COMPLETE cannot be updated) and the redeploy succeeded.

@@ -1,6 +1,6 @@
 # History timeline (q7)
 
-Grade: product v1 on a production-lean generator. The generator is deterministic and tested like the model; the pages are plain, accessible HTML. The site is built and viewed locally. Publishing it, or handing out copies, is a separate decision for the owner (see "Publishing").
+Grade: product v1 on a production-lean generator. The generator is deterministic and tested like the model; the pages are plain, accessible HTML. The site was first built and viewed locally; publishing it was a separate decision (see "Publishing").
 
 The redesign (q18, 2026-10-30) replaced v1's pages, words, build and tests: `docs/site-redesign.md`. This file keeps v1's goals, the partial-day rule, the publishing reasoning and the review history; where the two differ, the redesign holds.
 
@@ -53,13 +53,13 @@ Replaced by the redesign: `docs/site-redesign.md`, "Tests and checks".
 
 ## Five outsiders (from the review)
 
-Observed sessions with the owner watching, not a copy handed out: the point is to see where people misread. Tasks: "find IZ 991 on 29 October and tell me what happened to it", "find a flight that was cancelled and say when that was announced", "is there anything here you would use, and for what?". Watch for: misreading "first observed CANCELED" as the cancellation time, misreading "listed together" as the same aircraft, not finding a flight. The review's stop rule: if fewer than two of five name a real use, keep the collector and the case study and stop product work. The tasks and the watch list quote v1's wording; rewrite them before any session (`docs/site-redesign.md`, "Outside this design").
+Observed sessions with me watching, not a copy handed out: the point is to see where people misread. Tasks: "find IZ 991 on 29 October and tell me what happened to it", "find a flight that was cancelled and say when that was announced", "is there anything here you would use, and for what?". Watch for: misreading "first observed CANCELED" as the cancellation time, misreading "listed together" as the same aircraft, not finding a flight. The review's stop rule: if fewer than two of five name a real use, keep the collector and the case study and stop product work. The tasks and the watch list quote v1's wording; rewrite them before any session (`docs/site-redesign.md`, "Outside this design").
 
-## Publishing (q15, owner's call)
+## Publishing (q15, my call)
 
-The owner reads the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. The owner chose to publish before the model's gaps come from receipts (q14, 2026-10-29): the gap wording already names both causes (v1's; the redesign's says only that there are no records for that time), and no board has yet stayed unchanged between two downloads.
+I read the terms as allowing it (`docs/terms.md`, read 2026-10-29): the pages are derived per-flight timelines with the source cited, and the wording rules keep them from misleading. I chose to publish before the model's gaps come from receipts (q14, 2026-10-29): the gap wording already names both causes (v1's; the redesign's says only that there are no records for that time), and no board has yet stayed unchanged between two downloads.
 
-The owner picked S3 + CloudFront (2026-10-29): a few cents a month at most. (A second reason given then, that the repo could stay private, lapsed when the owner chose to make the repo public, q16.) Options as priced that day for under 1 GB and about 1,000 page views a month:
+I picked S3 + CloudFront (2026-10-29): a few cents a month at most. (A second reason given then, that the repo could stay private, lapsed when I chose to make the repo public, q16.) Options as priced that day for under 1 GB and about 1,000 page views a month:
 
 - A private S3 bucket in il-central-1 behind CloudFront, in this account, on the default cloudfront.net address: well under a cent a month for the 2.4 MB v1 site of that day, at most about $0.03 for a site near 1 GB; a custom domain would add its own cost. S3 storage is $0.025 per GB-month (AWS price list for il-central-1, published 2026-10-15); CloudFront stays inside its always-free 1 TB and 10 million requests a month (CloudFront FAQ). CloudFront's flat-rate Free plan ($0, 1M requests, 100 GB) is the other way; whether this account qualifies needs a console check.
 - GitHub Pages: free from a public repo. From a private repo it needs a paid plan (Pro; its current price is unconfirmed), and the site is public either way.
@@ -84,7 +84,7 @@ Accepted: wording fixed for first sightings, `dropped`, `vanished`, negative lea
 
 Fixed: anchors carry the first scheduled date (a retime past midnight beside the next day's flight of the same time stopped the whole build); the lead time uses both ends of the bracket, so "less than an hour" and "after" are said only when both ends support them, with "before" and "around" otherwise; the censored sentence no longer assumes a pause in collection; "partial" and the methodology now say only what the code checks (some flight numbers may be missing); a flight cancelled again says so; the vanished statistic from the early sample is gone; "last stored" instead of "last check"; the number alone is a search key ("991"); `<out>.building` and `<out>.old` are touched only with the marker, and the swap moves the old site aside first; tests and mutation entries for the five behaviours no test caught (the retimed label, the between threshold, pauses only on the days they touch, partial on the index, the footer's last-seen time); the clock-change test runs under an Israeli zone.
 
-## Handoff review (2026-10-29, Opus; the owner's Fable waiver covers q7)
+## Handoff review (2026-10-29, Opus; my Fable waiver covers q7)
 
 Fixed: the `gap` outcome, the index heading and the methodology no longer blame our collection for a stretch the board may have caused ("pause in our collection" joins the banned phrases); the model stops when a snapshot from after receipts began has none (`RECEIPTS_SINCE`); the swap's docstring says a crash can leave neither site for a moment.
 

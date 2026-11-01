@@ -6,7 +6,7 @@
 
 **Tech Stack:** Python 3.13 (`.venv`), DuckDB over the model's Parquet files, pytest with coverage, Node (only for the search test, skipped where missing), plain HTML, CSS and JavaScript. No new dependencies.
 
-**Spec:** `docs/site-redesign.md` (design v2, approved by the owner 2026-10-30). Executors read the spec's "Words", "Pages" and "Look" sections before their task; the spec's exact copy wins over any paraphrase here.
+**Spec:** `docs/site-redesign.md` (design v2, approved by me 2026-10-30). Executors read the spec's "Words", "Pages" and "Look" sections before their task; the spec's exact copy wins over any paraphrase here.
 
 ## Global Constraints
 
@@ -388,10 +388,10 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
 - [ ] **Step 2: Full test run.** `.venv/bin/pytest --cov=collector --cov=model --cov=timeline --cov-fail-under=95` → all pass, coverage ≥ 95%.
 - [ ] **Step 3: Full mutation check, alone.** `.venv/bin/python scripts/mutation_check.py` → "Every mutation was caught."; record the new count.
 - [ ] **Step 4: Template lint.** `.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml` → no output.
-- [ ] **Step 5: Real build.** `PYTHONPATH=src .venv/bin/python -m model.build --raw data/raw --out data/model`, then `PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site`, then `PYTHONPATH=src .venv/bin/python -m timeline.check site` → exit 1 with only "built-by placeholder" hits (the owner writes that line before any upload). Open `site/index.html`, a flight page and a day page at 375 px and at desktop width, in light and dark: no sideways scroll, nothing unreadable.
+- [ ] **Step 5: Real build.** `PYTHONPATH=src .venv/bin/python -m model.build --raw data/raw --out data/model`, then `PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site`, then `PYTHONPATH=src .venv/bin/python -m timeline.check site` → exit 1 with only "built-by placeholder" hits (I write that line before any upload). Open `site/index.html`, a flight page and a day page at 375 px and at desktop width, in light and dark: no sideways scroll, nothing unreadable.
 - [ ] **Step 6: Commit** (`git commit -m "q18: documents follow the redesign"`).
 
-## Appendix A: "How this works" copy (verbatim; the owner reviews the first-person lines)
+## Appendix A: "How this works" copy (verbatim; I review the first-person lines)
 
 > ## Where the data comes from
 > The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.

@@ -2,13 +2,13 @@
 
 Grade: production-lean, same as the v1 site (`docs/timeline.md`): deterministic, tested, mutation-checked; plain static HTML, CSS and a little JavaScript.
 
-Status: design v2, 2026-10-30. Worked out with the owner over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Built 2026-10-30 (plan: `docs/site-redesign-plan.md`; what building changed: "Deviations" at the end); not public yet. It replaces the "Pages", "Wording", "How it is built" and "Tests and mutation checks" sections of `docs/timeline.md`, which now point here.
+Status: design v2, 2026-10-30. Worked out with me over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Built 2026-10-30 (plan: `docs/site-redesign-plan.md`; what building changed: "Deviations" at the end); published 2026-10-30 (`docs/publishing.md`). It replaces the "Pages", "Wording", "How it is built" and "Tests and mutation checks" sections of `docs/timeline.md`, which now point here.
 
-Mockups the owner approved for look and wording, with real data from the 2026-10-30 00:02 build: `docs/site-redesign/front-page-mockup.html` and `docs/site-redesign/flight-page-mockup.html` (open in a browser; the heading above each card is mockup chrome). Where a mockup and the rules below differ, the rules win. Known differences: the mockups title-case airline and airport names, leave out "last expected", the earliest-record and gap lines, "Times are Israel time" (front page), "Last updated", the story box's place in the page list, and use a footer that would fail the check.
+Mockups I approved for look and wording, with real data from the 2026-10-30 00:02 build: `docs/site-redesign/front-page-mockup.html` and `docs/site-redesign/flight-page-mockup.html` (open in a browser; the heading above each card is mockup chrome). Where a mockup and the rules below differ, the rules win. Known differences: the mockups title-case airline and airport names, leave out "last expected", the earliest-record and gap lines, "Times are Israel time" (front page), "Last updated", the story box's place in the page list, and use a footer that would fail the check.
 
 ## Why
 
-The site is the owner's portfolio piece for a job search: a recruiter or hiring manager clicks through from a CV or LinkedIn and should understand it in seconds. The owner's test (2026-10-30): if it is useful to a traveler looking up a flight, it is impressive to a hirer; "it doesn't necessarily have to be useful in day to day life, just impressive, clean, simple". The v1 site fails both: its front page is a table of dates, and its sentences ("First observed CANCELED on the public board", "first seen by us", "stored boards") mean nothing to someone who has never heard of the flight board.
+The site is my portfolio piece for a job search: a recruiter or hiring manager clicks through from a CV or LinkedIn and should understand it in seconds. My test (2026-10-30): if it is useful to a traveler looking up a flight, it is impressive to a hirer; "it doesn't necessarily have to be useful in day to day life, just impressive, clean, simple". The v1 site fails both: its front page is a table of dates, and its sentences ("First observed CANCELED on the public board", "first seen by us", "stored boards") mean nothing to someone who has never heard of the flight board.
 
 ## Goals
 
@@ -30,20 +30,20 @@ The site is the owner's portfolio piece for a job search: a recruiter or hiring 
 ## Anti-goals (a failure even if it works)
 
 - A sentence a stranger cannot follow: data-collection words ("board", "snapshot", "stored", "observed", "receipt", "first seen by us") on any page other than "How this works". "Record" is allowed ("earliest record", "no records for that time").
-- The site speaking as an institution: "we", "our" and "us" are banned on every page (owner, 2026-10-30). "I" is allowed only on "How this works" and in the built-by line, so a reader sees who built it (owner, 2026-10-30). Everywhere else each sentence states a fact about a flight.
+- The site speaking as an institution: "we", "our" and "us" are banned on every page (my decision, 2026-10-30). "I" is allowed only on "How this works" and in the built-by line, so a reader sees who built it (my decision, 2026-10-30). Everywhere else each sentence states a fact about a flight.
 - Overclaiming. Plain words, but only what the airport's list supports: a warning is a range or a lower bound, never a measured moment; a cancellation never gets a single clock time, only "between HH:MM and HH:MM"; no "took off", "operated by", "delayed by", "minutes late"; "probably" where something is inferred.
 - Looking official: no IAA name in the title, no logos; the source line and the unofficial line on every page (`docs/terms.md`, clauses 6 and 8).
 - Shipping the built-by placeholder: the upload check refuses a site that still contains it.
 
-## Words (owner, 2026-10-30)
+## Words (approved by me, 2026-10-30)
 
 These replace the "Wording" section of `docs/timeline.md`. They put the project notes' former claims-discipline line ("first observed CANCELED on the public board") into plain words while keeping its substance: ranges and lower bounds, no single cancellation time, no delay or operator claims. The project notes' claims line, `docs/terms.md` (the clause 4 paragraph names these rules as how the site avoids misleading presentation) and README.md were updated to match when the build was finished.
 
 - "Cancelled", not "CANCELED". "How this works" says once what it means: the airport's own list showed the flight as cancelled. The front-page headline says "listed as cancelled" (the approved mockup).
 - "Scheduled to leave HH:MM" for departures, "scheduled to land HH:MM" for arrivals. Never "due".
 - Times are Israel time; the footer of every page says "Times are Israel time."
-- Durations in hours, whole numbers: lower ends rounded down, upper ends rounded up (my call: hours only, no switch to days, so ranges never mix units).
-- The airport's status words appear in lower case in the change lines: on time, delayed, landing, landed, departed, cancelled, early. "Final" and "not final" are the airport's words with no published definition; they appear in quotes ("status “final”"), and "How this works" says the airport does not define them (my call; the reviewer's gloss was a guess).
+- Durations in hours, whole numbers: lower ends rounded down, upper ends rounded up (provisional: hours only, no switch to days, so ranges never mix units).
+- The airport's status words appear in lower case in the change lines: on time, delayed, landing, landed, departed, cancelled, early. "Final" and "not final" are the airport's words with no published definition; they appear in quotes ("status “final”"), and "How this works" says the airport does not define them (provisional; the reviewer's gloss was a guess).
 
 ### Who is a "flight"
 
@@ -103,7 +103,7 @@ One line per change, oldest first, the time in a left column:
 - More than an hour (`GAP_HOURS`) since `prev_observed_at`: "Between 27 Oct 20:24 and 14:29 · Check-in desks 345-348, zone B" (TO 3459, on its 29 October row). A time in the change list carries its date only when it differs from the row's day.
 - The cancellation: always a range, "Between 19:16 and 19:32 · Cancelled", never a single time.
 - A retime: "Moved to a new scheduled time: 30 Oct 23:30 → 01:10" (on a 31 October row).
-- Plain field names: expected time, status, terminal, check-in desks, check-in zone. A field that empties says so: "no expected time", "no terminal", "no check-in desks", "no check-in zone" (each line starts with a capital: "No check-in desks"). Changes to the airline, airport, city or country names are left out (my call; they are spelling changes on the airport's side).
+- Plain field names: expected time, status, terminal, check-in desks, check-in zone. A field that empties says so: "no expected time", "no terminal", "no check-in desks", "no check-in zone" (each line starts with a capital: "No check-in desks"). Changes to the airline, airport, city or country names are left out (provisional; they are spelling changes on the airport's side).
 
 ### Codeshares
 
@@ -123,7 +123,7 @@ Top to bottom:
 
 1. Title "Cancelled flights at Tel Aviv airport". Under it: "A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and which ones were cancelled."
 2. Headline: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N." Y counts flights (above) whose scheduled time has passed (`sched_utc_final` at or before the last record's `fetched_at`) and whose label is DEPARTED, LANDED or CANCELLED, on every day the site has (26 October's flights were recorded from the evening of 27 October on); X the CANCELLED ones. N = Y / X: below 20 rounded to the nearest whole number, from 20 up to the nearest multiple of 5, halves upward. Left out while X is 0. Today: 19 of 949, about 1 in 50.
-3. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (my call): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. Today: TO 3459.
+3. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (provisional): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. Today: TO 3459.
 4. Search box: "Flight number or city, e.g. LY 001 or Paris". Order: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number. Up to 10 results as links to flight pages, then "N more: type more of the number or city" when more match. It needs JavaScript; without it the box is hidden, and the day list (item 6) reaches every flight.
 5. "Recent cancellations": the 10 most recent cancelled flights by scheduled time, upcoming ones included: date, flight, route with "scheduled to leave/land HH:MM", warning. Each links to its row's anchor on the flight page. "All cancellations" below. On a narrow screen each entry stacks (flight and date, then route, then warning); no fixed column widths.
 6. "Flights each day": an inline SVG chart of the last 14 days with flights plus the days ahead. Each day shows its flights in three parts (cancelled, no known outcome, the rest) with the numbers in text beside the bar ("370 flights · 8 cancelled · 190 unknown"), never in color alone. The day of the last record (Israel date) is "today", drawn like past days; later days are pale, "ahead". A day the existing `partial` rule flags is pale and labelled "incomplete". Each day links to its day page. Under the chart, a compact list of every day the site has, linked, so no flight is out of reach without JavaScript.
@@ -131,7 +131,7 @@ Top to bottom:
 8. A line for the hiring reader: "Built by [owner's wording] · How this works · Code on GitHub".
 9. Footer.
 
-In the `<head>`: `<title>` "Cancelled flights at Tel Aviv airport (Ben Gurion)"; `<meta name="description">` and Open Graph `og:title`, `og:description`, `og:type` (no image), so a pasted link previews with plain words. The description: "Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning there was. Built by [owner's wording]." (The owner writes the name part.)
+In the `<head>`: `<title>` "Cancelled flights at Tel Aviv airport (Ben Gurion)"; `<meta name="description">` and Open Graph `og:title`, `og:description`, `og:type` (no image), so a pasted link previews with plain words. The description: "Which flights in and out of Tel Aviv's Ben Gurion Airport were cancelled, and how much warning there was. Built by [owner's wording]." (I wrote the name part.)
 
 ### Flight page (`flight/<airline><number>-<D|A>.html`, one per flight number and direction)
 
@@ -159,9 +159,9 @@ Plain words, short sections; "I" allowed. Where the data comes from (the airport
 
 ### Footer (every page)
 
-Owner, 2026-10-30: "Flight data: Israel Airports Authority, published on data.gov.il." (constant `SOURCE_SHORT`, beside `UNOFFICIAL` in `src/timeline/words.py`), then `UNOFFICIAL` verbatim, then "Times are Israel time.", then "How this works", "Code on GitHub", "Built by [owner's wording]". The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) is on "How this works". `timeline.check` requires `SOURCE_SHORT` and `UNOFFICIAL` on every page and `ATTRIBUTION` on `how-it-works.html`; `docs/terms.md` (clauses 6 and 8) and `docs/publishing.md` were changed to match.
+Approved by me, 2026-10-30: "Flight data: Israel Airports Authority, published on data.gov.il." (constant `SOURCE_SHORT`, beside `UNOFFICIAL` in `src/timeline/words.py`), then `UNOFFICIAL` verbatim, then "Times are Israel time.", then "How this works", "Code on GitHub", "Built by [owner's wording]". The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) is on "How this works". `timeline.check` requires `SOURCE_SHORT` and `UNOFFICIAL` on every page and `ATTRIBUTION` on `how-it-works.html`; `docs/terms.md` (clauses 6 and 8) and `docs/publishing.md` were changed to match.
 
-The built-by text and the GitHub address come from one place, `BUILT_BY` and `CODE_URL` in `words.py`; until the owner writes the line it holds a marker the upload check refuses.
+The built-by text and the GitHub address come from one place, `BUILT_BY` and `CODE_URL` in `words.py`; until I wrote the line it held a marker, and the upload check still refuses that marker.
 
 ## Look
 
@@ -200,9 +200,9 @@ New, each with a `scripts/mutation_check.py` entry:
 
 ## Left to the builder
 
-Markup and CSS; exact colors and spacing within the look rules; the chart's drawing; how "Show details" looks; section order on "How this works"; anything marked "my call" that turns out awkward in code, as long as the words and rules hold.
+Markup and CSS; exact colors and spacing within the look rules; the chart's drawing; how "Show details" looks; section order on "How this works"; anything marked "provisional" that turns out awkward in code, as long as the words and rules hold.
 
-## Outside this design, for the owner
+## Outside this design, for me
 
 - Freshness: "Last updated" comes from a hand-run build and publish (`scripts/publish.sh`). A portfolio page showing a weeks-old date looks abandoned; a scheduled rebuild is q2/q5.
 - Link-preview image: a `.png`, a new file type for the allowlist and the check (q17).
@@ -213,20 +213,20 @@ Markup and CSS; exact colors and spacing within the look rules; the chart's draw
 
 Builder check (Opus; Fable was over its limit): five points, all folded in (footer vs the word check, codeshares per day, the changed-back wording, names, anchors).
 
-Outside review (reviewer chosen by the owner; full text in commit f360540): 0 critical, 13 significant, 11 minor, 8 nits, 11 direction findings. Facts checked against the model before folding in (190 of 370 flights on 28 October without a known outcome; 9 open flights before the last record; 4 numbers with two cities; 13 numbers twice on one day; LY 5409's 76-minute to 43-hour bracket; README's old wording).
+Outside review (reviewer chosen by me; full text in commit f360540): 0 critical, 13 significant, 11 minor, 8 nits, 11 direction findings. Facts checked against the model before folding in (190 of 370 flights on 28 October without a known outcome; 9 open flights before the last record; 4 numbers with two cities; 13 numbers twice on one day; LY 5409's 76-minute to 43-hour bracket; README's old wording).
 
 Folded in: every significant and minor finding, and the nits, except as follows.
 - Headline denominator: kept at 951 (all days). The reviewer read "since 27 October" as excluding 26 October's flights; those were recorded from 27 October on, and the lede now says "kept since 27 October".
 - "Final" and "not final": the reviewer's gloss is a guess; the site quotes the airport's words and says they are undefined.
 - Warning wording uses hours only (no days), so ranges never mix units.
 
-Direction, with the owner's decisions of 2026-10-30:
-- D3 (lead with one flight's changes instead of cancellations): the owner kept cancellations as the lead; D9's point is taken by putting one flight's full story directly under the headline.
-- D7 ("I" on How this works): adopted by the owner, with the built-by line.
-- D5 (launch gate): the owner dropped "first cancellation-warning figures" from the launch gate; launch once the site is live and this redesign is done. Hosting still waits on AWS account verification (q15), so building this does not delay it.
-- D1, D6, D11: adopted as the code link and built-by line on the front page and the preview title and description; the name is the owner's to write. The full page set stays (D6 agrees it is cheap).
-- D4: the delay sentence adopted. Settling "expected time" by the owner's own observation at the airport is not adopted: one flight settles nothing.
-- D2: the owner's premise stays; the success question for observed sessions moves to q13 (D10).
+Direction, with my decisions of 2026-10-30:
+- D3 (lead with one flight's changes instead of cancellations): I kept cancellations as the lead; D9's point is taken by putting one flight's full story directly under the headline.
+- D7 ("I" on How this works): adopted by me, with the built-by line.
+- D5 (launch gate): I dropped "first cancellation-warning figures" from the launch gate; launch once the site is live and this redesign is done. Hosting was then still waiting on AWS account verification (q15), so building this does not delay it.
+- D1, D6, D11: adopted as the code link and built-by line on the front page and the preview title and description; the name is mine to write. The full page set stays (D6 agrees it is cheap).
+- D4: the delay sentence adopted. Settling "expected time" by my own observation at the airport is not adopted: one flight settles nothing.
+- D2: my premise stays; the success question for observed sessions moves to q13 (D10).
 - D8: adopted (published names with a note, unknown counts on the chart, NO FINAL UPDATE, the Hebrew city with `lang`).
 
 ## Deviations
@@ -260,7 +260,7 @@ Building (Tasks 1 to 10 of the plan), where the code settles or changes what the
 - **A warning beside a label is always a sentence** ("Warning: at least 23 hours."), on day pages and flight rows. The bare text ("at least 23 hours") appears only in the Warning column of the cancellations tables, whose previous cell ends with a scheduled time: the upload check reads a page as flat text across tags, so "CANCELLED" followed by "at least 23 hours" would read as the banned "cancelled at".
 - **"Unknown" on the chart and the day pages counts the UNKNOWN label only.** NO FINAL UPDATE flights are pending, not lost, and sit in "the rest".
 - **The upload check's word rules skip the airport's data**: the contents of `<span class="d">` (`views.d()`), the front page's search JSON and each page's `<title>`; the phrase rules still read everything. Plurals ("boards", "snapshots", "receipts") count as data-collection words. Check-in desks, zone and terminal are escaped but not marked as data, so a zone named "I" would stop an upload, loudly; the 2026-10-30 model's zones are A, B, C, D and G.
-- **Addresses are compared ignoring case**: the build also stops when two numbers' page addresses differ only in case, because the owner's Mac's disk would write both to one file.
+- **Addresses are compared ignoring case**: the build also stops when two numbers' page addresses differ only in case, because my Mac's disk would write both to one file.
 - **Titles**: a two-city arrival reads "LY 5116, to Tel Aviv"; the front page's story box names its own row's city even for a two-city number, since it shows one flight on one day.
 
 ## Deferred review findings (2026-10-30)
@@ -270,5 +270,5 @@ Minor findings from the ten task reviews and the final review that the final rev
 - Tests: the featured() docstring says a missing censored flag counts as censored (only None does); the time-zone fixture is imported from a sibling test module (conftest.py would be cleaner); the style test guards one exact selector, so a broader `nowrap` rule would pass; the contrast test checks token pairs, not the rules that use them; items with tests but no mutation entry: the flight-cell wrap, the description's full stop, link integrity.
 - Code: search.js puts its functions on the page's global scope and throws (harmlessly, box stays hidden) on malformed search data; `load()` reads seven observation columns the pages no longer use; the day-page address is formatted in three places (the link test pins it); the CLI prints 3,125 table rows as "flight numbers".
 - Check: the word rules do not read attribute text (meta description, aria-label, placeholder); the `<title>` mask would also skip a future SVG `<title>`; "hours late" also matches "hours later" (fails loudly).
-- Docs: README.md:22 still describes v1's layout and README.md:41 gives the dated 289 tests / 156 mutations; both are the owner's text, refreshed at launch (q17).
+- Docs: README.md described v1's layout and gave the dated 289 tests / 156 mutations; both refreshed on 2026-11-01 (q17).
 

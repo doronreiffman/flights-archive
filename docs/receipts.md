@@ -89,7 +89,7 @@ IAM: the existing write-once statement (`s3:PutObject`, `s3:PutObjectRetention`)
 - R2's repeat check runs over kept snapshots only (today: over complete ones).
 - No receipts at all: snapshots from before the first receipt (2026-10-29 17:02:50Z, `RECEIPTS_SINCE`) are `legacy`; any later snapshot stops the build, so a fresh clone or a raw-only sync cannot quietly trust boards that should have receipts.
 - Report: receipt counts by action, snapshot counts by receipt status.
-- Not in this change (suggested follow-up, owner's call): treat `unchanged` receipts as sightings, so a stalled board is not a collection hole and cancellation brackets narrow. That changes R4, R7 and R8. One part of it is a precondition for q7: before the timeline publishes coverage gaps, gaps must come from all receipts, stored and unchanged, or a stall on data.gov.il's side shows up as our own collection hole. (2026-10-29: the owner chose to publish first, since the timeline's gap wording names both causes; q14 starts with the first `unchanged` receipt.)
+- Not in this change (suggested follow-up, my call): treat `unchanged` receipts as sightings, so a stalled board is not a collection hole and cancellation brackets narrow. That changes R4, R7 and R8. One part of it is a precondition for q7: before the timeline publishes coverage gaps, gaps must come from all receipts, stored and unchanged, or a stall on data.gov.il's side shows up as our own collection hole. (2026-10-29: I chose to publish first, since the timeline's gap wording names both causes; q14 starts with the first `unchanged` receipt.)
 
 ## Tests and mutation checks
 
@@ -126,13 +126,13 @@ Total about $0.02 a month (ceiling $0.13). Lambda time is unchanged in practice 
 
 Accepted: stops instead of silent drops, the sync script, `pending` vs `orphan`; `run_started_at` and `downloaded_at` instead of one misleading `fetched_at`; `code_sha256`; no HTTP status; the retried-write row in the failure table; the sha12 check on `last_key`; the sha12 in the receipt key; the Sid rename and "the collector cannot" wording; gaps from all receipts before q7 publishes them. Declined: S3 version ids in receipts and IAM condition keys (see Rejected).
 
-## Code review (2026-10-29, Opus; the owner waived the Fable gate this time)
+## Code review (2026-10-29, Opus; I waived the Fable gate this time)
 
 Verdict: the collector side (write order, failures, receipt key and contents, the unchanged guard, IAM, locking, the fingerprint) safe to deploy. Fixed: a known orphan newer than every receipt could never be cleared (`KNOWN_ORPHANS` is now checked first); the 5-minute grace stopped ordinary syncs (now 35, from the receipt spacing); orphans from a failed receipt write are dropped automatically as `superseded`; `resource_last_modified` defined precisely before it is locked in; the write-once wording now says the code, not IAM, enforces it; the run summary logs `code_sha256`, and deploys come from a clean tree; model tests use receipt times with microseconds. Not done: an IAM condition requiring `If-None-Match` (the condition key is not checked against AWS's documentation; a suggestion for later), a sync-time marker for the grace check (the wider grace removes the race it was for).
 
 ## Deviations
 
-- **Building started before the design review landed** (the owner's "go ahead" was read as a go to build). Storage, IAM and the first collector receipt were written test-first, then paused at the owner's word and reworked to the reviewed design. Nothing from the pre-review draft survived unreviewed.
+- **Building started before the design review landed** (my "go ahead" was read as a go to build). Storage, IAM and the first collector receipt were written test-first, then paused at my word and reworked to the reviewed design. Nothing from the pre-review draft survived unreviewed.
 - **The 30-minute safety-download test needed a real `last_key`.** It faked state with a matching hash and no key; under the stricter "unchanged" rule that state now stores a fresh copy, so the test gives the key the collector would have written.
 - **An `unchanged` receipt naming missing files stops the build too**, not only a stored one: both mean the raw copy is behind the receipts.
 - **The model refuses receipts it does not understand** (a `receipt_version` other than 1, an unknown action, or a snapshot path in another shape) instead of reading them by guesswork. Not in the design; it is what `receipt_version` is for.
