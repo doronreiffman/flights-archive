@@ -1,7 +1,5 @@
 # Site redesign (q18) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the v1 history site with the plain-language redesign in `docs/site-redesign.md`: a cancellations-first front page, one page per flight number, plain words, the same tested, deterministic static build.
 
 **Architecture:** Three new pure modules under `src/timeline/`: `words.py` (every sentence and label, time helpers, constants), `flights.py` (model rows to display rows, grouping, counts, anchors, addresses, search entries) and `views.py` (HTML). `build.py` wires them and writes the site; `pages.py` and its tests are deleted once the wiring lands (Task 6). `check.py` gains the new word rules; `search.js` searches every flight from JSON on the front page; `style.css` gets the new look with a contrast test.

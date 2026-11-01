@@ -1,6 +1,6 @@
 # Design notes
 
-Written while building the project: each note says what was decided and why, the alternatives rejected, and what an independent review changed. Tags like (q7) are items in the project's work queue (`.claude/QUEUE.md`); the review sections name the model that reviewed and record each finding's fate.
+Written while building the project: each note says what was decided and why, the alternatives rejected, and what an independent review changed. Tags like (q7) are items in the project's work queue, kept outside this repository; the review sections name the model that reviewed and record each finding's fate.
 
 - [operations.md](operations.md): how the collector works, deploying and running it, what it costs.
 - [receipts.md](receipts.md): the write-once archive and the receipt written after every download.

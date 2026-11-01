@@ -7,7 +7,7 @@ from pathlib import Path
 
 import duckdb
 
-# Cited wherever the data is shown (CLAUDE.md): in full here and on the site's how-it-works.html; every site page
+# Cited wherever the data is shown (docs/terms.md, clause 6): in full here and on the site's how-it-works.html; every site page
 # also carries the shorter timeline.words.SOURCE_SHORT.
 ATTRIBUTION = ("Source: Israel Airports Authority flight board, published on data.gov.il (dataset flydata, "
                "resource e83f763b-b7d7-479e-b172-ae981ddc6de5).")

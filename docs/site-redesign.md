@@ -21,8 +21,8 @@ The site is the owner's portfolio piece for a job search: a recruiter or hiring 
 
 ## Non-goals
 
-- Delay figures of any kind ("N minutes late", averages): what the airport's expected time measures (leaving the gate or taking off) is still unknown (q3; `.claude/OPEN_ISSUES.md`, Data). Pages say so in one plain sentence.
-- Cancellation odds or forecasts: not enough history (`OPEN_ISSUES`, Governance, forecast gate).
+- Delay figures of any kind ("N minutes late", averages): what the airport's expected time measures (leaving the gate or taking off) is still unknown (q3). Pages say so in one plain sentence.
+- Cancellation odds or forecasts: not enough history, and no evidence gate for forecasts is set yet.
 - Airline or route comparisons: a week of data cannot support them fairly. A later section, once the data can.
 - Live updates. The site is as fresh as the last build and publish.
 - New file types (fonts, images, JSON files): the upload allowlist and the phrase check cover `.html`, `.css`, `.js` only. The chart is inline SVG; the search data is JSON inside a script. A link-preview image (`.png`) is a launch item (q17), not this design.
@@ -37,7 +37,7 @@ The site is the owner's portfolio piece for a job search: a recruiter or hiring 
 
 ## Words (owner, 2026-10-30)
 
-These replace the "Wording" section of `docs/timeline.md`. They put CLAUDE.md's former claims-discipline line ("first observed CANCELED on the public board") into plain words while keeping its substance: ranges and lower bounds, no single cancellation time, no delay or operator claims. CLAUDE.md's claims line, `docs/terms.md` (the clause 4 paragraph names these rules as how the site avoids misleading presentation) and README.md were updated to match when the build was finished.
+These replace the "Wording" section of `docs/timeline.md`. They put the project notes' former claims-discipline line ("first observed CANCELED on the public board") into plain words while keeping its substance: ranges and lower bounds, no single cancellation time, no delay or operator claims. The project notes' claims line, `docs/terms.md` (the clause 4 paragraph names these rules as how the site avoids misleading presentation) and README.md were updated to match when the build was finished.
 
 - "Cancelled", not "CANCELED". "How this works" says once what it means: the airport's own list showed the flight as cancelled. The front-page headline says "listed as cancelled" (the approved mockup).
 - "Scheduled to leave HH:MM" for departures, "scheduled to land HH:MM" for arrivals. Never "due".
@@ -107,7 +107,7 @@ One line per change, oldest first, the time in a left column:
 
 ### Codeshares
 
-Per day, inside that day's row on the flight page: "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)." Each number links to its own page at that day's anchor. Partners change between days: of the 725 flight numbers scheduled on more than one day, 64 had two different non-empty partner lists (79 if a day with no partners counts as a list of its own), 2026-10-30. "Probably": the grouping is inferred, and arrivals with no desks can merge two flights (`OPEN_ISSUES`, Model).
+Per day, inside that day's row on the flight page: "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)." Each number links to its own page at that day's anchor. Partners change between days: of the 725 flight numbers scheduled on more than one day, 64 had two different non-empty partner lists (79 if a day with no partners counts as a list of its own), 2026-10-30. "Probably": the grouping is inferred, and arrivals with no desks can merge two flights.
 
 ### Names
 

@@ -10,3 +10,7 @@ CLAUDE.local.md
 site/
 site.building/
 site.old/
+
+# Project notes (CLAUDE.md, work queue, open issues): a private repo of their own inside .claude/
+/.claude/
+/CLAUDE.md
