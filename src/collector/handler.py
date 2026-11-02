@@ -91,7 +91,7 @@ def run(cfg: Config, fetch: core.Fetcher, store: core.Store, now: datetime,
         raise
     except Exception as err:
         # No /fail ping: healthchecks.io's grace period decides whether a run of errors is an
-        # outage, and the alarm needs errors in two consecutive windows. One slow reply stays quiet.
+        # outage, so one slow reply stays quiet.
         log.error("collector failed: %s", err)
         raise
     summary = asdict(outcome) | {"code_sha256": core.CODE_SHA256}  # which code wrote this run's receipt

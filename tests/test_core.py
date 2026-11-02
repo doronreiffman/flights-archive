@@ -147,9 +147,10 @@ def test_latched_collector_makes_no_requests_until_cleared(records, now, blocked
     del api.overrides["resource_show"]
     calls_before = len(api.calls)
 
-    with pytest.raises(core.BlockedError, match="latched off"):
+    with pytest.raises(core.BlockedError, match="latched off") as latched:
         core.run_once(api, store, now + timedelta(minutes=2))
     assert len(api.calls) == calls_before
+    assert "docs/operations.md" in str(latched.value) and "README" not in str(latched.value)  # where the unblock steps are
 
     assert core.clear_block(store) is True
     assert core.run_once(api, store, now + timedelta(minutes=4)).action == "stored"

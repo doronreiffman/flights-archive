@@ -274,7 +274,7 @@ def run_once(fetch: Fetcher, store: Store, now: datetime, page_size: int = 10000
     if latch:
         raise BlockedError(
             f"latched off since {latch.get('at')} after: {latch.get('reason')}. "
-            "Nothing was requested. A person must check, then clear the latch (see README)."
+            "Nothing was requested. A person must check, then clear the latch (see docs/operations.md, If it's blocked)."
         )
     try:
         return _collect(fetch, store, now, state, page_size, clock or utcnow)

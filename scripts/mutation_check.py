@@ -102,6 +102,7 @@ COLLECTOR_MUTATIONS = {
     "state written before the pages": (CORE, "    keys = []\n    for i, page in enumerate(pages):", "    store.write_state({**new_state, \"sha256\": digest})\n    keys = []\n    for i, page in enumerate(pages):"),
     "row ids not checked": (CORE, "            if not isinstance(row_id, int) or (last_id is not None and row_id <= last_id):", "            if False:"),
     "latch failure hides the block": (CORE, "        except Exception as latch_err:  # noqa: BLE001 - the block must still be reported as a block", "        except ValueError as latch_err:  # noqa: BLE001 - the block must still be reported as a block"),
+    "latch message points at the README": (CORE, "(see docs/operations.md, If it's blocked)", '(see README)'),
     "plain 404 not treated as missing state": (STORE, 'in ("NoSuchKey", "404")', 'in ("NoSuchKey",)'),
     "ping sends no body": (HANDLER, "data=message.encode()[:10000]", "data=b''"),
     "ping sends no user agent": (HANDLER, 'headers={"User-Agent": user_agent})', "headers={})"),
