@@ -58,12 +58,6 @@ def test_user_agent_parameter_refuses_a_value_without_url_and_email(resources):
     assert not re.fullmatch(pattern, "flights-archive/0.1")  # what a space-split parameter override leaves
 
 
-def test_alarm_needs_two_consecutive_bad_windows(resources):
-    alarm = resources["ErrorAlarm"]["Properties"]
-    assert (alarm["Period"], alarm["EvaluationPeriods"], alarm["DatapointsToAlarm"], alarm["Threshold"]) == (300, 2, 2, 1)
-    assert alarm["TreatMissingData"] == "notBreaching"
-
-
 def test_bucket_is_locked_private_and_versioned(resources):
     bucket = resources["ArchiveBucket"]
     props = bucket["Properties"]

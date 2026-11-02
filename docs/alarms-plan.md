@@ -249,3 +249,5 @@ On the owner's go: `aws cloudformation execute-change-set ...`, then `aws cloudf
 ## Deviations
 
 (Filled in during execution: each change reality forced from this plan, with the reason.)
+
+- **Task 1, Step 5: the cfn-lint command needs `--`.** `cfn-lint --regions il-central-1 template.yaml` makes `--regions` take the file name as a second region, and cfn-lint then waits on standard input. CI's form is the right one: `cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`.

@@ -17,6 +17,8 @@ CORE = ("src/collector/core.py", ["tests/test_core.py", "tests/test_http.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
+ALARMS = ("template.yaml", ["tests/test_template.py", "tests/test_alarms.py"])
+HANDLER_LOGS = ("src/collector/handler.py", ["tests/test_handler.py", "tests/test_alarms.py"])
 SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
 FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
@@ -106,7 +108,18 @@ COLLECTOR_MUTATIONS = {
     "ping timeout 999": (HANDLER, "urllib.request.urlopen(req, timeout=10).close()", "urllib.request.urlopen(req, timeout=999).close()"),
     "transient failure pings /fail again": (HANDLER, '        log.error("collector failed: %s", err)\n        raise', '        log.error("collector failed: %s", err)\n        pinger(fail_url, str(err))\n        raise'),
     "user agent not checked at startup": (HANDLER, '        core.check_user_agent(env["USER_AGENT"])\n', "\n"),
-    "alarm on one window": (TEMPLATE, "      EvaluationPeriods: 2\n      DatapointsToAlarm: 2", "      EvaluationPeriods: 1\n      DatapointsToAlarm: 1"),
+    'alarm: receipt pattern double-quoted in YAML': (ALARMS, '      FilterPattern: \'"\\"receipt\\": \\"receipts/"\'', '      FilterPattern: "\\"receipt\\": \\"receipts/"'),
+    'alarm: receipt pattern misses the key': (ALARMS, '      FilterPattern: \'"\\"receipt\\": \\"receipts/"\'', '      FilterPattern: \'"\\"receipt\\": \\"receipt/"\''),
+    'alarm: block pattern in the wrong case': (ALARMS, '      FilterPattern: \'"BLOCKED:"\'', '      FilterPattern: \'"Blocked:"\''),
+    'alarm: receipt metric renamed in the filter': (ALARMS, '          MetricName: Receipts\n', '          MetricName: Receipt\n'),
+    'alarm: missed refresh compares <=': (ALARMS, '      ComparisonOperator: LessThanThreshold\n', '      ComparisonOperator: LessThanOrEqualToThreshold\n'),
+    'alarm: missed refresh ignores silence': (ALARMS, '      TreatMissingData: breaching\n', '      TreatMissingData: notBreaching\n'),
+    'alarm: missed refresh after 5 minutes': (ALARMS, '      EvaluationPeriods: 35\n      DatapointsToAlarm: 35\n', '      EvaluationPeriods: 5\n      DatapointsToAlarm: 5\n'),
+    'alarm: block alarm fires on silence': (ALARMS, '      TreatMissingData: notBreaching\n', '      TreatMissingData: breaching\n'),
+    'alarm: no email on OK': (ALARMS, '      AlarmActions:\n        - !Ref AlertTopic\n      OKActions:\n        - !Ref AlertTopic\n\n  BlockedAlarm:', '      AlarmActions:\n        - !Ref AlertTopic\n\n  BlockedAlarm:'),
+    'alarm: summary logged compact': (HANDLER_LOGS, '    log.info(json.dumps(summary))\n    pinger(cfg.healthcheck_url, json.dumps(summary))', '    log.info(json.dumps(summary, separators=(",", ":")))\n    pinger(cfg.healthcheck_url, json.dumps(summary))'),
+    'alarm: block logged in lower case': (HANDLER_LOGS, 'log.error("BLOCKED: %s", err)', 'log.error("blocked: %s", err)'),
+    "alarm: summary's receipt key renamed": (HANDLER_LOGS, 'asdict(outcome) | {"code_sha256": core.CODE_SHA256}', '{("receipt_key" if k == "receipt" else k): v for k, v in asdict(outcome).items()} | {"code_sha256": core.CODE_SHA256}'),
     "user agent pattern dropped": (TEMPLATE, "    AllowedPattern: '.*\\+https?://.*@.*'", "    AllowedPattern: '.*'"),
     "state written before the receipt": (CORE, '    store.put_receipt(receipt_key, _receipt("stored", now, downloaded_at, last_modified, prefix, digest, pages), now)\n    new_state.update(sha256=digest, last_key=keys[0])\n    store.write_state(new_state)\n', '    new_state.update(sha256=digest, last_key=keys[0])\n    store.write_state(new_state)\n    store.put_receipt(receipt_key, _receipt("stored", now, downloaded_at, last_modified, prefix, digest, pages), now)\n'),
     "unchanged run writes no receipt": (CORE, '        store.put_receipt(receipt_key, _receipt("unchanged", now, downloaded_at, last_modified, stored_prefix, digest, pages), now)\n', "\n"),

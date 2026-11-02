@@ -18,7 +18,7 @@ Parameters:
     Description: healthchecks.io ping URL, e.g. https://hc-ping.com/<uuid>
   AlertEmail:
     Type: String
-    Description: Gets an email when the collector errors.
+    Description: Gets an email when board versions are being lost or data.gov.il has blocked the collector.
   ScheduleState:
     Type: String
     Default: DISABLED
@@ -126,24 +126,66 @@ Resources:
         - Protocol: email
           Endpoint: !Ref AlertEmail
 
-  ErrorAlarm:
+  # Counts runs that wrote a receipt (stored or unchanged): their summary line holds "receipt": "receipts/...".
+  # Single-quoted so YAML keeps the backslashes; tests/test_alarms.py ties the pattern to the logged line.
+  ReceiptFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CollectorLogs
+      FilterPattern: '"\"receipt\": \"receipts/"'
+      MetricTransformations:
+        - MetricNamespace: flights-archive
+          MetricName: Receipts
+          MetricValue: "1"
+          DefaultValue: 0
+
+  # Counts runs that hit a block, and every latched run after it; tests/test_alarms.py ties it to the logged line.
+  BlockedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CollectorLogs
+      FilterPattern: '"BLOCKED:"'
+      MetricTransformations:
+        - MetricNamespace: flights-archive
+          MetricName: BlockedRuns
+          MetricValue: "1"
+          DefaultValue: 0
+
+  MissedRefreshAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: The flight-board collector errored in two consecutive 5-minute windows. Check the logs; a BLOCKED error means stop and ask.
-      Namespace: AWS/Lambda
-      MetricName: Errors
-      Dimensions:
-        - Name: FunctionName
-          Value: !Ref CollectorFunction
+      AlarmDescription: "No board download for 35 minutes: at least one 15-minute board version was missed. Read /flights-archive/collector; a BLOCKED line means stop and ask (docs/operations.md, If it's blocked)."
+      Namespace: flights-archive
+      MetricName: Receipts
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 35
+      DatapointsToAlarm: 35
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      # A minute with no log lines counts as one without a receipt, so a collector that stops running sets it off too.
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+
+  BlockedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "data.gov.il blocked the collector and it has stopped calling. Stop and ask; never work around a block (docs/operations.md, If it's blocked)."
+      Namespace: flights-archive
+      MetricName: BlockedRuns
       Statistic: Sum
       Period: 300
-      # One slow reply from data.gov.il is not an incident; errors in two windows in a row are.
-      EvaluationPeriods: 2
-      DatapointsToAlarm: 2
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
         - !Ref AlertTopic
 
 Outputs:
