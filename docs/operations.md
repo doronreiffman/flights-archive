@@ -21,7 +21,7 @@ Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), 
 
 - **One identified client.** Every request sends the `USER_AGENT` you set, which must carry a `+https://` project URL and a contact email; the deploy and the code both refuse one without them.
 - **Stop if blocked, and stay stopped.** A 401, 403 or 429, or an HTML page served where JSON belongs, raises `BlockedError`, pings healthchecks.io's `/fail`, stores nothing, and sets a latch in the state file. Every later run refuses to call data.gov.il until a person clears it. Don't switch to a browser User-Agent, another IP or anything else that works around a block: the data.gov.il license excludes data obtained by circumventing technical protection. Find out why, ask data.gov.il if needed, then unblock (below).
-- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period and the CloudWatch alarm (errors in two consecutive 5-minute windows) decide when a run of failures is an outage, so one slow reply stays quiet.
+- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period decides when a run of failures is an outage, and the missed-refresh alarm emails when no board has been downloaded for 35 minutes, so one slow reply stays quiet. The two alarms (missed refresh, block) are in [alarms.md](alarms.md).
 - **Validate before writing.** Zero rows, a missing field, a total that doesn't match the rows, or the board changing mid-download all raise and store nothing.
 - **No retries.** Neither the scheduler nor Lambda retries a failed run; the next scheduled run is the retry.
 - **Never touch iaa.gov.il.** Its terms forbid copying without written consent.
@@ -63,12 +63,19 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
      --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
    ```
 
-   healthchecks.io should show a failure within a minute. The alarm email needs errors in two consecutive 5-minute windows, so run the drill again about 5 minutes later if you want to see that email too. Run step 5 to clear healthchecks.io.
+   healthchecks.io should show a failure within a minute; run step 5 to clear it. The drill does not set off the alarms, which count downloads and block lines, not errors. To see an alarm's email, set it to ALARM by hand: it emails ALARM, then OK when it next evaluates.
+
+   ```bash
+   aws cloudwatch describe-alarms --alarm-name-prefix flights-archive- --query 'MetricAlarms[].AlarmName' --profile flights-sam --region il-central-1
+   aws cloudwatch set-alarm-state --alarm-name <name> --state-value ALARM --state-reason drill --profile flights-sam --region il-central-1
+   ```
+
+   Until the schedule is on (step 7), the missed-refresh alarm sits in ALARM: no runs, no downloads. The first deploy of the alarms on a live collector sends three emails by itself: the block alarm's OK, then the missed-refresh alarm's ALARM and OK ([alarms.md](alarms.md), "What might not be obvious").
 7. Go live: deploy again with the same parameters plus `ScheduleState=ENABLED`. After 10 minutes, healthchecks.io should show a ping every 2 minutes and new snapshots should appear about every 15.
 
 ## If it's blocked
 
-The alarm email and the `/fail` ping say `BLOCKED`. The collector has stopped calling data.gov.il. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
+The block alarm's email and the `/fail` ping (`BLOCKED: <reason>`) mean the collector has stopped calling data.gov.il. While the latch holds, the block alarm stays in ALARM, and the missed-refresh alarm follows 35 minutes after the last download; both email OK after the unblock and the next download. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
 
 ```bash
 aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock": true}' \

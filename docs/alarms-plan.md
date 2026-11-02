@@ -251,3 +251,4 @@ On the owner's go: `aws cloudformation execute-change-set ...`, then `aws cloudf
 (Filled in during execution: each change reality forced from this plan, with the reason.)
 
 - **Task 1, Step 5: the cfn-lint command needs `--`.** `cfn-lint --regions il-central-1 template.yaml` makes `--regions` take the file name as a second region, and cfn-lint then waits on standard input. CI's form is the right one: `cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`.
+- **Task 3: one more line in `docs/operations.md`, step 6.** On a fresh deploy the guide keeps the schedule off until step 7, so the missed-refresh alarm sits in ALARM until then (no runs, no downloads); the guide now says so.
