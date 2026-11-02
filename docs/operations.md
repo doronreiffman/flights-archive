@@ -21,7 +21,7 @@ Snapshots land at `raw/date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-000.json.gz` (UTC), 
 
 - **One identified client.** Every request sends the `USER_AGENT` you set, which must carry a `+https://` project URL and a contact email; the deploy and the code both refuse one without them.
 - **Stop if blocked, and stay stopped.** A 401, 403 or 429, or an HTML page served where JSON belongs, raises `BlockedError`, pings healthchecks.io's `/fail`, stores nothing, and sets a latch in the state file. Every later run refuses to call data.gov.il until a person clears it. Don't switch to a browser User-Agent, another IP or anything else that works around a block: the data.gov.il license excludes data obtained by circumventing technical protection. Find out why, ask data.gov.il if needed, then unblock (below).
-- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period decides when a run of failures is an outage, and the missed-refresh alarm emails when no board has been downloaded for 35 minutes, so one slow reply stays quiet. The two alarms (missed refresh, block) are in [alarms.md](alarms.md).
+- **Outages aren't blocks.** 5xx errors, timeouts and HTML error pages fail that run without pinging `/fail`; the next run tries again. healthchecks.io's 15-minute grace period decides when a run of failures is an outage, and the missed-refresh alarm emails when no board has been downloaded for 35 to 40 minutes, so one slow reply stays quiet. The two alarms (missed refresh, block) are in [alarms.md](alarms.md).
 - **Validate before writing.** Zero rows, a missing field, a total that doesn't match the rows, or the board changing mid-download all raise and store nothing.
 - **No retries.** Neither the scheduler nor Lambda retries a failed run; the next scheduled run is the retry.
 - **Never touch iaa.gov.il.** Its terms forbid copying without written consent.
@@ -75,7 +75,7 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
 
 ## If it's blocked
 
-The block alarm's email and the `/fail` ping (`BLOCKED: <reason>`) mean the collector has stopped calling data.gov.il. While the latch holds, the block alarm stays in ALARM, and the missed-refresh alarm follows 35 minutes after the last download; both email OK after the unblock and the next download. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
+The block alarm's email and the `/fail` ping (`BLOCKED: <reason>`) mean the collector has stopped calling data.gov.il. While the latch holds, the block alarm stays in ALARM, and the missed-refresh alarm follows 35 to 40 minutes after the last download; both email OK after the unblock and the next download. Read the reason in the logs (log group `/flights-archive/collector`), sort it out with data.gov.il, then clear the latch:
 
 ```bash
 aws lambda invoke --function-name <CollectorFunctionName> --payload '{"unblock": true}' \
@@ -115,4 +115,4 @@ Publishing (live since 2026-10-30): a separate stack, `site-template.yaml`, serv
 
 ## Cost
 
-About $1 to $2 for the first year, a cautious figure: about 3,000 snapshots a month at about 47 KB each, so about 0.14 GB a month (measured 2026-10-29: 39 snapshots, 1.8 MB), plus a few cents of S3 requests. Receipts add about 3,300 small writes a month, about $0.02 at il-central-1 prices (AWS Price List, 2026-10-29). Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.
+About $1 to $2 for the first year before the alarms (they add at most $0.70 a month at list price, likely $0 within the free tier: [alarms.md](alarms.md), "Cost"), a cautious figure: about 3,000 snapshots a month at about 47 KB each, so about 0.14 GB a month (measured 2026-10-29: 39 snapshots, 1.8 MB), plus a few cents of S3 requests. Receipts add about 3,300 small writes a month, about $0.02 at il-central-1 prices (AWS Price List, 2026-10-29). Lambda and EventBridge Scheduler stay inside their free allowances. Storage grows every year because nothing is deleted.

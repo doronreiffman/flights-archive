@@ -88,7 +88,9 @@ def test_filters_watch_the_collector_log_group(resources, name, pattern, metric)
 def test_missed_refresh_alarm(resources):
     alarm = resources["MissedRefreshAlarm"]["Properties"]
     assert (alarm["Namespace"], alarm["MetricName"], alarm["Statistic"]) == ("flights-archive", "Receipts", "Sum")
-    assert (alarm["Period"], alarm["EvaluationPeriods"], alarm["DatapointsToAlarm"]) == (60, 35, 35)
+    # Five-minute periods: each holds two or three runs' lines, so no datapoint is missing while the collector
+    # runs and CloudWatch never reaches back past the window; one-minute periods left every other minute empty.
+    assert (alarm["Period"], alarm["EvaluationPeriods"], alarm["DatapointsToAlarm"]) == (300, 7, 7)
     assert (alarm["Threshold"], alarm["ComparisonOperator"]) == (1, "LessThanThreshold")
     assert alarm["TreatMissingData"] == "breaching"  # no log lines at all counts as no receipt
     assert "Dimensions" not in alarm

@@ -158,9 +158,11 @@ Resources:
       Namespace: flights-archive
       MetricName: Receipts
       Statistic: Sum
-      Period: 60
-      EvaluationPeriods: 35
-      DatapointsToAlarm: 35
+      # Five-minute periods each hold two or three runs' lines, so no datapoint is missing while the collector runs
+      # and CloudWatch never reaches back past the 35 minutes (one-minute periods left every other minute empty).
+      Period: 300
+      EvaluationPeriods: 7
+      DatapointsToAlarm: 7
       Threshold: 1
       ComparisonOperator: LessThanThreshold
       # A minute with no log lines counts as one without a receipt, so a collector that stops running sets it off too.
