@@ -38,7 +38,7 @@ Resources:
   4. bucket and distribution from the stack's outputs; the bucket name must start with `flights-archive-site-sitebucket-` (so never the archive bucket, where a delete would add markers that hide locked snapshots, and never `None` from a missing output), and the distribution ID must be non-empty;
   5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css; charset=utf-8`, then `*.js` as `text/javascript; charset=utf-8`, each with `--delete` (which, under the filters, removes only stale files of that type) and `Cache-Control: max-age=300`. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
   6. a CloudFront invalidation of the literal `'/*'`.
-- **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. I read the date on the live page and state it with each upload's go; a date other than 30/08/2025 stops the upload until the terms are read again.
+- **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. I read the date on the live page before each upload; my go means it still reads 30/08/2025, and I name the date only when it has changed, which stops the upload until the terms are read again.
 - **Takedown**: `aws s3 rm s3://<site bucket>/ --recursive`, then invalidate `'/*'`; minutes, and the stack can go later.
 
 ### Tests and mutation checks
@@ -53,7 +53,7 @@ Resources:
 
 1. Identity check, then `aws cloudformation deploy --template-file site-template.yaml --stack-name flights-archive-site --profile flights-sam --region il-central-1`.
 2. `scripts/sync.sh`, model build, timeline build.
-3. I read the terms page's update date and give the go with it; `sh scripts/publish.sh`.
+3. I read the terms page's update date and give the go (a changed date stops it); `sh scripts/publish.sh`.
 4. I open the link and check a day page, a flight and the search.
 
 ## Cost (monthly)
