@@ -21,7 +21,7 @@ The collector's only CloudWatch alarm, `ErrorAlarm`, emails when the function er
 - **No log lines counts as no receipt.** If the collector stops running altogether (schedule off, function broken, account trouble), no lines arrive and the metric has no data. The missed-refresh alarm treats missing data as breaching, so it fires then too: a second path beside healthchecks.io's 15-minute grace.
 - **Switching the schedule off on purpose sets off the missed-refresh alarm** 35 minutes later. Disable its actions first if that is planned, and enable them again after.
 - **The deploy will most likely send three emails.** A new alarm starts in INSUFFICIENT_DATA, and OK actions run on a move into OK "from any other state" (https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudwatch-alarm.html, `OKActions`). So the block alarm emails OK within about 5 minutes. A new filter has no history, so the missed-refresh alarm's first evaluation sees 35 minutes of missing data and goes to ALARM ("If missing data points are considered breaching, the alarm goes into ALARM state", https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html); the first receipt after the deploy, within about 15 minutes, brings it back to OK. Expected from AWS's docs, to be observed at the deploy; the emails double as proof that the email path works.
-- **The email arrives some minutes after the 35-minute mark.** AWS documents no figure for how long a log line takes to become a metric datapoint. UNVERIFIED until observed.
+- **The email arrives some minutes after the 35-minute mark.** AWS documents no figure for how long a log line takes to become a metric datapoint. A second reason: `Receipts` has a datapoint only in minutes with log lines (about every other minute), and when an alarm has fewer real datapoints than its evaluation periods, CloudWatch looks further back ("CloudWatch attempts to retrieve a higher number of data points than the number specified as Evaluation Periods", alarms-and-missing-data.html, above), so a receipt a few minutes older than 35 can still hold the alarm at OK. Neither delay can cause a false alarm. UNVERIFIED until observed.
 - **The deploy must pass `ScheduleState=ENABLED`.** The template's default is `DISABLED` (for a first test deploy); the live stack runs `ENABLED`. A deploy that leaves it out could stop collection. `samconfig.toml` holds no parameter values.
 - **Errors stop emailing.** They stay in the log group (30 days) and in Lambda's own `Errors` metric (namespace `AWS/Lambda`, free), for anyone counting them by hand.
 - **healthchecks.io does not change.** The collector pings it after every successful run, and pings `/fail` on a block and on the drill; its 15-minute grace decides when silence is an outage. Whether its alerts reach you is set on healthchecks.io's side; check that once.
@@ -55,15 +55,15 @@ All changes are in `template.yaml` (stack `flights-archive`), plus two text fixe
 | Evaluation periods / datapoints to alarm | 35 / 35 | 1 / 1 |
 | Threshold, comparison | `< 1` (`LessThanThreshold`) | `>= 1` (`GreaterThanOrEqualToThreshold`) |
 | Missing data | `breaching` | `notBreaching` |
-| Fires when | no receipt in the last 35 minutes | a block line in the last 5 minutes |
+| Fires when | no receipt in the last 35 minutes (or a little longer, below) | a block line in the last 5 minutes |
 
-- `MissedRefreshAlarm` is in ALARM exactly when none of the last 35 one-minute periods holds a receipt; a minute with no lines counts as one without a receipt. Description: "No board download for 35 minutes: at least one 15-minute board version was missed. Read /flights-archive/collector; a BLOCKED line means stop and ask (docs/operations.md, If it's blocked)."
+- `MissedRefreshAlarm` is in ALARM when none of the last 35 one-minute periods holds a receipt (looking a few minutes further back while datapoints are sparse; What might not be obvious); a minute with no lines counts as one without a receipt. Description: "No board download for 35 minutes: at least one 15-minute board version was missed. Read /flights-archive/collector; a BLOCKED line means stop and ask (docs/operations.md, If it's blocked)."
 - `BlockedAlarm` stays in ALARM while the latch holds (each latched run logs a block line every 2 minutes) and returns to OK about 5 minutes after the unblock. Description: "data.gov.il blocked the collector and it has stopped calling. Stop and ask; never work around a block (docs/operations.md, If it's blocked)."
 - An alarm invokes its actions only when its state changes (https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html), so a long outage sends one ALARM email and one OK email, not one per run.
 - `ActionsEnabled` is left at its default, true: the emails are on from the deploy.
 - (provisional) Emails on OK as well as ALARM: one more email per incident, and it tells you when nothing more is needed.
 - (provisional) Two alarms, not one: the email's subject names which of the two happened, and each stays a plain metric alarm.
-- (provisional) One-minute periods for the missed-refresh alarm: it fires 35 minutes after the last receipt. Five-minute periods line up with the clock and would fire anywhere from 35 to 40 minutes.
+- (provisional) One-minute periods for the missed-refresh alarm: it fires about 35 minutes after the last receipt. Five-minute periods line up with the clock and would add up to 5 minutes more.
 
 ### Two stale references in the collector
 

@@ -118,6 +118,7 @@ COLLECTOR_MUTATIONS = {
     'alarm: missed refresh after 5 minutes': (ALARMS, '      EvaluationPeriods: 35\n      DatapointsToAlarm: 35\n', '      EvaluationPeriods: 5\n      DatapointsToAlarm: 5\n'),
     'alarm: block alarm fires on silence': (ALARMS, '      TreatMissingData: notBreaching\n', '      TreatMissingData: breaching\n'),
     'alarm: no email on OK': (ALARMS, '      AlarmActions:\n        - !Ref AlertTopic\n      OKActions:\n        - !Ref AlertTopic\n\n  BlockedAlarm:', '      AlarmActions:\n        - !Ref AlertTopic\n\n  BlockedAlarm:'),
+    'alarm: collector logs as JSON': (ALARMS, '      LoggingConfig:\n        LogGroup: !Ref CollectorLogs\n', '      LoggingConfig:\n        LogGroup: !Ref CollectorLogs\n        LogFormat: JSON\n'),
     'alarm: summary logged compact': (HANDLER_LOGS, '    log.info(json.dumps(summary))\n    pinger(cfg.healthcheck_url, json.dumps(summary))', '    log.info(json.dumps(summary, separators=(",", ":")))\n    pinger(cfg.healthcheck_url, json.dumps(summary))'),
     'alarm: block logged in lower case': (HANDLER_LOGS, 'log.error("BLOCKED: %s", err)', 'log.error("blocked: %s", err)'),
     "alarm: summary's receipt key renamed": (HANDLER_LOGS, 'asdict(outcome) | {"code_sha256": core.CODE_SHA256}', '{("receipt_key" if k == "receipt" else k): v for k, v in asdict(outcome).items()} | {"code_sha256": core.CODE_SHA256}'),

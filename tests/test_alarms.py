@@ -118,6 +118,13 @@ def test_alarms_email_on_alarm_and_on_ok(resources, alarm):
     assert "ActionsEnabled" not in props  # default true: the emails are on from the deploy
 
 
+def test_collector_logs_in_text_format(resources):
+    """`lambda_event` models Lambda's Text format. In JSON format the summary's quotes arrive escaped,
+    the receipt pattern stops matching, and the missed-refresh alarm stays in ALARM for good."""
+    logging_config = resources["CollectorFunction"]["Properties"]["LoggingConfig"]
+    assert logging_config.get("LogFormat", "Text") == "Text"
+
+
 def test_alarm_descriptions_point_to_the_blocked_steps(resources):
     missed = resources["MissedRefreshAlarm"]["Properties"]["AlarmDescription"]
     blocked = resources["BlockedAlarm"]["Properties"]["AlarmDescription"]

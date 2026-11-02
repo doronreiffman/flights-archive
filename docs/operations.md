@@ -63,14 +63,14 @@ You need a personal AWS account (nothing from an employer) with il-central-1 ena
      --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
    ```
 
-   healthchecks.io should show a failure within a minute; run step 5 to clear it. The drill does not set off the alarms, which count downloads and block lines, not errors. To see an alarm's email, set it to ALARM by hand: it emails ALARM, then OK when it next evaluates.
+   healthchecks.io should show a failure within a minute; run step 5 to clear it. The drill does not set off the alarms, which count downloads and block lines, not errors. To see an alarm's email, set it to ALARM by hand: it emails ALARM, then OK when it next evaluates. That works only on an alarm in OK; setting an alarm that is already in ALARM changes nothing and sends nothing.
 
    ```bash
    aws cloudwatch describe-alarms --alarm-name-prefix flights-archive- --query 'MetricAlarms[].AlarmName' --profile flights-sam --region il-central-1
    aws cloudwatch set-alarm-state --alarm-name <name> --state-value ALARM --state-reason drill --profile flights-sam --region il-central-1
    ```
 
-   Until the schedule is on (step 7), the missed-refresh alarm sits in ALARM: no runs, no downloads. The first deploy of the alarms on a live collector sends three emails by itself: the block alarm's OK, then the missed-refresh alarm's ALARM and OK ([alarms.md](alarms.md), "What might not be obvious").
+   On a fresh deploy, prove the block alarm this way. The missed-refresh alarm stays in ALARM until the schedule is on, apart from about 35 minutes after step 5's one download; it proves itself at step 7, when the first scheduled download sends its OK email. The first deploy of the alarms on a live collector sends three emails by itself: the block alarm's OK, then the missed-refresh alarm's ALARM and OK ([alarms.md](alarms.md), "What might not be obvious").
 7. Go live: deploy again with the same parameters plus `ScheduleState=ENABLED`. After 10 minutes, healthchecks.io should show a ping every 2 minutes and new snapshots should appear about every 15.
 
 ## If it's blocked
