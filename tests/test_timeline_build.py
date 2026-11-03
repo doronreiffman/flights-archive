@@ -14,7 +14,7 @@ import pytest
 
 from model import build as model_build
 from model.report import ATTRIBUTION
-from model_helpers import at, row, write_snapshot
+from model_helpers import at, row, write_receipt, write_snapshot
 from test_timeline_flights import flight
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
 from timeline import build, flights, words
@@ -188,7 +188,7 @@ def test_a_flight_without_a_scheduled_time_stops_the_build(tmp_path):
         make_site(tmp_path, [(at(6), [row(sched_local="")])])
 
 
-SNAPS = [{"fetched_at": datetime(2026, 10, 27, 6, 0), "prev": None, "gap_before_s": None}]
+SNAPS = [{"fetched_at": datetime(2026, 10, 27, 6, 0), "confirmed_until": datetime(2026, 10, 27, 6, 0), "prev": None, "gap_before_s": None}]
 
 
 def test_two_rows_on_one_anchor_stop_the_build():
@@ -343,3 +343,19 @@ def test_a_folder_named_like_a_leftover_but_not_ours_is_left_alone(tmp_path, sit
     with pytest.raises(SystemExit, match="not made by timeline.build"):
         build.build(tmp_path / "model", site)
     assert (other / "keep.txt").read_text() == "someone else's" and (site / "index.html").exists()
+
+
+def test_the_gap_sentence_and_last_updated_follow_the_receipts(tmp_path):
+    """A hole between two snapshots that unchanged downloads bridge is no gap, and the records end at the last download."""
+    raw, rec, model, site = tmp_path / "raw", tmp_path / "receipts", tmp_path / "model", tmp_path / "site"
+    s1 = write_snapshot(raw, at(6), [LY1])
+    write_receipt(rec, s1)
+    for when in (at(6, 30), at(7)):
+        write_receipt(rec, s1, action="unchanged", when=when)
+    s2 = write_snapshot(raw, at(8, 15), [LY1])
+    write_receipt(rec, s2)
+    write_receipt(rec, s2, action="unchanged", when=at(8, 45))
+    model_build.build(raw, model, rec)
+    build.build(model, site)
+    assert "There are no records from 27 October 09:00 to 27 October 10:15." in text(read(site, "how-it-works.html"))
+    assert "Last updated 27 Oct 2026, 10:45" in text(read(site, "index.html"))

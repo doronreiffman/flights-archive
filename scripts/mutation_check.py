@@ -29,9 +29,19 @@ STYLE = ("src/timeline/static/style.css", ["tests/test_timeline_style.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
+REPORT = ("src/model/report.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
+    "R9 sightings ignored, a snapshot confirms only itself": ("coalesce(s.last_sighting, b.fetched_at) AS confirmed_until", "b.fetched_at AS confirmed_until"),
+    "R9 gap measured from the store, not the last sighting": ("epoch(fetched_at - lag(confirmed_until) OVER w)::BIGINT AS gap_before_s", "epoch(fetched_at - lag(fetched_at) OVER w)::BIGINT AS gap_before_s"),
+    "R9 a repeated store's receipt not a sighting": ("            FROM base b JOIN receipts r\n              ON r.run_started_at >= b.fetched_at", "            FROM base b JOIN (SELECT * FROM receipts WHERE action = 'unchanged') r\n              ON r.run_started_at >= b.fetched_at"),
+    "R9 the next snapshot's own receipt credited to the one before": ("AND (b.next_fetched_at IS NULL OR r.run_started_at < b.next_fetched_at)\n            GROUP BY b.snapshot_id", "AND (b.next_fetched_at IS NULL OR r.run_started_at < b.next_fetched_at + INTERVAL 1 SECOND)\n            GROUP BY b.snapshot_id"),
+    "R9 a sighting of other content not refused": ("    if misplaced:", "    if False:"),
+    "R4 hole measured from the last store, not the last sighting": ("          AND epoch(n.first_seen_at - o.last_confirmed_at) <= {GAP_HOURS} * 3600", "          AND epoch(n.first_seen_at - o.last_seen_at) <= {GAP_HOURS} * 3600"),
+    "R3 previous appearance from the store, not the last sighting": ("                   lag(s.confirmed_until) OVER w AS prev_observed_at,", "                   lag(r.fetched_at) OVER w AS prev_observed_at,"),
+    "R7 last seen from the store, not the last sighting": ("                   max(s.snap_rn) AS last_rn, max(s.confirmed_until) AS last_seen_at", "                   max(s.snap_rn) AS last_rn, max(r.fetched_at) AS last_seen_at"),
+    "R8 announced after from the store, not the last sighting": ("            SELECT k.flight_id, max(s.confirmed_until) AS cancel_announced_after", "            SELECT k.flight_id, max(r.fetched_at) AS cancel_announced_after"),
     "R1 ambiguous hour resolved to the later instant": ("WHEN il_idt_ok(t) THEN t - INTERVAL 3 HOUR", "WHEN il_ist_ok(t) THEN t - INTERVAL 2 HOUR"),
     "R1 no nonexistent flag": ("CREATE MACRO il_nonexistent(t) AS NOT il_idt_ok(t) AND NOT il_ist_ok(t)", "CREATE MACRO il_nonexistent(t) AS false"),
     "R2 duplicates kept": ("        WHERE key_rank = 1\n", "\n"),
@@ -43,7 +53,7 @@ MODEL_MUTATIONS = {
     "R3 unchanged rows emitted": ("WHERE change_kind <> 'change' OR len(changed_fields) > 0", "WHERE true"),
     "R4 window 24h": ("RETIME_WINDOW_HOURS = 12", "RETIME_WINDOW_HOURS = 24"),
     "R4 terminal new status allowed": ("WHERE o.last_status NOT IN ({terminal}) AND n.first_status NOT IN ({terminal})", "WHERE o.last_status NOT IN ({terminal})"),
-    "R4 links across gaps": ("          AND epoch(n.first_seen_at - o.last_seen_at) <= {GAP_HOURS} * 3600\n", "\n"),
+    "R4 links across gaps": ("          AND epoch(n.first_seen_at - o.last_confirmed_at) <= {GAP_HOURS} * 3600\n", "\n"),
     "R4 any later snapshot": ("AND n.first_rn = o.last_rn + 1", "AND n.first_rn > o.last_rn"),
     "R4 ties linked": ("WHERE r_old = 1 AND n_old = 1 AND r_new = 1 AND n_new = 1", "WHERE r_old = 1 AND r_new = 1"),
     "R5 est not in group key": ("coalesce(r.est_local::VARCHAR, ''), coalesce(r.terminal::VARCHAR, '')", "coalesce(r.terminal::VARCHAR, '')"),
@@ -271,6 +281,9 @@ COLLECTOR_MUTATIONS = {
     "style: a label without its color": (STYLE, ".l-delayed { color: var(--delay-fg); background: var(--delay-bg); }", ""),
     "style: a web font": (STYLE, "/* --- page ", "@import url(font.css);\n/* --- page "),
     "style: flight numbers may wrap": (STYLE, ".cancellations td:nth-child(2) .d { white-space: pre; }", ".cancellations td:nth-child(2) .d { white-space: pre-wrap; }"),
+    "site: gap sentence from the store, not the last sighting": (SITE, "SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s", "SELECT fetched_at, confirmed_until, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s"),
+    "site: last updated from the store, not the last sighting": (SITE, 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]', 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]'),
+    "report: gap from the store, not the last sighting": (REPORT, "lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev FROM snapshots", "lag(fetched_at) OVER (ORDER BY snap_rn) AS prev FROM snapshots"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

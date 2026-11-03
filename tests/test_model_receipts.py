@@ -59,7 +59,9 @@ def test_snapshots_before_the_first_receipt_are_legacy(raw, rec):
 def test_an_unchanged_receipt_can_be_the_first_and_name_a_legacy_snapshot(raw, rec):
     old = write_snapshot(raw, at(6), [row()])
     write_receipt(rec, old, action="unchanged", when=at(6, 30))
-    assert statuses(run(raw, rec)) == {old: "legacy"}
+    con = run(raw, rec)
+    assert statuses(con) == {old: "legacy"}
+    assert one(con, "SELECT confirmed_until FROM snapshots")["confirmed_until"] == at(6, 30)  # a sighting all the same (R9)
 
 
 @pytest.mark.parametrize("make_dir", [False, True])
@@ -258,3 +260,116 @@ def test_a_missing_first_receipt_does_not_make_later_snapshots_legacy(raw, rec):
     write_receipt(rec, b)
     with pytest.raises(ValueError, match=rf"no receipt.*{a}"):
         run(raw, rec)
+
+
+# Receipts as observations (q14): every receipt, stored or unchanged, is a sighting of the board -----------
+# A snapshot's confirmed_until is the last sighting of its content; a gap runs from there to the next snapshot.
+
+
+def bridge(rec, snapshot_id, *whens):
+    """Unchanged downloads that saw the snapshot's content again at `whens`."""
+    for when in whens:
+        write_receipt(rec, snapshot_id, action="unchanged", when=when)
+
+
+def test_confirmed_until_is_the_last_sighting_of_the_board(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30), at(7))
+    s2 = write_snapshot(raw, at(7, 30), [row(status="DELAYED")]); write_receipt(rec, s2)
+    snaps = q(run(raw, rec), "SELECT confirmed_until, gap_before_s FROM snapshots ORDER BY snap_rn")
+    assert [(s["confirmed_until"], s["gap_before_s"]) for s in snaps] == [(at(7), None), (at(7, 30), 1800)]
+
+
+def test_without_a_sighting_in_between_the_gap_is_the_snapshot_spacing(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    s2 = write_snapshot(raw, at(7, 30), [row(status="DELAYED")]); write_receipt(rec, s2)
+    snaps = q(run(raw, rec), "SELECT confirmed_until, gap_before_s FROM snapshots ORDER BY snap_rn")
+    assert [(s["confirmed_until"], s["gap_before_s"]) for s in snaps] == [(at(6), None), (at(7, 30), 5400)]
+
+
+def test_a_legacy_snapshots_window_closes_at_the_first_receipted_one(raw, rec):
+    write_snapshot(raw, at(5), [row()])                                   # legacy: no receipt
+    s1 = write_snapshot(raw, at(6), [row(status="DELAYED")]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30))
+    snaps = q(run(raw, rec), "SELECT confirmed_until, gap_before_s FROM snapshots ORDER BY snap_rn")
+    assert [(s["confirmed_until"], s["gap_before_s"]) for s in snaps] == [(at(5), None), (at(6, 30), 3600)]
+
+
+def test_a_repeated_store_is_a_sighting_of_the_kept_snapshot(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()], sha="a" * 12); write_receipt(rec, s1)
+    again = write_snapshot(raw, at(6, 40), [row()], sha="a" * 12); write_receipt(rec, again)  # R2 drops the repeat
+    s2 = write_snapshot(raw, at(7, 30), [row(status="DELAYED")]); write_receipt(rec, s2)
+    con = run(raw, rec)
+    assert kept(con) == [s1, s2]
+    snaps = q(con, "SELECT confirmed_until, gap_before_s FROM snapshots ORDER BY snap_rn")
+    assert [(s["confirmed_until"], s["gap_before_s"]) for s in snaps] == [(at(6, 40), None), (at(7, 30), 3000)]
+
+
+def test_a_flight_whose_hole_the_sightings_bridge_is_not_lost_in_a_gap(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30), at(7))
+    s2 = write_snapshot(raw, at(7, 30), [row(flight_no="other")]); write_receipt(rec, s2)
+    f = one(run(raw, rec), "SELECT outcome, last_seen_at FROM flights WHERE flight_no = '001'")
+    assert (f["outcome"], f["last_seen_at"]) == ("vanished", at(7))  # due 08:00Z next day: left early, no hole
+
+
+def test_the_same_hole_without_sightings_is_a_gap(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    s2 = write_snapshot(raw, at(7, 30), [row(flight_no="other")]); write_receipt(rec, s2)
+    f = one(run(raw, rec), "SELECT outcome, last_seen_at FROM flights WHERE flight_no = '001'")
+    assert (f["outcome"], f["last_seen_at"]) == ("gap", at(6))
+
+
+def test_a_retime_links_across_a_hole_the_sightings_bridge(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30), at(7))
+    s2 = write_snapshot(raw, at(7, 30), [row(sched_local="2026-10-28T11:00:00")]); write_receipt(rec, s2)
+    f = one(run(raw, rec), "SELECT retimes, outcome FROM flights")
+    assert (f["retimes"], f["outcome"]) == (1, "open")
+
+
+def test_a_retime_does_not_link_across_a_hole_no_sighting_bridges(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    s2 = write_snapshot(raw, at(7, 30), [row(sched_local="2026-10-28T11:00:00")]); write_receipt(rec, s2)
+    assert sorted(f["outcome"] for f in q(run(raw, rec), "SELECT outcome FROM flights")) == ["gap", "open"]
+
+
+def test_a_cancellation_bracket_starts_at_the_last_sighting_before_it(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30), at(7))
+    s2 = write_snapshot(raw, at(7, 30), [row(status="CANCELED")]); write_receipt(rec, s2)
+    f = one(run(raw, rec), "SELECT cancel_announced_after, cancel_bracket_min, cancel_lead_censored FROM flights")
+    assert (f["cancel_announced_after"], f["cancel_bracket_min"], f["cancel_lead_censored"]) == (at(7), 30, False)
+
+
+def test_a_change_is_bracketed_from_the_last_sighting_of_the_state_before(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30))
+    s2 = write_snapshot(raw, at(6, 45), [row(status="DELAYED")]); write_receipt(rec, s2)
+    o = one(run(raw, rec), "SELECT observed_at, prev_observed_at FROM observations WHERE change_kind = 'change'")
+    assert (o["observed_at"], o["prev_observed_at"]) == (at(6, 45), at(6, 30))
+
+
+def test_sightings_after_the_latest_snapshot_extend_it(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30))
+    con = run(raw, rec)
+    assert one(con, "SELECT confirmed_until FROM snapshots")["confirmed_until"] == at(6, 30)
+    assert one(con, "SELECT last_seen_at, outcome FROM flights") == {"last_seen_at": at(6, 30), "outcome": "open"}
+
+
+def test_a_receipt_whose_board_differs_from_the_kept_snapshot_of_its_time_stops_the_build(raw, rec):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    s2 = write_snapshot(raw, at(6, 15), [row(status="DELAYED")]); write_receipt(rec, s2)
+    write_receipt(rec, s1, action="unchanged", when=at(6, 20))  # s1's content seen again in s2's time: not a stall
+    with pytest.raises(ValueError, match="differs from the kept snapshot"):
+        run(raw, rec)
+
+
+def test_report_names_a_gap_from_the_last_sighting(raw, rec, tmp_path):
+    s1 = write_snapshot(raw, at(6), [row()]); write_receipt(rec, s1)
+    bridge(rec, s1, at(6, 30))
+    s2 = write_snapshot(raw, at(8), [row()]); write_receipt(rec, s2)
+    out = tmp_path / "model"
+    build.build(raw, out, rec)
+    assert "| 2026-10-27 06:30:00 | 2026-10-27 08:00:00 | 1.5 |" in report.report(out)

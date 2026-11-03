@@ -42,7 +42,7 @@ def load(model_dir: Path) -> tuple[list[dict], list[dict], list[dict]]:
     src = {t: str(model_dir / f"{t}.parquet").replace("'", "''") for t in ("flights", "observations", "snapshots")}
     table = _rows(con, f"SELECT * FROM '{src['flights']}' ORDER BY sched_local_final, direction, airline, flight_no, flight_id")
     obs = _rows(con, f"SELECT {', '.join(OBS_COLUMNS)} FROM '{src['observations']}' ORDER BY flight_id, snap_rn")
-    snaps = _rows(con, f"""SELECT fetched_at, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s
+    snaps = _rows(con, f"""SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s
                            FROM '{src['snapshots']}' ORDER BY snap_rn""")
     return table, obs, snaps
 
@@ -66,7 +66,7 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     if undated:
         raise ValueError(f"{len(undated)} flights have no final scheduled time ({undated[:10]}); "
                          "every flight must land on a day page")
-    first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]
+    first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]  # the last sighting of the board
     gaps = [(s["prev"], s["fetched_at"]) for s in snaps if (s["gap_before_s"] or 0) > GAP_HOURS * 3600]
     rows = flights.make_rows(table, obs, last_check, GAP_HOURS)
     flights.check_unique(rows)

@@ -89,7 +89,7 @@ IAM: the existing write-once statement (`s3:PutObject`, `s3:PutObjectRetention`)
 - R2's repeat check runs over kept snapshots only (today: over complete ones).
 - No receipts at all: snapshots from before the first receipt (2026-10-29 17:02:50Z, `RECEIPTS_SINCE`) are `legacy`; any later snapshot stops the build, so a fresh clone or a raw-only sync cannot quietly trust boards that should have receipts.
 - Report: receipt counts by action, snapshot counts by receipt status.
-- Not in this change (suggested follow-up, my call): treat `unchanged` receipts as sightings, so a stalled board is not a collection hole and cancellation brackets narrow. That changes R4, R7 and R8. One part of it is a precondition for q7: before the timeline publishes coverage gaps, gaps must come from all receipts, stored and unchanged, or a stall on data.gov.il's side shows up as our own collection hole. (2026-10-29: I chose to publish first, since the timeline's gap wording names both causes; q14 starts with the first `unchanged` receipt.)
+- Done 2026-11-03 (q14; `docs/data-model.md`, R9): every receipt, stored or unchanged, is a sighting of the board, so a stalled board is not a collection hole; R3, R4, R7 and R8 and the site measure from the last sighting, and a cancellation bracket narrows when an unchanged download sat inside it. I had chosen on 2026-10-29 to publish the timeline first, since its gap wording named both causes; q14 started once the first `unchanged` receipt existed.
 
 ## Tests and mutation checks
 

@@ -58,8 +58,8 @@ Each flight on each day gets one main label, colored, plus an optional second on
 | `departed` | DEPARTED | none |
 | `landed` | LANDED | none |
 | `canceled` | CANCELLED | the warning (below) |
-| `open`, `sched_utc_final` after the last record's `fetched_at` | UPCOMING | none |
-| `open`, `sched_utc_final` at or before the last record's `fetched_at` | NO FINAL UPDATE | none (the label says it) |
+| `open`, `sched_utc_final` after the last sighting of the board (`confirmed_until` of the last snapshot) | UPCOMING | none |
+| `open`, `sched_utc_final` at or before that sighting | NO FINAL UPDATE | none (the label says it) |
 | `gap` | UNKNOWN | "No records for the time it left the airport's list." |
 | `vanished` | UNKNOWN | "Removed from the airport's list N hours before it was scheduled, with no final status. Not necessarily cancelled; it may have moved to another time." |
 | `dropped` | UNKNOWN | "Removed from the airport's list with no final status." |
@@ -99,7 +99,7 @@ The same text appears in the front page's "Warning" column and on the all-cancel
 One line per change, oldest first, the time in a left column:
 
 - First line: "Earliest record (27 Oct 20:04) · on time, terminal 1": what the first record has, of status, expected time (when it differs from the scheduled time), terminal, check-in desks and zone; empty ones are left out. A first record that already shows the flight cancelled reads "already cancelled" ("Earliest record (27 Oct 20:04) · already cancelled, terminal 3"), so its time reads as the record's, never as a cancellation time.
-- A change whose record came within an hour of the flight's previous appearance (`prev_observed_at`): that record's time, "17:32 · Expected to leave at 17:38 instead". An appearance with no change is not a line, so the previous line can be older than `prev_observed_at`.
+- A change whose record came within an hour of the flight's previous appearance (`prev_observed_at`: the last sighting of that appearance, an unchanged download included, R9): that record's time, "17:32 · Expected to leave at 17:38 instead". An appearance with no change is not a line, so the previous line can be older than `prev_observed_at`.
 - More than an hour (`GAP_HOURS`) since `prev_observed_at`: "Between 27 Oct 20:24 and 14:29 · Check-in desks 345-348, zone B" (TO 3459, on its 29 October row). A time in the change list carries its date only when it differs from the row's day.
 - The cancellation: always a range, "Between 19:16 and 19:32 · Cancelled", never a single time.
 - A retime: "Moved to a new scheduled time: 30 Oct 23:30 → 01:10" (on a 31 October row).
@@ -122,12 +122,12 @@ Every page: `<meta name="robots" content="noindex">` until the launch decision (
 Top to bottom:
 
 1. Title "Cancelled flights at Tel Aviv airport". Under it: "A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and which ones were cancelled."
-2. Headline: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N." Y counts flights (above) whose scheduled time has passed (`sched_utc_final` at or before the last record's `fetched_at`) and whose label is DEPARTED, LANDED or CANCELLED, on every day the site has (26 October's flights were recorded from the evening of 27 October on); X the CANCELLED ones. N = Y / X: below 20 rounded to the nearest whole number, from 20 up to the nearest multiple of 5, halves upward. Left out while X is 0. Today: 19 of 949, about 1 in 50.
+2. Headline: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N." Y counts flights (above) whose scheduled time has passed (`sched_utc_final` at or before the last sighting of the board, `confirmed_until` of the last snapshot) and whose label is DEPARTED, LANDED or CANCELLED, on every day the site has (26 October's flights were recorded from the evening of 27 October on); X the CANCELLED ones. N = Y / X: below 20 rounded to the nearest whole number, from 20 up to the nearest multiple of 5, halves upward. Left out while X is 0. Today: 19 of 949, about 1 in 50.
 3. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (provisional): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. Today: TO 3459.
 4. Search box: "Flight number or city, e.g. LY 001 or Paris". Order: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number. Up to 10 results as links to flight pages, then "N more: type more of the number or city" when more match. It needs JavaScript; without it the box is hidden, and the day list (item 6) reaches every flight.
 5. "Recent cancellations": the 10 most recent cancelled flights by scheduled time, upcoming ones included: date, flight, route with "scheduled to leave/land HH:MM", warning. Each links to its row's anchor on the flight page. "All cancellations" below. On a narrow screen each entry stacks (flight and date, then route, then warning); no fixed column widths.
 6. "Flights each day": an inline SVG chart of the last 14 days with flights plus the days ahead. Each day shows its flights in three parts (cancelled, no known outcome, the rest) with the numbers in text beside the bar ("370 flights · 8 cancelled · 190 unknown"), never in color alone. The day of the last record (Israel date) is "today", drawn like past days; later days are pale, "ahead". A day the existing `partial` rule flags is pale and labelled "incomplete". Each day links to its day page. Under the chart, a compact list of every day the site has, linked, so no flight is out of reach without JavaScript.
-7. "Last updated 30 Oct 2026, 00:02" (the last record, Israel time).
+7. "Last updated 30 Oct 2026, 00:02" (the last sighting of the board, stored or unchanged, Israel time).
 8. A line for the hiring reader: "Built by [owner's wording] · How this works · Code on GitHub".
 9. Footer.
 

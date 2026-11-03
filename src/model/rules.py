@@ -1,9 +1,10 @@
 """The data model's rules, each a named SQL step on one DuckDB connection.
 
-Tables flow in this order (docs/data-model.md names the rules R1..R8):
+Tables flow in this order (docs/data-model.md names the rules R1..R9):
 
   raw_rows   every row of every snapshot file, as the board published it
-  receipts   one row per acquisition receipt (docs/receipts.md); decides which snapshots are trusted
+  receipts   one row per acquisition receipt (docs/receipts.md); decides which snapshots are trusted and
+             when the board was last seen (R9: every receipt is a sighting; snapshots.confirmed_until)
   rows       R1 local times to UTC, R2 duplicates removed, board key added
   snapshots  one row per snapshot with its counts
   keys       one row per board key (airline, flight no., direction, airport, scheduled time)
@@ -281,14 +282,48 @@ def convert_times_and_dedupe(con) -> None:
                    count(*) FILTER (WHERE sched_local IS NULL) AS unparsed_sched,
                    count(*) FILTER (WHERE est_local IS NULL) AS missing_est
             FROM rows GROUP BY snapshot_id
+        ), base AS (
+            SELECT snapshot_id, fetched_at, lead(fetched_at) OVER (ORDER BY fetched_at, snapshot_id) AS next_fetched_at,
+                   pages, rows_raw, rows, duplicate_rows, key_conflicts, unparsed_sched, missing_est, identical_repeats,
+                   min_sched_local, max_sched_local
+            FROM per_file JOIN conflicts USING (snapshot_id) JOIN kept USING (snapshot_id)
+            JOIN (SELECT snapshot_id, identical_repeats FROM snapshot_runs) USING (snapshot_id)  -- kept has no repeats or incompletes
+        ), sightings AS (
+            -- R9: every receipt is a sighting of the board, and one in a snapshot's window (from its fetch to the
+            -- next kept snapshot's) saw that snapshot's content: an unchanged download, or a repeated store R2 drops.
+            SELECT b.snapshot_id, max(date_trunc('second', r.run_started_at)) AS last_sighting
+            FROM base b JOIN receipts r
+              ON r.run_started_at >= b.fetched_at AND (b.next_fetched_at IS NULL OR r.run_started_at < b.next_fetched_at)
+            GROUP BY b.snapshot_id
+        ), confirmed AS (
+            SELECT b.* EXCLUDE (next_fetched_at),
+                   coalesce(s.last_sighting, b.fetched_at) AS confirmed_until  -- a sighting is never before its window
+            FROM base b LEFT JOIN sightings s USING (snapshot_id)
         )
-        SELECT snapshot_id, fetched_at, row_number() OVER (ORDER BY fetched_at, snapshot_id) AS snap_rn,
-               epoch(fetched_at - lag(fetched_at) OVER (ORDER BY fetched_at, snapshot_id))::BIGINT AS gap_before_s,
+        SELECT snapshot_id, fetched_at, confirmed_until, row_number() OVER w AS snap_rn,
+               epoch(fetched_at - lag(confirmed_until) OVER w)::BIGINT AS gap_before_s,
                pages, rows_raw, rows, duplicate_rows, key_conflicts, unparsed_sched, missing_est, identical_repeats,
                min_sched_local, max_sched_local
-        FROM per_file JOIN conflicts USING (snapshot_id) JOIN kept USING (snapshot_id)
-        JOIN (SELECT snapshot_id, identical_repeats FROM snapshot_runs) USING (snapshot_id)  -- kept has no repeats or incompletes
+        FROM confirmed WINDOW w AS (ORDER BY fetched_at, snapshot_id)
     """)
+    _check_sightings(con)
+
+
+def _check_sightings(con) -> None:
+    """R9: a receipt in a kept snapshot's window must carry that snapshot's content hash. The collector only writes
+    `unchanged` for the board it last stored, and a repeated store carries the same hash, so a different hash in
+    the window means the board showed older content again without a new store: the model cannot place that
+    sighting, and silently crediting it to the window's snapshot would hide a gap."""
+    misplaced = [r[0] for r in con.execute("""
+        WITH w AS (SELECT snapshot_id, fetched_at, lead(fetched_at) OVER (ORDER BY snap_rn) AS next_fetched_at,
+                          right(snapshot_id, 12) AS sha FROM snapshots)
+        SELECT r.receipt_file FROM receipts r JOIN w
+          ON r.run_started_at >= w.fetched_at AND (w.next_fetched_at IS NULL OR r.run_started_at < w.next_fetched_at)
+        WHERE right(r.snapshot_id, 12) <> w.sha ORDER BY 1""").fetchall()]
+    if misplaced:
+        raise ValueError(f"{len(misplaced)} receipts saw a board that differs from the kept snapshot of their time: {misplaced[:10]}. "
+                         "A sighting is credited to the snapshot of its time (R9), so these cannot be placed; look at "
+                         "the collector's logs and state file at those times.")
 
 
 def link_retimes(con) -> None:
@@ -301,6 +336,7 @@ def link_retimes(con) -> None:
                any_value(sched_local) AS sched_local, any_value(sched_utc) AS sched_utc,
                min(s.snap_rn) AS first_rn, max(s.snap_rn) AS last_rn,
                min(r.fetched_at) AS first_seen_at, max(r.fetched_at) AS last_seen_at,
+               max(s.confirmed_until) AS last_confirmed_at,
                arg_min(status, s.snap_rn) AS first_status, arg_max(status, s.snap_rn) AS last_status
         FROM rows r JOIN snapshots s USING (snapshot_id)
         GROUP BY key_id
@@ -316,7 +352,7 @@ def link_retimes(con) -> None:
          AND n.first_rn = o.last_rn + 1
         WHERE o.last_status NOT IN ({terminal}) AND n.first_status NOT IN ({terminal})
           AND abs(epoch(n.sched_utc - o.sched_utc)) <= {RETIME_WINDOW_HOURS} * 3600
-          AND epoch(n.first_seen_at - o.last_seen_at) <= {GAP_HOURS} * 3600
+          AND epoch(n.first_seen_at - o.last_confirmed_at) <= {GAP_HOURS} * 3600
     """)
     # One-to-one: each side's nearest candidate, with no tie on either side.
     con.execute("""
@@ -353,7 +389,7 @@ def build_observations(con) -> None:
         WITH seq AS (
             SELECT k.flight_id, r.*, s.snap_rn,
                    lag(r.key_id) OVER w AS prev_key_id,
-                   lag(r.fetched_at) OVER w AS prev_observed_at,
+                   lag(s.confirmed_until) OVER w AS prev_observed_at,
                    {lags}
             FROM rows r JOIN keymap k USING (key_id) JOIN snapshots s USING (snapshot_id)
             WINDOW w AS (PARTITION BY k.flight_id ORDER BY s.snap_rn)
@@ -416,7 +452,7 @@ def build_flights(con) -> None:
         CREATE OR REPLACE TABLE flights AS
         WITH seen AS (
             SELECT k.flight_id, count(DISTINCT r.snapshot_id) AS snapshots_seen,
-                   max(s.snap_rn) AS last_rn, max(r.fetched_at) AS last_seen_at
+                   max(s.snap_rn) AS last_rn, max(s.confirmed_until) AS last_seen_at
             FROM rows r JOIN keymap k USING (key_id) JOIN snapshots s USING (snapshot_id)
             GROUP BY k.flight_id
         ), chain AS (
@@ -437,8 +473,8 @@ def build_flights(con) -> None:
                    max(snap_rn) FILTER (WHERE status <> 'CANCELED') AS last_not_canceled_rn
             FROM observations GROUP BY flight_id
         ), before_cancel AS (
-            -- The last appearance before the cancellation showed: the announcement came after it.
-            SELECT k.flight_id, max(r.fetched_at) AS cancel_announced_after
+            -- The last sighting of the board before the cancellation showed: the announcement came after it.
+            SELECT k.flight_id, max(s.confirmed_until) AS cancel_announced_after
             FROM rows r JOIN keymap k USING (key_id) JOIN snapshots s USING (snapshot_id)
             JOIN obs o ON o.flight_id = k.flight_id
             WHERE r.status <> 'CANCELED' AND s.snap_rn < o.canceled_rn

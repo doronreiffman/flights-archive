@@ -25,7 +25,7 @@ It comes first because it uses what only an archive has: the history that the li
 - Rankings, statistics pages, forecasts, an API, downloads of raw or derived data.
 - Live updates; the site is as fresh as the last local build.
 - A Hebrew interface (Hebrew status and city names appear beside the English, marked right-to-left).
-- Its own definition of collection gaps. The model owns gaps (R4, R7, R8 use snapshot spacing); the page shows the model's and follows when the model switches to receipts (q14).
+- Its own definition of collection gaps. The model owns gaps (R9: from the last sighting of the board, stored or unchanged, to the next snapshot; R4, R7 and R8 follow it); the page shows the model's: its gap sentences, its "between" ranges and its last-updated time all read the last sighting.
 - An A to Z index of flight numbers (600 links a day; find and the search box cover it).
 - Hosting, and handing out copies (see "Publishing").
 
