@@ -155,7 +155,7 @@ def partners(rows: list[Row]) -> dict[str, tuple[Row, ...]]:
 # --- counts ----------------------------------------------------------------------------------------
 
 def day_infos(flights_: list[tuple[Row, ...]], last_fetch: datetime, partial_days: set[date]) -> list[DayInfo]:
-    """Per day with flights: counts, and past, today or ahead. Today is the Israel date of the last record: at
+    """Per day with flights: counts, and past, today or ahead. Today is the Israel date of the last sighting of the board: at
     22:30 UTC on 29 October it is already 30 October in Israel."""
     today = words.il_time(last_fetch).date()
     labels: dict[date, list[str]] = {}
@@ -168,7 +168,7 @@ def day_infos(flights_: list[tuple[Row, ...]], last_fetch: datetime, partial_day
 
 
 def headline_counts(flights_: list[tuple[Row, ...]], last_fetch: datetime) -> tuple[int, int]:
-    """(cancelled, known) over the flights whose scheduled time has passed (UTC, at or before the last record):
+    """(cancelled, known) over the flights whose scheduled time has passed (UTC, at or before the last sighting of the board):
     those labelled CANCELLED, and those labelled DEPARTED, LANDED or CANCELLED."""
     labels = [fl[0].label for fl in flights_ if fl[0].sched_utc_final <= last_fetch]
     return labels.count(words.CANCELLED), sum(label in KNOWN for label in labels)

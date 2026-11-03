@@ -176,7 +176,7 @@ The built-by text and the GitHub address come from one place, `BUILT_BY` and `CO
 - Same pipeline: `python -m timeline.build --model data/model --out site`, DuckDB over the model's Parquet files, the marker-file swap, `timeline.check` before upload, `scripts/publish.sh`. The pages are pure functions from rows to HTML, in three modules: `words.py` (every sentence and label), `flights.py` (display rows, flights, counts, addresses, search entries) and `views.py` (the HTML).
 - Search data: one entry per flight number and direction, with keys from `flights.number_keys` and `flights.place_keys`, the place keys taken as the union over that number's rows (a number can have two cities) and its page address. Written as JSON inside a `<script type="application/json">` element on the front page, with `<` escaped as `\u003c` so a name containing `</script>` cannot end the element.
 - Page addresses unique per file, and the build stops if two flight numbers would map to the same file (`AB` + `12` against `A` + `B12`). Anchors unique per page (codeshare partners share anchor strings across pages, which is fine).
-- Same model, same bytes (determinism across processes, as now). The build time is the last record's time, never the clock.
+- Same model, same bytes (determinism across processes, as now). The build time is the last sighting of the board (`confirmed_until` of the last snapshot), never the clock.
 - Cost: no new AWS service. Hosting as estimated in `docs/publishing.md`, "Cost (monthly)": storage well under a cent a month for the 3.9 MB site of 2026-10-30, and about half a cent of requests per upload, since each upload sends every file (961 that day).
 
 ## Tests and checks
