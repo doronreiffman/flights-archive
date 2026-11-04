@@ -77,6 +77,7 @@ h1.wordmark { font-size: 2.25rem; line-height: 1.15; letter-spacing: -.02em; mar
 
 /* --- figures: the headline's numbers as tiles, the sentence under them ------------------------------ */
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; }
+h1 + .stats { margin-top: 16px; }
 .stat {
   display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
   padding: 16px 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); box-shadow: var(--shadow);
