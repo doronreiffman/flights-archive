@@ -42,14 +42,10 @@ This project keeps that record. It saves every version of the board, writes down
 
 ## How it works
 
-```mermaid
-flowchart LR
-  B["data.gov.il<br/>flight board"] -->|"every 2 min: changed?"| L["Collector<br/>AWS Lambda, Tel Aviv"]
-  L -->|"new board + receipt"| S[("Archive<br/>S3, kept 10 years")]
-  S -->|sync| M["Data model<br/>DuckDB to Parquet"]
-  M --> T["History site<br/>static pages"]
-  T -->|"checked upload, by hand"| C["S3 + CloudFront"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/flow-dark.png">
+  <img alt="How it works: every 2 minutes the collector, an AWS Lambda function in Tel Aviv, checks whether data.gov.il's flight board changed; a new board and its receipt go into the archive on S3, kept 10 years; a sync feeds the data model (DuckDB to Parquet), which builds the history site's static pages; a checked upload, by hand, puts them on S3 and CloudFront." src="docs/img/flow-light.png">
+</picture>
 
 ## Engineering choices worth a look
 
