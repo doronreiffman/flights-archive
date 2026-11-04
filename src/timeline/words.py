@@ -269,5 +269,5 @@ def headline(cancelled: int, known: int) -> str | None:
     n = one_in(cancelled, known)
     if n is None:
         return None
-    return (f"So far, {cancelled} of {known} flights with a known outcome were listed as cancelled. "
+    return (f"So far, {cancelled:,} of {known:,} flights with a known outcome were listed as cancelled. "
             f"That's about 1 in {n}.")

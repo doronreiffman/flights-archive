@@ -254,6 +254,11 @@ def test_headline():
     assert words.headline(0, 951) is None
 
 
+def test_headline_counts_carry_thousands_separators():
+    assert words.headline(47, 2674) == ("So far, 47 of 2,674 flights with a known outcome were listed as cancelled. "
+                                        "That's about 1 in 55.")
+
+
 # --- what changed ----------------------------------------------------------------------------------
 
 def utc(day, h, m, s=0):

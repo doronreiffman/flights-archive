@@ -30,8 +30,14 @@ def d(value) -> str:
     return "" if value is None else f'<span class="d">{html.escape(str(value))}</span>'
 
 
-def layout(title: str, body: str, root: str, head_extra: str = "") -> str:
-    """A whole page; `root` is the way back to the site's top folder ("" or "../")."""
+def _wordmark(root: str) -> str:
+    """The header band's wordmark: the site's name, linked to the front page (it replaces v2's back link)."""
+    return f'<p class="wordmark"><a href="{root}index.html">{e(HOME)}</a></p>'
+
+
+def layout(title: str, body: str, root: str, head_extra: str = "", top: str | None = None) -> str:
+    """A whole page; `root` is the way back to the site's top folder ("" or "../"). `top` is the header band's
+    content, the wordmark by default (the front page puts its title, lede and last-updated line there)."""
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
@@ -39,6 +45,7 @@ def layout(title: str, body: str, root: str, head_extra: str = "") -> str:
         f"<title>{e(title)}</title>\n"
         + (f"{head_extra}\n" if head_extra else "")
         + f'<link rel="stylesheet" href="{root}style.css">\n</head>\n<body>\n'
+        f'<header class="band">\n{_wordmark(root) if top is None else top}\n</header>\n'
         f"<main>\n{body}\n</main>\n"
         "<footer>\n"
         f"<p>{e(words.SOURCE_SHORT)} {e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\n"
@@ -48,10 +55,6 @@ def layout(title: str, body: str, root: str, head_extra: str = "") -> str:
 
 
 # --- pieces ----------------------------------------------------------------------------------------
-
-def _back(root: str) -> str:
-    return f'<p class="back"><a href="{root}index.html">← {e(HOME)}</a></p>'
-
 
 def _short_date(day: date) -> str:
     return f"{day:%a} {day.day} {day:%b}"  # Thu 29 Oct
@@ -108,6 +111,21 @@ def _count_parts(info: DayInfo) -> list[str]:
     if info.unknown:
         parts.append(f"{info.unknown} unknown")
     return parts
+
+
+def _tiles(tiles: list[tuple[str, str, bool]]) -> str:
+    """Figures already on the page as tiles, (label, figure, cancelled) each; the label sits above its figure, and a
+    cancelled count takes the cancelled color. The sentence or line that states them stays on the page."""
+    return "\n".join(['<dl class="stats">',
+                      *(f'<div class="stat{" cancel" * red}"><dt>{e(label)}</dt> <dd>{e(figure)}</dd></div>'
+                        for label, figure, red in tiles), "</dl>"])
+
+
+def _day_tiles(info: DayInfo) -> str:
+    """A day's count line as tiles, zeros left out as in the line: "418 flights", "7 cancelled", "190 unknown"."""
+    parts = [("flight" if info.total == 1 else "flights", info.total, False), ("cancelled", info.cancelled, True),
+             ("unknown", info.unknown, False)]
+    return _tiles([(label, f"{n:,}", red) for label, n, red in parts if n or label.startswith("flight")])
 
 
 def _counts(info: DayInfo) -> str:
@@ -180,11 +198,12 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]], since: da
         who.append(f"{'lands at' if top.direction == 'D' else 'leaves from'} {_place(top)}")
     if len({r.city for r in rows}) == 1 and top.city_he:
         who.append(f'<span lang="he" dir="rtl">{d(top.city_he)}</span>')
-    body = [_back("../"), f"<h1>{d(title)}</h1>", f'<p class="who">{" · ".join(who)}</p>',
+    body = [f"<h1>{d(title)}</h1>", f'<p class="who">{" · ".join(who)}</p>',
             f'<p class="summary">{e(_summary(rows, since))}</p>']
     if any(r.last_expected for r in rows):
         body.append(f'<p class="note">{e(words.DELAY_SENTENCE)}</p>')
-    body += [_flight_row(r, partners.get(r.flight_id, ()), many_places) for r in newest]
+    body += ['<div class="history">', *(_flight_row(r, partners.get(r.flight_id, ()), many_places) for r in newest),
+             "</div>"]
     return layout(title, "\n".join(body), "../")
 
 
@@ -192,8 +211,9 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]], since: da
 
 def _day_row(fl: tuple[Row, ...]) -> str:
     r = fl[0]
-    parts = [f'<span class="t">{words.clock(r.sched_final, r.day)}</span>', _numbers(fl, "../"), _to_or_from(r),
-             _labels(r)]
+    parts = [f'<span class="t">{words.clock(r.sched_final, r.day)}</span>',
+             f'<span class="nums">{_numbers(fl, "../")}</span>', f'<span class="route">{_to_or_from(r)}</span>',
+             f'<span class="labels">{_labels(r)}</span>']
     if r.warning:
         parts.append(f'<span class="warn">{e(words.warning_sentence(r.warning))}</span>')
     return f"<li>{' '.join(parts)}</li>"
@@ -201,7 +221,7 @@ def _day_row(fl: tuple[Row, ...]) -> str:
 
 def day_page(info: DayInfo, flights_: list[tuple[Row, ...]]) -> str:
     """One day's flights: departures, then arrivals, in scheduled order; each number links to its row."""
-    body = [_back("../"), f"<h1>{_long_date(info.day)}</h1>", f'<p class="count">{_counts(info)}</p>']
+    body = [f"<h1>{_long_date(info.day)}</h1>", _day_tiles(info), f'<p class="count">{_counts(info)}</p>']
     if info.partial:
         body.append("<p class=\"note\">Incomplete: some of this day's flights may be missing from the records.</p>")
     if info.unknown:  # every UNKNOWN flight; each flight page's label note gives its reason
@@ -223,15 +243,15 @@ def _cancellations_table(cancelled: list[tuple[Row, ...]], root: str) -> str:
     time, so no label runs into it."""
     rows = [f"<tr><td>{_short_date(fl[0].day)}</td><td>{_numbers(fl, root)}</td><td>{_route(fl[0])}</td>"
             f"<td>{e(fl[0].warning)}</td></tr>" for fl in cancelled]
-    return ('<table class="cancellations">\n<thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Warning</th>'
-            "</tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>")
+    return ('<div class="table-card">\n<table class="cancellations">\n<thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Warning</th>'
+            "</tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>\n</div>")
 
 
 def cancellations_page(flights_: list[tuple[Row, ...]]) -> str:
     """Every cancelled flight among `flights_`, newest first."""
     cancelled = flights.recent_cancellations(flights_, n=len(flights_))
     table = _cancellations_table(cancelled, "") if cancelled else f"<p>{NONE_CANCELLED}</p>"
-    body = [_back(""), "<h1>All cancellations</h1>", "<p>Every flight listed as cancelled, newest first.</p>", table]
+    body = ["<h1>All cancellations</h1>", "<p>Every flight listed as cancelled, newest first.</p>", table]
     return layout("All cancellations", "\n".join(body), "")
 
 
@@ -247,8 +267,7 @@ def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -
     """The plan's Appendix A, verbatim; the only page that may say "I" and name how the data is collected.
     `gaps` are (start, end) in the model's naive UTC."""
     gap_sentences = "".join(f" {_gap(a, b)}" for a, b in gaps)
-    body = f"""{_back("")}
-<h1>How this works</h1>
+    body = f"""<h1>How this works</h1>
 <h2>Where the data comes from</h2>
 <p>The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.</p>
 <p>{e(attribution)}</p>
@@ -346,6 +365,13 @@ def chart_svg(days: list[DayInfo]) -> str:
                       f'aria-label="{e(label)}">', *out, "</svg>"])
 
 
+def _stats(cancelled: int, known: int) -> str:
+    """The headline's three figures as tiles, each label a phrase of the headline sentence, which stays under them:
+    the flights with a known outcome, those listed as cancelled, and the "about 1 in N"."""
+    return _tiles([("flights with a known outcome", f"{known:,}", False), ("listed as cancelled", f"{cancelled:,}", True),
+                   ("that's about", f"1 in {words.one_in(cancelled, known)}", False)])
+
+
 def _story(r: Row) -> str:
     """One cancelled flight's story: its title linked to its row, the day and scheduled time, and what changed."""
     return "\n".join(['<section class="story">',
@@ -365,13 +391,15 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
                       f'<meta property="og:description" content="{e(about)}">',
                       '<meta property="og:type" content="website">',
                       '<script src="search.js" defer></script>'])
-    body = [f"<h1>{e(HOME)}</h1>", f'<p class="lede">{e(LEDE)}</p>']
+    updated = words.il_time(last_record)
+    top = "\n".join([f'<h1 class="wordmark"><a href="index.html">{e(HOME)}</a></h1>', f'<p class="lede">{e(LEDE)}</p>',
+                     f'<p class="updated">Last updated {updated.day} {updated:%b %Y, %H:%M}</p>'])
+    body = []
     headline = words.headline(cancelled, known)
     if headline:
-        body.append(f'<p class="headline">{e(headline)}</p>')
+        body += [_stats(cancelled, known), f'<p class="headline">{e(headline)}</p>']
     if story is not None:
         body.append(_story(story))
-    updated = words.il_time(last_record)
     day_links = " · ".join(f'<a href="day/{x.day:%Y-%m-%d}.html">{_short_date(x.day)}</a>' for x in all_days)
     body += [f'<input id="search" type="search" hidden placeholder="{e(SEARCH_HINT)}" '
              'aria-label="Find a flight by number or city">',
@@ -381,9 +409,8 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
              _cancellations_table(recent[:RECENT], "") if recent else f"<p>{NONE_CANCELLED}</p>",
              '<p><a href="cancellations.html">All cancellations</a></p>',
              "<h2>Flights each day</h2>",
-             chart_svg(chart_days),
+             '<div class="chart-card">', chart_svg(chart_days), "</div>",
              f'<p class="days">Every day: {day_links}</p>',
-             f'<p class="updated">Last updated {updated.day} {updated:%b %Y, %H:%M}</p>',
              f'<p class="built">Built by {e(words.BUILT_BY)} · <a href="how-it-works.html">How this works</a> · '
              f'<a href="{e(words.CODE_URL)}">Code on GitHub</a></p>']
-    return layout(TITLE, "\n".join(body), "", head)
+    return layout(TITLE, "\n".join(body), "", head, top)
