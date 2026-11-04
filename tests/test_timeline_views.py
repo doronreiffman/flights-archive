@@ -60,6 +60,15 @@ def to3459_page():
     return views.flight_page(rs, flights.partners(rs), SINCE)
 
 
+WORDMARK = '<header class="band">\n<p class="wordmark"><a href="{root}index.html">Cancelled flights at Tel Aviv airport</a></p>'
+
+
+def tiles(page: str) -> list[tuple[str, str]]:
+    """The stat tiles as (label, figure), in page order."""
+    return [(html.unescape(label), html.unescape(figure))
+            for label, figure in re.findall(r"<dt>(.*?)</dt> <dd>(.*?)</dd>", page)]
+
+
 # --- layout ----------------------------------------------------------------------------------------
 
 def test_layout_head():
@@ -69,6 +78,16 @@ def test_layout_head():
     assert "<title>A &lt;b&gt; &amp; &#x27;c&#x27;</title>" in page
     assert '<link rel="stylesheet" href="../style.css">' in page
     assert "<main>\n<p>body</p>\n</main>" in page
+
+
+@pytest.mark.parametrize("root", ["", "../"])
+def test_layout_header_band_links_home(root):
+    """Every page opens with the band: the site's name, linked to the front page from the page's own folder (it
+    replaces the back link)."""
+    page = views.layout("t", "<p>body</p>", root)
+    assert WORDMARK.format(root=root) in page
+    assert page.index("<body>") < page.index('<header class="band">') < page.index("</header>") < page.index("<main>")
+    assert "←" not in page
 
 
 def test_layout_head_extra_goes_in_the_head():
@@ -97,7 +116,7 @@ def test_flight_page_head():
     page = to3459_page()
     assert "<title>TO 3459, Tel Aviv to Paris</title>" in page
     assert '<h1><span class="d">TO 3459, Tel Aviv to Paris</span></h1>' in page
-    assert '<a href="../index.html">← Cancelled flights at Tel Aviv airport</a>' in page
+    assert WORDMARK.format(root="../") in page
     assert '<span class="d">TRANSAVIA FRANCE</span> (as the airport lists it)' in page
     assert "TRANSAVIA FRANCE (as the airport lists it) · lands at Paris (ORY) · פריז" in text(page)
     assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in page
@@ -286,7 +305,7 @@ def test_day_page_head():
     page = day_page()
     assert "<title>Thursday 29 October 2026</title>" in page
     assert "<h1>Thursday 29 October 2026</h1>" in page
-    assert '<a href="../index.html">← Cancelled flights at Tel Aviv airport</a>' in page
+    assert WORDMARK.format(root="../") in page
     assert '<p class="count">418 flights · 7 cancelled · 190 unknown</p>' in page
     assert "Incomplete: some of this day's flights may be missing from the records." in text(page)
     assert '<p class="note">No known outcome for 190 of these flights.</p>' in page
@@ -300,6 +319,23 @@ def test_day_page_head():
 ])
 def test_day_count_line_leaves_out_zeros(total, cancelled, unknown, line):
     assert f'<p class="count">{line}</p>' in day_page(total, cancelled, unknown)
+
+
+def test_day_page_tiles_show_the_count_line():
+    """The count line's figures as tiles above it, in its order; the line itself stays."""
+    page = day_page()
+    assert tiles(page) == [("flights", "418"), ("cancelled", "7"), ("unknown", "190")]
+    assert '<div class="stat cancel"><dt>cancelled</dt> <dd>7</dd></div>' in page
+    assert page.index('<dl class="stats">') < page.index('<p class="count">')
+
+
+@pytest.mark.parametrize("total, cancelled, unknown, shown", [
+    (418, 0, 190, [("flights", "418"), ("unknown", "190")]),
+    (418, 7, 0, [("flights", "418"), ("cancelled", "7")]),
+    (1, 0, 0, [("flight", "1")]),
+])
+def test_day_tiles_leave_out_zeros_like_the_line(total, cancelled, unknown, shown):
+    assert tiles(day_page(total, cancelled, unknown)) == shown
 
 
 def test_day_page_unknown_line_for_one_flight():
@@ -537,10 +573,14 @@ def test_description_ends_with_one_full_stop_whatever_the_built_by_line_ends_wit
 
 
 def test_front_page_title_and_lede():
+    """The band holds the title as the wordmark, the lede and the last-updated line; no other band on the page."""
     page = front()
-    assert "<h1>Cancelled flights at Tel Aviv airport</h1>" in page
+    band = section(page, '<header class="band">', "</header>")
+    assert '<h1 class="wordmark"><a href="index.html">Cancelled flights at Tel Aviv airport</a></h1>' in band
     assert ('<p class="lede">A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and '
-            "which ones were cancelled.</p>") in page
+            "which ones were cancelled.</p>") in band
+    assert '<p class="updated">Last updated 30 Oct 2026, 00:02</p>' in band
+    assert page.count("<header") == 1 and page.count("<h1") == 1
 
 
 def test_front_page_headline():
@@ -550,9 +590,26 @@ def test_front_page_headline():
     assert words.headline(20, 951) in text(page)
 
 
+def test_front_page_tiles_show_the_headline_counts():
+    """The headline's figures as tiles, each labelled with the sentence's own words, and the sentence under them."""
+    page = front(20, 951)
+    assert tiles(page) == [("flights with a known outcome", "951"), ("listed as cancelled", "20"),
+                           ("that's about", "1 in 50")]
+    assert '<div class="stat cancel"><dt>listed as cancelled</dt> <dd>20</dd></div>' in page
+    assert page.index('<dl class="stats">') < page.index('class="headline"')
+
+
+def test_front_page_tiles_and_sentence_share_their_rounding_and_separators():
+    page = front(47, 2674)
+    assert tiles(page) == [("flights with a known outcome", "2,674"), ("listed as cancelled", "47"),
+                           ("that's about", "1 in 55")]
+    assert ("So far, 47 of 2,674 flights with a known outcome were listed as cancelled. That's about 1 in 55."
+            in text(page))
+
+
 def test_no_headline_without_cancellations():
     page = front(0, 900, story=None, recent=[])
-    assert 'class="headline"' not in page and "So far" not in page
+    assert 'class="headline"' not in page and "So far" not in page and 'class="stats"' not in page
 
 
 def test_the_story_box():
@@ -699,16 +756,17 @@ def test_built_by_line():
 
 def test_front_page_order():
     page = front()
-    order = ["<h1>", 'class="lede"', 'class="headline"', 'class="story"', '<input id="search"',
-             'id="search-results"', 'id="flights-data"', "Recent cancellations", 'href="cancellations.html"',
-             "Flights each day", '<svg class="chart"', 'class="days"', 'class="updated"', 'class="built"', "<footer>"]
+    order = ['<h1 class="wordmark">', 'class="lede"', 'class="updated"', "</header>", 'class="stats"',
+             'class="headline"', 'class="story"', '<input id="search"', 'id="search-results"', 'id="flights-data"',
+             "Recent cancellations", 'href="cancellations.html"', "Flights each day", '<svg class="chart"',
+             'class="days"', 'class="built"', "<footer>"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
 
 
 def test_front_page_without_cancellations():
     """Review Focus 3: headline and story left out, everything else present."""
     page = views.front_page(0, 900, None, [], CHART_DAYS, CHART_DAYS, entries(), LAST_FETCH)
-    assert 'class="headline"' not in page and 'class="story"' not in page
+    assert 'class="headline"' not in page and 'class="story"' not in page and 'class="stats"' not in page
     assert '<input id="search"' in page and '<ul id="search-results" hidden></ul>' in page
     assert 'id="flights-data"' in page and '<svg class="chart"' in page and '<p class="days">' in page
     assert "<h2>Recent cancellations</h2>" in page and "No flights listed as cancelled so far." in text(page)

@@ -12,12 +12,15 @@ from timeline import words
 SHEET = Path(__file__).parent.parent / "src" / "timeline" / "static" / "style.css"
 DARK = "@media (prefers-color-scheme: dark)"
 TOKENS = ("--bg", "--fg", "--muted", "--line", "--accent", "--card", "--cancel-fg", "--cancel-bg", "--ok-fg",
-          "--ok-bg", "--plain-fg", "--plain-bg", "--delay-fg", "--delay-bg", "--unknown-fg")
-# (text, background). The brief's ten, then the two the sheet adds: the story box's link (accent on the card) and the
-# warning lines (cancel red on the page). The chart's text is drawn on the page in tokens checked against --bg below.
+          "--ok-bg", "--plain-fg", "--plain-bg", "--delay-fg", "--delay-bg", "--unknown-fg", "--band-bg", "--band-fg",
+          "--band-muted")
+# (text, background). The brief's ten, then the ones the sheet adds: the story box's and the footer's links (accent on
+# the card), the warning lines and a cancelled tile's figure (cancel red on the page), and the header band's wordmark
+# and its lede and last-updated line. The chart's text is drawn on the page in tokens checked against --bg below.
 PAIRS = (("--fg", "--bg"), ("--muted", "--bg"), ("--accent", "--bg"), ("--fg", "--card"), ("--muted", "--card"),
          ("--cancel-fg", "--cancel-bg"), ("--ok-fg", "--ok-bg"), ("--plain-fg", "--plain-bg"),
-         ("--delay-fg", "--delay-bg"), ("--unknown-fg", "--bg"), ("--accent", "--card"), ("--cancel-fg", "--bg"))
+         ("--delay-fg", "--delay-bg"), ("--unknown-fg", "--bg"), ("--accent", "--card"), ("--cancel-fg", "--bg"),
+         ("--band-fg", "--band-bg"), ("--band-muted", "--band-bg"))
 ON_PAGE = {text for text, background in PAIRS if background == "--bg"}
 
 
@@ -111,6 +114,19 @@ def test_flight_numbers_in_the_table_never_break():
     """Each number is a `.d` span whose own pre-wrap would let "LY 5410" break at its space when the table squeezes
     the column; `pre` keeps the published spacing and stops the break."""
     assert declared((), ".cancellations td:nth-child(2) .d").get("white-space") == "pre"
+
+
+def test_flight_numbers_on_a_day_page_never_break():
+    """The day list's numbers are `.d` spans too: "LY 005" must not split across two lines in its column."""
+    assert declared((), ".flights .nums .d").get("white-space") == "pre"
+
+
+def test_band_text_takes_the_band_colors():
+    """The band's text sits on --band-bg, so it must take the band's own checked tokens, not the page's."""
+    assert declared((), ".band").get("background") == "var(--band-bg)"
+    assert declared((), ".wordmark a").get("color") == "var(--band-fg)"
+    assert declared((), ".band .lede").get("color") == "var(--band-muted)"
+    assert declared((), ".band .updated").get("color") == "var(--band-muted)"
 
 
 def test_a_long_codeshare_list_wraps_after_its_commas():
