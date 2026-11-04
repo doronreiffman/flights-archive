@@ -23,7 +23,7 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 | Boards archived | 559, covering 6,015 flight listings (4 November 2026) |
 | Kept for | 10 years, write-once (S3 Object Lock) |
 | Tests | 618, plus 246 planted bugs, all caught |
-| Cost | about $1 to $2 for the archive's first year |
+| Cost | about $1 to $2 for the archive's first year, before the alarms (at most $0.70 a month more, likely free) |
 
 ## Why
 
