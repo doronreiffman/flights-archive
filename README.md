@@ -1,4 +1,4 @@
-# flights-archive
+# Flight board archive: cancelled flights at Tel Aviv airport
 
 [![CI](https://github.com/doronreiffman/flights-archive/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/flights-archive/actions/workflows/ci.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
 
