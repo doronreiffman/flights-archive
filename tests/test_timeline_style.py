@@ -15,12 +15,12 @@ TOKENS = ("--bg", "--fg", "--muted", "--line", "--accent", "--card", "--cancel-f
           "--ok-bg", "--plain-fg", "--plain-bg", "--delay-fg", "--delay-bg", "--unknown-fg", "--band-bg", "--band-fg",
           "--band-muted")
 # (text, background). The brief's ten, then the ones the sheet adds: the story box's and the footer's links (accent on
-# the card), the warning lines and a cancelled tile's figure (cancel red on the page), and the header band's wordmark
-# and its lede and last-updated line. The chart's text is drawn on the page in tokens checked against --bg below.
+# the card), the warning lines and a cancelled tile's figure (cancel red on the page), a warning line in a flight row
+# a link points to (cancel red on the card), and the header band's wordmark and its lede and last-updated line. The chart's text is drawn on the page in tokens checked against --bg below.
 PAIRS = (("--fg", "--bg"), ("--muted", "--bg"), ("--accent", "--bg"), ("--fg", "--card"), ("--muted", "--card"),
          ("--cancel-fg", "--cancel-bg"), ("--ok-fg", "--ok-bg"), ("--plain-fg", "--plain-bg"),
          ("--delay-fg", "--delay-bg"), ("--unknown-fg", "--bg"), ("--accent", "--card"), ("--cancel-fg", "--bg"),
-         ("--band-fg", "--band-bg"), ("--band-muted", "--band-bg"))
+         ("--cancel-fg", "--card"), ("--band-fg", "--band-bg"), ("--band-muted", "--band-bg"))
 ON_PAGE = {text for text, background in PAIRS if background == "--bg"}
 
 

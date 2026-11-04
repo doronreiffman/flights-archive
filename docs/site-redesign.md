@@ -115,19 +115,19 @@ Airline names exactly as the airport publishes them, double spaces included ("AR
 
 ## Pages
 
-Every page: `<meta name="robots" content="noindex">` until the launch decision (q17), the footer, `lang="en"`.
+Every page: `<meta name="robots" content="noindex">` until the launch decision (q17), the header band with the site's name linked to the front page ("Look"), the footer, `lang="en"`.
 
 ### Front page (`index.html`)
 
 Top to bottom:
 
-1. Title "Cancelled flights at Tel Aviv airport". Under it: "A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and which ones were cancelled."
+1. In the header band: the title "Cancelled flights at Tel Aviv airport", as the wordmark. Under it: "A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and which ones were cancelled."
 2. Headline: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N." Y counts flights (above) whose scheduled time has passed (`sched_utc_final` at or before the last sighting of the board, `confirmed_until` of the last snapshot) and whose label is DEPARTED, LANDED or CANCELLED, on every day the site has (26 October's flights were recorded from the evening of 27 October on); X the CANCELLED ones. N = Y / X: below 20 rounded to the nearest whole number, from 20 up to the nearest multiple of 5, halves upward. Left out while X is 0. Today: 19 of 949, about 1 in 50.
 3. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (provisional): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. Today: TO 3459.
 4. Search box: "Flight number or city, e.g. LY 001 or Paris". Order: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number. Up to 10 results as links to flight pages, then "N more: type more of the number or city" when more match. It needs JavaScript; without it the box is hidden, and the day list (item 6) reaches every flight.
 5. "Recent cancellations": the 10 most recent cancelled flights by scheduled time, upcoming ones included: date, flight, route with "scheduled to leave/land HH:MM", warning. Each links to its row's anchor on the flight page. "All cancellations" below. On a narrow screen each entry stacks (flight and date, then route, then warning); no fixed column widths.
 6. "Flights each day": an inline SVG chart of the last 14 days with flights plus the days ahead. Each day shows its flights in three parts (cancelled, no known outcome, the rest) with the numbers in text beside the bar ("370 flights · 8 cancelled · 190 unknown"), never in color alone. The day of the last record (Israel date) is "today", drawn like past days; later days are pale, "ahead". A day the existing `partial` rule flags is pale and labelled "incomplete". Each day links to its day page. Under the chart, a compact list of every day the site has, linked, so no flight is out of reach without JavaScript.
-7. "Last updated 30 Oct 2026, 00:02" (the last sighting of the board, stored or unchanged, Israel time).
+7. "Last updated 30 Oct 2026, 00:02" (the last sighting of the board, stored or unchanged, Israel time). Since the 2026-11-04 restyle it sits in the header band, under item 1's line.
 8. A line for the hiring reader: "Built by [owner's wording] · How this works · Code on GitHub".
 9. Footer.
 
@@ -135,7 +135,7 @@ In the `<head>`: `<title>` "Cancelled flights at Tel Aviv airport (Ben Gurion)";
 
 ### Flight page (`flight/<airline><number>-<D|A>.html`, one per flight number and direction)
 
-- Back link to the front page.
+- The header band's wordmark links to the front page (it replaced v2's back link in the 2026-11-04 restyle).
 - Title: "TO 3459, Tel Aviv to Paris" (arrivals "from Paris to Tel Aviv"). A number with more than one city (LY 5115, LY 5116, IZ 419, 6H 890 on 2026-10-30) has no city in the title ("LY 5115, from Tel Aviv"), and each row shows its own city.
 - Under the title: the airline name as published with "(as the airport lists it)", the airport ("lands at Paris (ORY)"), and the city in Hebrew, `<span lang="he" dir="rtl">`, when the page has one city.
 - Summary: "Since 27 October: departed once, cancelled once, one upcoming." Counts per main label in the labels table's order.
@@ -147,7 +147,7 @@ Flight pages: 949 today; each grows by a row a day.
 
 ### Day page (`day/YYYY-MM-DD.html`)
 
-Reached from the chart and the day list. Title "Thursday 29 October 2026"; a count line in the chart's words ("418 flights · 7 cancelled · N unknown"); the "incomplete" line when the `partial` rule flags the day; when the day has UNKNOWN flights, "No known outcome for N of these flights."; then departures and arrivals in scheduled order, one row per flight: time, numbers, route, labels, warning for cancelled ones. Each row links to the flight page at its anchor. No change lines here, so day pages stay small.
+Reached from the chart and the day list. Title "Thursday 29 October 2026"; the count line's figures as tiles ("Look"), then the count line in the chart's words ("418 flights · 7 cancelled · N unknown"); the "incomplete" line when the `partial` rule flags the day; when the day has UNKNOWN flights, "No known outcome for N of these flights."; then departures and arrivals in scheduled order, one row per flight: time, numbers, route, labels, warning for cancelled ones. Each row links to the flight page at its anchor. No change lines here, so day pages stay small.
 
 ### All cancellations (`cancellations.html`)
 
@@ -165,11 +165,36 @@ The built-by text and the GitHub address come from one place, `BUILT_BY` and `CO
 
 ## Look
 
-- One column, max width about 42rem, generous spacing; the system font stack; tabular numbers. Smaller side padding on phones.
-- Colors as CSS custom properties, light by default, a dark set under `prefers-color-scheme: dark`. Every text color pair, pills and chart text included, clears 4.5:1 in both schemes; the builder records the pairs and their ratios in this doc's Deviations. (The mockup's red pill, about 4.3:1, does not.)
-- Labels are small rounded pills with text, never color alone. The chart's accessible name states the counts.
-- At 375 px: no sideways scrolling, tables stack, change lines keep their time beside them.
-- No framework, no web fonts, no images; the chart is SVG written by Python.
+Restyled 2026-11-04 from the tidy single column of v2 into a data-product look. No sentence, label, number or claim changed; text moved into new layout elements, and counts gained thousands separators.
+
+- **Header band on every page**: a deep blue band with the site's name as a wordmark linking to the front page (on inner pages it replaced the back link "← Cancelled flights at Tel Aviv airport"). On the front page the band holds the title (the page's `<h1>`), the lede and the "Last updated" line.
+- **Stat tiles**: the front page's headline figures as three tiles, each labelled with the headline sentence's own words ("flights with a known outcome", "listed as cancelled", "that's about"), the sentence itself verbatim under them; a day page's count line as tiles ("flights", "cancelled", "unknown", zeros left out as in the line), the line under them. Only numbers already on the page; the cancelled figure takes the cancelled red. Counts carry thousands separators (2,674) in the tiles and the headline sentence alike.
+- **Layout**: one column, 1000 px wide at most, 24 px side gutters (16 px at 600 px and below); running text keeps to about 46rem. The band and the footer run the full width. Spacing comes in steps of 4, 8, 12, 16, 24, 32 and 48 px.
+- **Cards**: the tiles, the story box, the cancellations table, the chart, a flight page's rows and a day page's lists sit in cards with a 1 px border and a 10 to 12 px radius, a 1 px shadow in light mode and none in dark.
+- **Type**: the system font stack (-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif), tabular numbers everywhere. No framework, no web fonts, no images, nothing loaded from elsewhere, no script but `search.js`. The chart is SVG written by Python, restyled (in a card) and drawn as before.
+- **Colors** as CSS custom properties: a cool grey scale, one accent (a deep blue, for links and the chart's bars) and the label colors (cancelled red, departed and landed green, upcoming grey, delayed amber, unknown a dashed outline). Light by default, a dark set under `prefers-color-scheme: dark`, with an explicit page background. Every text color pair clears 4.5:1 in both schemes (list below, checked by `tests/test_timeline_style.py`).
+- **Labels** are small rounded pills with text, never color alone. The chart's accessible name states the counts. Links are underlined (the band's wordmark only under the pointer); keyboard focus shows a 2 px outline.
+- **Tables and lists**: a header row on the card color, subtle row lines. A day page sets each flight's time, numbers, route and labels in columns from 760 px up; narrower, the time keeps its column and the rest wraps beside it. Flight numbers never break at their space, in the tables and the day lists.
+- **At 390 px**: no sideways scrolling; the cancellations table stacks (flight and date, then route, then warning) rather than scrolling, as v2 settled, and its card scrolls on its own only if something is still too wide; change lines keep their time beside them; the tiles stay in one row.
+
+Text color on background, light scheme then dark (WCAG 2 ratio, 4.5:1 required):
+
+- `--fg` on `--bg`: light #14171c on #ffffff, 17.96:1; dark #e7e9ee on #0e1117, 15.56:1
+- `--muted` on `--bg`: light #5a6170 on #ffffff, 6.22:1; dark #9aa3b2 on #0e1117, 7.43:1
+- `--accent` on `--bg`: light #1d4ab0 on #ffffff, 7.90:1; dark #8fb5ff on #0e1117, 9.20:1
+- `--fg` on `--card`: light #14171c on #f5f7fa, 16.74:1; dark #e7e9ee on #161b24, 14.21:1
+- `--muted` on `--card`: light #5a6170 on #f5f7fa, 5.79:1; dark #9aa3b2 on #161b24, 6.79:1
+- `--cancel-fg` on `--cancel-bg` (CANCELLED pill): light #b3261e on #fdecea, 5.72:1; dark #ffb3ab on #4d1c18, 8.22:1
+- `--ok-fg` on `--ok-bg` (DEPARTED, LANDED): light #1b6e34 on #e6f4ea, 5.56:1; dark #8fd8a2 on #173a24, 7.51:1
+- `--plain-fg` on `--plain-bg` (UPCOMING, NO FINAL UPDATE): light #454b57 on #eceef2, 7.54:1; dark #d4d7de on #2a303b, 9.20:1
+- `--delay-fg` on `--delay-bg` (DELAYED): light #8a4f00 on #fff1db, 5.89:1; dark #ffcf85 on #3f2c0c, 9.21:1
+- `--unknown-fg` on `--bg` (UNKNOWN, a dashed outline pill): light #5a6170 on #ffffff, 6.22:1; dark #9aa3b2 on #0e1117, 7.43:1
+- `--accent` on `--card` (the story box's and the footer's links): light #1d4ab0 on #f5f7fa, 7.36:1; dark #8fb5ff on #161b24, 8.40:1
+- `--cancel-fg` on `--bg` (warning lines, a cancelled tile's figure): light #b3261e on #ffffff, 6.54:1; dark #ffb3ab on #0e1117, 11.06:1
+- `--cancel-fg` on `--card` (a warning line in a flight row a link points to): light #b3261e on #f5f7fa, 6.09:1; dark #ffb3ab on #161b24, 10.10:1
+- `--band-fg` on `--band-bg` (the wordmark): light #ffffff on #12306a, 12.68:1; dark #f1f4fa on #0c1a36, 15.67:1
+- `--band-muted` on `--band-bg` (the band's lede and last-updated line): light #c5d1ea on #12306a, 8.26:1; dark #aebcd8 on #0c1a36, 9.03:1
+- Chart text: as in v2, counts in `--fg`, marks in `--muted`, a focused or pointed-at date in `--accent`, all on `--bg` (the chart's card), and the SVG's own 12 px.
 
 ## How it is built
 
@@ -231,7 +256,7 @@ Direction, with my decisions of 2026-10-30:
 
 ## Deviations
 
-Contrast (Task 9, `src/timeline/static/style.css`; checked by `tests/test_timeline_style.py`, WCAG 2 ratio, 4.5:1 required). Text color on background, light scheme then dark:
+Contrast (Task 9, `src/timeline/static/style.css`; checked by `tests/test_timeline_style.py`, WCAG 2 ratio, 4.5:1 required). The v2 build's values; the 2026-11-04 restyle changed most of them, and the current list is in "Look". Text color on background, light scheme then dark:
 
 - `--fg` on `--bg`: light #18181a on #ffffff, 17.73:1; dark #ececee on #151517, 15.46:1
 - `--muted` on `--bg`: light #6b6b70 on #ffffff, 5.30:1; dark #a3a3a8 on #151517, 7.26:1
