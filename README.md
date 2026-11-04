@@ -1,5 +1,7 @@
 # flights-archive
 
+[![CI](https://github.com/doronreiffman/flights-archive/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/flights-archive/actions/workflows/ci.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
+
 Keeps the history of the Ben Gurion airport flight board, which overwrites itself every 15 minutes: every version kept for 10 years, with a receipt for every download since 29 October 2026.
 
 **Live site:** [dt4564wsgvijr.cloudfront.net](https://dt4564wsgvijr.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Run it yourself:** [docs/operations.md](docs/operations.md)
@@ -12,6 +14,17 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
 *One flight's page on the history site, as of 1 November 2026.*
 
+## At a glance
+
+| | |
+|---|---|
+| Collecting since | 27 October 2026; continuous since 29 October |
+| Checks the board | every 2 minutes; downloads it when it changed |
+| Boards archived | 559, covering 6,015 flight listings (4 November 2026) |
+| Kept for | 10 years, write-once (S3 Object Lock) |
+| Tests | 618, plus 246 planted bugs, all caught |
+| Cost | about $1 to $2 for the archive's first year |
+
 ## Why
 
 The Israel Airports Authority publishes the airport's live departures and arrivals board as open data on data.gov.il. The board shows about one to two days back and three days ahead, and every refresh replaces the last one. When a flight goes from ON TIME to CANCELED, the board itself keeps no record of what it said before.
@@ -21,7 +34,7 @@ This project keeps that record. It saves every version of the board, writes down
 ## What it does today
 
 - **Collector**, live on AWS. A Lambda function in Tel Aviv checks every 2 minutes whether the board changed and downloads it when it did, about 4 times an hour. The archive starts on 27 October 2026 and has been continuous since 29 October.
-- **Archive.** Every board is stored exactly as received, and every version is kept for 10 years under S3 Object Lock (governance mode); the collector never overwrites a stored file. After every download it also writes a receipt: when it ran, what it got, which code version wrote it. As of 1 November 2026: 290 boards, covering 4,605 flight listings (a flight sold under several numbers counts once per number).
+- **Archive.** Every board is stored exactly as received, and every version is kept for 10 years under S3 Object Lock (governance mode); the collector never overwrites a stored file. After every download it also writes a receipt: when it ran, what it got, which code version wrote it. As of 4 November 2026: 559 boards, covering 6,015 flight listings (a flight sold under several numbers counts once per number).
 - **Data model.** DuckDB turns the archive into Parquet tables: every change to every flight, retimed flights linked to their new slot where the board allows it, flight numbers that share a slot, times and check-in counters grouped as likely codeshares, and each first CANCELED sighting bracketed between the last board without it and the first board with it.
 - **History site**, live at [dt4564wsgvijr.cloudfront.net](https://dt4564wsgvijr.cloudfront.net). A page for every flight number with each change the airport's list showed for it, a page per day, every cancellation with its warning (a range or a lower bound where the records allow), and a search box. Static pages, rebuilt and uploaded by hand; search engines are asked not to list them, so visitors arrive by link.
 
