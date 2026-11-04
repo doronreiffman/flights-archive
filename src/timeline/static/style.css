@@ -1,6 +1,6 @@
 /* The site's look (docs/site-redesign.md, "Look"): a header band, then one column about 1000 px wide, figures and
    tables in bordered cards; light by default, dark when the system asks. Every text color pair clears 4.5:1 in both
-   schemes (tests/test_timeline_style.py). Spacing comes in steps of 4, 8, 12, 16, 24, 32 and 48 px. Class names come
+   schemes (tests/test_timeline_style.py). Class names come
    from src/timeline/views.py. Nothing is loaded from elsewhere. */
 
 :root {
