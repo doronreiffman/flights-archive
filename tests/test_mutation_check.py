@@ -5,8 +5,8 @@ as asked: a test file or id that no longer exists (4), a module that no longer i
 pytest killed by a signal. That proves nothing about the rule, so it is an ERROR, not a catch, and it fails the check.
 A run past the time limit is killed with everything it started and counts as caught: a break that makes a test hang
 is one the tests noticed (without the limit, the check itself would hang on it). A Ctrl-C kills the run too, which is
-in a session of its own and so does not get the terminal's interrupt. The runs write no bytecode: a cached .pyc could
-run the last mutation's code. `main` is driven first with a fake `run_limited` whose answer the mutated file sets, over
+in a session of its own and so does not get the terminal's interrupt. No run can use bytecode cached from another
+version of a file the check writes: it could run the last mutation's code. `main` is driven first with a fake `run_limited` whose answer the mutated file sets, over
 a file of the test's own, so no real mutation runs; the last tests run real processes and real pytest, with a time
 limit of a second where one is hit.
 """
@@ -126,6 +126,30 @@ def test_main_runs_pytest_in_the_repo_writing_no_bytecode(check, rule, monkeypat
     monkeypatch.setattr(check, "run_limited", run)
     check.main([])
     assert given == [{"cwd": check.ROOT, "env": os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}}]
+
+
+def test_main_deletes_the_cached_bytecode_of_each_file_it_writes(check, rule, monkeypatch):
+    """A test that starts Python with an environment of its own (tests/test_timeline_check.py does) writes bytecode
+    despite PYTHONDONTWRITEBYTECODE: the check deletes the module's cached files after writing its break, so the run
+    cannot use bytecode of another version, and after restoring it, so none is left of the break. Other modules'
+    cached files stay."""
+    cached = Path(importlib.util.cache_from_source(str(rule)))  # where Python caches rule.py's bytecode
+    cached.parent.mkdir()
+    cached.write_bytes(b"cached before the check")
+    other = cached.parent / cached.name.replace("rule", "other")
+    other.write_bytes(b"another module's")
+    found = []
+
+    def run(args, limit, **popen):
+        found.append(cached.exists())
+        cached.write_bytes(b"written by a test that starts Python with an environment of its own")
+        return subprocess.CompletedProcess(args, 1, "", "")
+    monkeypatch.setattr(check, "MUTATIONS", mutations(first=1, second=2))
+    monkeypatch.setattr(check, "run_limited", run)
+    check.main([])
+    assert found == [False, False]
+    assert not cached.exists()
+    assert other.exists()
 
 
 def test_an_interrupt_stops_the_check_with_the_file_restored(check, rule, monkeypatch):

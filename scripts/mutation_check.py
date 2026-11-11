@@ -15,9 +15,12 @@ that stops the broken module importing (a syntax error, a name a test imports re
 that leaves the module importable. A run past TIME_LIMIT is killed with everything it started and
 counts as caught, reported as TIMEOUT: a break that makes a test hang is one the tests noticed.
 
-The test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
-same whole-second mtime, so a same-size break written within a second of the last one could otherwise
-run the last one's code, and be judged by its result.
+No run can use bytecode cached from another version of a file the check writes. Python trusts a cached
+.pyc whose source has the same size and the same whole-second mtime, so a same-size break written within
+a second of the last one could otherwise run the last one's code, and be judged by its result. The runs
+are given PYTHONDONTWRITEBYTECODE, but a test that starts Python with an environment of its own still
+writes bytecode (tests/test_timeline_check.py does), so each time the check writes a file, the break or
+the original, it deletes that module's cached bytecode too.
 
 Exit code 1 if any mutation goes unnoticed or errs, or if its text to break is not found exactly once
 (the script is out of date).
@@ -336,6 +339,7 @@ COLLECTOR_MUTATIONS = {
     'runner: a run that ended in time but left a child counted as a time-out': (RUNNER, '            code = process.poll()\n', '            code = None\n'),
     'runner: a group with nothing left to kill crashes the check': (RUNNER, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
     'runner: pipes read only after the run ends': (RUNNER, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
+    'runner: cached bytecode kept': (RUNNER, '        cached.unlink()\n', '        pass\n'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
@@ -365,6 +369,13 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     exception = [line for line in lines if line.startswith("E ")]
     error = [line for line in lines if line.startswith("ERROR")]
     return (exception or error or lines or ["(no output)"])[-1]
+
+
+def _write(path: Path, text: str) -> None:
+    """Write `text` to `path` and delete its module's cached bytecode (see the docstring)."""
+    path.write_text(text)
+    for cached in (path.parent / "__pycache__").glob(f"{path.stem}.*.pyc"):
+        cached.unlink()
 
 
 def _kill_group(pid: int) -> None:
@@ -419,12 +430,12 @@ def main(wanted: list[str]) -> int:
                 print(f"STALE  {name}: the text to break occurs {original.count(old)} times in {rel}; update this script")
                 missed.append(name)
                 continue
-            path.write_text(original.replace(old, new))
+            _write(path, original.replace(old, new))
             try:
                 run = run_limited([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
                                   TIME_LIMIT, cwd=ROOT, env=env)
             finally:
-                path.write_text(original)
+                _write(path, original)
             if run is None:
                 print(f"TIMEOUT {name}: pytest ran past the {TIME_LIMIT:g} s limit and was killed; counted as caught")
                 timed_out.append(name)
@@ -440,7 +451,7 @@ def main(wanted: list[str]) -> int:
                     missed.append(name)
     finally:
         for path, original in originals.items():
-            path.write_text(original)
+            _write(path, original)
     found = (f" Missed: {missed}" if missed else "") + (f" Errors: {errors}" if errors else "")
     print("Files restored." + (found or " Every mutation was caught.")
           + (f" Timed out, counted as caught: {timed_out}" if timed_out else ""))
