@@ -50,6 +50,7 @@ CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_p
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
 REPORT = ("src/model/report.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
+RUNNER = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -315,6 +316,16 @@ COLLECTOR_MUTATIONS = {
     "site: gap sentence from the store, not the last sighting": (SITE, "SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s", "SELECT fetched_at, confirmed_until, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s"),
     "site: last updated from the store, not the last sighting": (SITE, 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]', 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]'),
     "report: gap from the store, not the last sighting": (REPORT, "lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev FROM snapshots", "lag(fetched_at) OVER (ORDER BY snap_rn) AS prev FROM snapshots"),
+    # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
+    'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
+    'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
+    'runner: an error shown without its cause': (RUNNER, 'f"failure: {_telling_line(run)}")\n', 'f"failure")\n'),
+    "runner: the cause from pytest's first E line": (RUNNER, '    return (exception or error or lines or ["(no output)"])[-1]\n', '    return (exception or error or lines or ["(no output)"])[0]\n'),
+    'runner: no time limit given': (RUNNER, '                                  TIME_LIMIT, cwd=ROOT)\n', '                                  None, cwd=ROOT)\n'),
+    'runner: a time-out counted as missed': (RUNNER, '                timed_out.append(name)\n', '                missed.append(name)\n'),
+    'runner: a time-out printed as a plain catch': (RUNNER, '                print(f"TIMEOUT {name}: pytest ran past the {TIME_LIMIT:g} s limit and was killed; counted as caught")\n', '                print(f"CAUGHT {name}")\n'),
+    'runner: only pytest killed, not what it started': (RUNNER, '            os.killpg(process.pid, signal.SIGKILL)\n', '            process.kill()\n'),
+    "runner: pytest run in the check's own session": (RUNNER, 'start_new_session=True,\n', 'start_new_session=False,\n'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
