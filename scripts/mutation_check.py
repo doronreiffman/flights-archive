@@ -340,6 +340,8 @@ COLLECTOR_MUTATIONS = {
     'runner: a group with nothing left to kill crashes the check': (RUNNER, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
     'runner: pipes read only after the run ends': (RUNNER, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
     'runner: cached bytecode kept': (RUNNER, '        cached.unlink()\n', '        pass\n'),
+    'runner: the last output read with no limit': (RUNNER, '                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed\n', '                stdout, stderr = process.communicate()\n'),
+    'runner: a process that left the session holding the pipes crashes the check': (RUNNER, '            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading\n', '            except ZeroDivisionError as late:\n'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
@@ -378,6 +380,11 @@ def _write(path: Path, text: str) -> None:
         cached.unlink()
 
 
+# Seconds to read the rest of a run's output when it ended in time but its pipes stayed open past the limit: its group
+# is killed by then, so what is left is already in the pipes, unless a process that left the session still holds them.
+DRAIN_SECONDS = 5
+
+
 def _kill_group(pid: int) -> None:
     """Kill every process in the session run_limited started for `pid`. A group with nothing left to kill is no
     error: only its exited, unreaped first process (macOS answers PermissionError), or nothing at all."""
@@ -387,7 +394,8 @@ def _kill_group(pid: int) -> None:
         pass
 
 
-def run_limited(args: list[str], limit: float, **popen) -> subprocess.CompletedProcess | None:
+def run_limited(args: list[str], limit: float, drain: float = DRAIN_SECONDS,
+                **popen) -> subprocess.CompletedProcess | None:
     """Run `args` to its end and return its exit code and output; None when it runs past `limit` seconds. It runs
     in a session of its own, so that past the limit, or on a Ctrl-C (which a session of its own does not get from
     the terminal), everything it started (a test's own subprocess, a shell script under test) is killed with it."""
@@ -402,8 +410,11 @@ def run_limited(args: list[str], limit: float, **popen) -> subprocess.CompletedP
             if code is None:
                 process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
                 return None
-            stdout, stderr = process.communicate()  # the rest of its output, the group that held the pipes killed
-            return subprocess.CompletedProcess(args, code, stdout, stderr)
+            try:
+                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed
+            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading
+                stdout, stderr = ((part or b"").decode(errors="replace") for part in (late.stdout, late.stderr))
+            return subprocess.CompletedProcess(args, code, stdout, stderr)  # the pipes close as the `with` ends
         except BaseException:
             _kill_group(process.pid)
             process.wait()
