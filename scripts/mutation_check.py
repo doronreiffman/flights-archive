@@ -15,6 +15,10 @@ that stops the broken module importing (a syntax error, a name a test imports re
 that leaves the module importable. A run past TIME_LIMIT is killed with everything it started and
 counts as caught, reported as TIMEOUT: a break that makes a test hang is one the tests noticed.
 
+The test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
+same whole-second mtime, so a same-size break written within a second of the last one could otherwise
+run the last one's code, and be judged by its result.
+
 Exit code 1 if any mutation goes unnoticed or errs, or if its text to break is not found exactly once
 (the script is out of date).
 """
@@ -321,11 +325,12 @@ COLLECTOR_MUTATIONS = {
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
     'runner: an error shown without its cause': (RUNNER, 'f"failure: {_telling_line(run)}")\n', 'f"failure")\n'),
     "runner: the cause from pytest's first E line": (RUNNER, '    return (exception or error or lines or ["(no output)"])[-1]\n', '    return (exception or error or lines or ["(no output)"])[0]\n'),
-    'runner: no time limit given': (RUNNER, '                                  TIME_LIMIT, cwd=ROOT)\n', '                                  None, cwd=ROOT)\n'),
+    'runner: no time limit given': (RUNNER, '                                  TIME_LIMIT, cwd=ROOT, env=env)\n', '                                  None, cwd=ROOT, env=env)\n'),
     'runner: a time-out counted as missed': (RUNNER, '                timed_out.append(name)\n', '                missed.append(name)\n'),
     'runner: a time-out printed as a plain catch': (RUNNER, '                print(f"TIMEOUT {name}: pytest ran past the {TIME_LIMIT:g} s limit and was killed; counted as caught")\n', '                print(f"CAUGHT {name}")\n'),
     'runner: only pytest killed, not what it started': (RUNNER, '            os.killpg(process.pid, signal.SIGKILL)\n', '            process.kill()\n'),
     "runner: pytest run in the check's own session": (RUNNER, 'start_new_session=True,\n', 'start_new_session=False,\n'),
+    'runner: bytecode written': (RUNNER, '    env = os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}  # see the docstring: a cached .pyc could run the last break\n', '    env = dict(os.environ)\n'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
@@ -378,6 +383,7 @@ def main(wanted: list[str]) -> int:
     if not chosen:
         print(f"No mutation name contains any of {wanted}.")
         return 2
+    env = os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}  # see the docstring: a cached .pyc could run the last break
     originals = {}
     missed = []
     errors = []
@@ -393,7 +399,7 @@ def main(wanted: list[str]) -> int:
             path.write_text(original.replace(old, new))
             try:
                 run = run_limited([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
-                                  TIME_LIMIT, cwd=ROOT)
+                                  TIME_LIMIT, cwd=ROOT, env=env)
             finally:
                 path.write_text(original)
             if run is None:

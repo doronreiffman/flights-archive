@@ -4,9 +4,10 @@ A mutation is caught only when pytest says a test failed (exit 1). Any other exi
 as asked: a test file or id that no longer exists (4), a module that no longer imports (2), no tests collected (5), or
 pytest killed by a signal. That proves nothing about the rule, so it is an ERROR, not a catch, and it fails the check.
 A run past the time limit is killed with everything it started and counts as caught: a break that makes a test hang
-is one the tests noticed (without the limit, the check itself would hang on it). `main` is driven first with a fake
-`run_limited` whose answer the mutated file sets, over a file of the test's own, so no real mutation runs; the last
-tests run real processes and real pytest, with a time limit of a second where one is hit.
+is one the tests noticed (without the limit, the check itself would hang on it). The runs write no bytecode: a cached
+.pyc could run the last mutation's code. `main` is driven first with a fake `run_limited` whose answer the mutated file
+sets, over a file of the test's own, so no real mutation runs; the last tests run real processes and real pytest, with
+a time limit of a second where one is hit.
 """
 import importlib.util
 import os
@@ -110,6 +111,22 @@ def test_a_time_out_counts_as_caught(check, rule, monkeypatch, capsys):
                                                         " Timed out, counted as caught: ['hung']")
 
 
+def test_main_runs_pytest_in_the_repo_writing_no_bytecode(check, rule, monkeypatch):
+    """Python trusts a cached .pyc whose source has the same size and the same whole-second mtime, so with bytecode
+    written, a same-size break made within a second of the last one could run the last one's code, and be judged by
+    its result. The variable is cleared here first: the check sets it for the runs it makes, this test among them."""
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)
+    given = []
+
+    def run(args, limit, **popen):
+        given.append(popen)
+        return subprocess.CompletedProcess(args, 1, "", "")
+    monkeypatch.setattr(check, "MUTATIONS", mutations(caught=1))
+    monkeypatch.setattr(check, "run_limited", run)
+    check.main([])
+    assert given == [{"cwd": check.ROOT, "env": os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}}]
+
+
 # What pytest 9.2.0 prints with the check's flags (-q -x -p no:cacheprovider), measured 2026-11-11 (paths shortened).
 NO_TESTS_RAN = "\nno tests ran in 0.02s\n"
 MODULE_NOT_FOUND = ("tests/test_rule.py:1: in <module>\n    import rule\nE   ModuleNotFoundError: No module named 'rule'\n"
@@ -190,7 +207,9 @@ def real_rule(tmp_path: Path) -> None:
 
 def test_main_over_real_pytest_tells_a_failing_test_from_a_run_that_proves_nothing(check, tmp_path, monkeypatch, capsys):
     """A stale test id (4) and a break that stops the module importing (2) were counted as caught before; real pytest,
-    run as the check runs it, shows each for what it is."""
+    run as the check runs it, shows each for what it is, and writes no bytecode (the variable cleared here first, as
+    the check sets it for the runs it makes, this test among them)."""
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)
     real_rule(tmp_path)
     monkeypatch.setattr(check, "ROOT", tmp_path)
     monkeypatch.setattr(check, "MUTATIONS", {
@@ -205,6 +224,7 @@ def test_main_over_real_pytest_tells_a_failing_test_from_a_run_that_proves_nothi
     assert lines[2] == "ERROR  unimportable: pytest exited 2 (INTERRUPTED), not a test failure: E   SyntaxError: invalid syntax"
     assert lines[3] == "Files restored. Errors: ['renamed', 'unimportable']"
     assert (tmp_path / "rule.py").read_text() == "LIMIT = 0\n"
+    assert not list(tmp_path.rglob("__pycache__"))  # no bytecode written, of the rule or of its test
 
 
 def test_main_over_real_pytest_stops_a_hung_run_at_the_limit(check, tmp_path, monkeypatch, capsys):
