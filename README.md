@@ -24,7 +24,7 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 | Checks the board | every 2 minutes; downloads it when it changed |
 | Boards archived | 559, covering 6,015 flight listings (4 November 2026) |
 | Kept for | 10 years, write-once (S3 Object Lock) |
-| Tests | 635, plus 257 planted bugs, all caught |
+| Tests | 663, plus 271 planted bugs, all caught |
 | Cost | about $1 to $2 for the archive's first year, before the alarms (at most $0.70 a month more, likely free) |
 
 ## Why
@@ -53,7 +53,7 @@ This project keeps that record. It saves every version of the board, writes down
 - **A polite collector that stops cold.** It identifies itself on every request, downloads the full board only when it changed (or every 30 minutes as a safety check), and on any sign of being blocked it stops and waits for a person. The data license excludes data obtained by working around a block. [docs/operations.md](docs/operations.md)
 - **Three clocks.** Board times are Israel wall-clock with no offset, our times are UTC, and the October clock change repeats an hour. Each conversion rule is written down and tested, including under an Israeli time zone. [docs/data-model.md](docs/data-model.md)
 - **Claims no stronger than the evidence.** The board is all we see, so the site says a flight was "listed as cancelled", never "cancelled at": a cancellation's time is always a range ("between 19:16 and 19:32"), and its warning a range or a lower bound ("at least 23 hours"). A check before every upload refuses a page that uses a banned phrasing, or that lacks the source line. [docs/site-redesign.md](docs/site-redesign.md), [docs/terms.md](docs/terms.md)
-- **Tests that are themselves tested.** 635 tests, and 257 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 4 November 2026). Both run in CI on every push.
+- **Tests that are themselves tested.** 663 tests, and 271 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 11 November 2026). Both run in CI on every push.
 - **Cheap, boring infrastructure.** About $1 to $2 in the archive's first year ([operations.md](docs/operations.md#cost)) and under $0.05 a month for the site at a few uploads a month ([publishing.md](docs/publishing.md#cost-monthly)), each estimate written down with its sources.
 
 ## What's next
