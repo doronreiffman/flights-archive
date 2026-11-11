@@ -4,10 +4,11 @@ A mutation is caught only when pytest says a test failed (exit 1). Any other exi
 as asked: a test file or id that no longer exists (4), a module that no longer imports (2), no tests collected (5), or
 pytest killed by a signal. That proves nothing about the rule, so it is an ERROR, not a catch, and it fails the check.
 A run past the time limit is killed with everything it started and counts as caught: a break that makes a test hang
-is one the tests noticed (without the limit, the check itself would hang on it). The runs write no bytecode: a cached
-.pyc could run the last mutation's code. `main` is driven first with a fake `run_limited` whose answer the mutated file
-sets, over a file of the test's own, so no real mutation runs; the last tests run real processes and real pytest, with
-a time limit of a second where one is hit.
+is one the tests noticed (without the limit, the check itself would hang on it). A Ctrl-C kills the run too, which is
+in a session of its own and so does not get the terminal's interrupt. The runs write no bytecode: a cached .pyc could
+run the last mutation's code. `main` is driven first with a fake `run_limited` whose answer the mutated file sets, over
+a file of the test's own, so no real mutation runs; the last tests run real processes and real pytest, with a time
+limit of a second where one is hit.
 """
 import importlib.util
 import os
@@ -127,6 +128,16 @@ def test_main_runs_pytest_in_the_repo_writing_no_bytecode(check, rule, monkeypat
     assert given == [{"cwd": check.ROOT, "env": os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}}]
 
 
+def test_an_interrupt_stops_the_check_with_the_file_restored(check, rule, monkeypatch):
+    def run(args, limit, **popen):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(check, "MUTATIONS", mutations(caught=1))
+    monkeypatch.setattr(check, "run_limited", run)
+    with pytest.raises(KeyboardInterrupt):
+        check.main([])
+    assert rule.read_text() == "LIMIT = 0\n"
+
+
 # What pytest 9.2.0 prints with the check's flags (-q -x -p no:cacheprovider), measured 2026-11-11 (paths shortened).
 NO_TESTS_RAN = "\nno tests ran in 0.02s\n"
 MODULE_NOT_FOUND = ("tests/test_rule.py:1: in <module>\n    import rule\nE   ModuleNotFoundError: No module named 'rule'\n"
@@ -164,11 +175,23 @@ def test_a_run_within_the_limit_returns_its_exit_code_and_output(check):
     assert (run.returncode, run.stdout, run.stderr) == (3, "out\n", "err\n")
 
 
-# A process that starts one of its own (as a test that runs a shell script does), writes that one's pid, and hangs.
-HANGS_WITH_A_CHILD = ("import subprocess, sys, time\n"
-                      "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
-                      "open(sys.argv[1], 'w').write(str(child.pid))\n"
-                      "time.sleep(20)\n")
+def test_a_run_that_fills_both_pipes_does_not_stall(check):
+    """Both pipes are read while the run goes on: a run waited on first would stall once a pipe's buffer was full."""
+    run = check.run_limited([sys.executable, "-c",
+                             "import sys; sys.stdout.write('o' * 1_000_000); sys.stderr.write('e' * 1_000_000)"], 5)
+    assert (run.returncode, len(run.stdout), len(run.stderr)) == (0, 1_000_000, 1_000_000)
+
+
+def started_with_a_child(ending: str) -> str:
+    """A process that starts one of its own (as a test that runs a shell script does), writes both pids, then `ending`."""
+    return ("import os, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
+            "open(sys.argv[1], 'w').write(f'{os.getpid()} {child.pid}')\n" + ending)
+
+
+HANGS_WITH_A_CHILD = started_with_a_child("time.sleep(20)\n")
+# Ends at once with exit 3, its child left holding the pipes.
+ENDS_LEAVING_A_CHILD = started_with_a_child("print('done')\nsys.exit(3)\n")
 
 
 def gone(pid: int, within: float = 5.0) -> bool:
@@ -183,19 +206,60 @@ def gone(pid: int, within: float = 5.0) -> bool:
     return False
 
 
-def test_a_run_past_the_limit_is_killed_with_everything_it_started(check, tmp_path):
-    pidfile = tmp_path / "child.pid"
+@pytest.fixture
+def pidfile(tmp_path):
+    """Where the process writes its pid and its child's; whatever is still running when the test ends is killed."""
+    path = tmp_path / "pids"
+    yield path
+    for pid in map(int, path.read_text().split() if path.exists() else []):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def all_gone(pidfile: Path) -> bool:
+    pids = [int(pid) for pid in pidfile.read_text().split()]
+    return len(pids) == 2 and all(gone(pid) for pid in pids)
+
+
+def test_a_run_past_the_limit_is_killed_with_everything_it_started(check, pidfile):
     started = time.monotonic()
     assert check.run_limited([sys.executable, "-c", HANGS_WITH_A_CHILD, str(pidfile)], 1.0) is None
     assert time.monotonic() - started < 10  # the limit, not the 20 s it would hang
-    child = int(pidfile.read_text())
+    assert all_gone(pidfile)
+
+
+def test_a_run_that_ended_in_time_keeps_its_exit_code_though_its_child_held_the_pipes(check, pidfile):
+    """The pipes stay open past the limit, held by the child; the run itself had ended, so its exit code stands."""
+    run = check.run_limited([sys.executable, "-c", ENDS_LEAVING_A_CHILD, str(pidfile)], 1.0)
+    assert (run.returncode, run.stdout) == (3, "done\n")
+    assert all_gone(pidfile)
+
+
+def test_an_interrupt_kills_the_run_with_everything_it_started(check, pidfile):
+    """The run is in a session of its own, so a Ctrl-C at the terminal does not reach it: run_limited kills it."""
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt
+    previous = signal.signal(signal.SIGALRM, interrupt)
+    signal.setitimer(signal.ITIMER_REAL, 1.0)
     try:
-        assert gone(child)
+        with pytest.raises(KeyboardInterrupt):
+            check.run_limited([sys.executable, "-c", HANGS_WITH_A_CHILD, str(pidfile)], 30)
     finally:
-        try:
-            os.kill(child, signal.SIGKILL)  # leave nothing running, whatever the outcome
-        except ProcessLookupError:
-            pass
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    assert all_gone(pidfile)
+
+
+def test_killing_a_group_with_nothing_left_to_kill_is_no_error(check):
+    """A run can end right at the limit: its group then holds only its exited, unreaped first process (macOS answers
+    PermissionError), or nothing at all once that is reaped (ProcessLookupError)."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT)  # ended, not reaped
+    check._kill_group(process.pid)
+    process.wait()
+    check._kill_group(process.pid)
 
 
 def real_rule(tmp_path: Path) -> None:

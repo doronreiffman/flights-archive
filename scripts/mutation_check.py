@@ -328,9 +328,13 @@ COLLECTOR_MUTATIONS = {
     'runner: no time limit given': (RUNNER, '                                  TIME_LIMIT, cwd=ROOT, env=env)\n', '                                  None, cwd=ROOT, env=env)\n'),
     'runner: a time-out counted as missed': (RUNNER, '                timed_out.append(name)\n', '                missed.append(name)\n'),
     'runner: a time-out printed as a plain catch': (RUNNER, '                print(f"TIMEOUT {name}: pytest ran past the {TIME_LIMIT:g} s limit and was killed; counted as caught")\n', '                print(f"CAUGHT {name}")\n'),
-    'runner: only pytest killed, not what it started': (RUNNER, '            os.killpg(process.pid, signal.SIGKILL)\n', '            process.kill()\n'),
+    'runner: only pytest killed, not what it started': (RUNNER, '        os.killpg(pid, signal.SIGKILL)\n', '        os.kill(pid, signal.SIGKILL)\n'),
     "runner: pytest run in the check's own session": (RUNNER, 'start_new_session=True,\n', 'start_new_session=False,\n'),
     'runner: bytecode written': (RUNNER, '    env = os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}  # see the docstring: a cached .pyc could run the last break\n', '    env = dict(os.environ)\n'),
+    'runner: an interrupt leaves the run going': (RUNNER, '        except BaseException:\n', '        except Exception:\n'),
+    'runner: a run that ended in time but left a child counted as a time-out': (RUNNER, '            code = process.poll()\n', '            code = None\n'),
+    'runner: a group with nothing left to kill crashes the check': (RUNNER, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
+    'runner: pipes read only after the run ends': (RUNNER, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
@@ -362,18 +366,36 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     return (exception or error or lines or ["(no output)"])[-1]
 
 
+def _kill_group(pid: int) -> None:
+    """Kill every process in the session run_limited started for `pid`. A group with nothing left to kill is no
+    error: only its exited, unreaped first process (macOS answers PermissionError), or nothing at all."""
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_limited(args: list[str], limit: float, **popen) -> subprocess.CompletedProcess | None:
     """Run `args` to its end and return its exit code and output; None when it runs past `limit` seconds. It runs
-    in a session of its own, so that past the limit everything it started (a test's own subprocess, a shell script
-    under test) is killed with it, not left running."""
+    in a session of its own, so that past the limit, or on a Ctrl-C (which a session of its own does not get from
+    the terminal), everything it started (a test's own subprocess, a shell script under test) is killed with it."""
     with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
                           **popen) as process:
         try:
             stdout, stderr = process.communicate(timeout=limit)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
-            return None
+            # The run may have ended in time, a process it started still holding the pipes: its exit code stands.
+            code = process.poll()
+            _kill_group(process.pid)
+            if code is None:
+                process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
+                return None
+            stdout, stderr = process.communicate()  # the rest of its output, the group that held the pipes killed
+            return subprocess.CompletedProcess(args, code, stdout, stderr)
+        except BaseException:
+            _kill_group(process.pid)
+            process.wait()
+            raise
     return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
 
 
