@@ -27,10 +27,10 @@ from pathlib import Path
 from pytest import ExitCode
 
 ROOT = Path(__file__).resolve().parent.parent
-# The longest one mutation's pytest run may take. The slowest normal run of any mutation's target tests is
-# tests/test_model.py with tests/test_model_receipts.py: 7.7 to 11.3 s over three unmutated runs on the
-# owner's Mac (2026-11-11; every other target set under 6 s). 120 s is ten times that, room for a slower
-# CI runner and for a break that slows its tests without hanging them.
+# The longest one mutation's pytest run may take. Measured 2026-11-11 on the development Mac: the slowest
+# target tests are tests/test_model.py with tests/test_model_receipts.py, 7.7 to 11.3 s over three unmutated
+# runs and at most 12.9 s in a full mutation run (every other target set under 6 s unmutated). 120 s is about
+# ten times that: room for a slower CI runner and for a break that slows its tests without hanging them.
 TIME_LIMIT = 120
 MODEL = ("src/model/rules.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 CORE = ("src/collector/core.py", ["tests/test_core.py", "tests/test_http.py"])
