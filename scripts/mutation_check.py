@@ -5,13 +5,33 @@
 
 Each mutation names the file it breaks and the test files that must catch it. It edits source files
 in place while it runs: run nothing else from this checkout until it finishes. Files are restored
-afterwards. Exit code 1 if any mutation goes unnoticed.
+afterwards.
+
+A mutation is caught only when pytest exits 1 (a test failed or errored). Any other exit means pytest
+could not run the tests as asked (a test file or id that no longer exists, 4; a module that no longer
+imports, 2; no tests collected, 5; pytest killed by a signal), which proves nothing about the rule, so
+it is reported as ERROR with the line of pytest's output that names the cause. That includes a break
+that stops the broken module importing (a syntax error, a name a test imports removed): pick a break
+that leaves the module importable. A run past TIME_LIMIT is killed with everything it started and
+counts as caught, reported as TIMEOUT: a break that makes a test hang is one the tests noticed.
+
+Exit code 1 if any mutation goes unnoticed or errs, or if its text to break is not found exactly once
+(the script is out of date).
 """
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
+from pytest import ExitCode
+
 ROOT = Path(__file__).resolve().parent.parent
+# The longest one mutation's pytest run may take. The slowest normal run of any mutation's target tests is
+# tests/test_model.py with tests/test_model_receipts.py: 7.7 to 11.3 s over three unmutated runs on the
+# owner's Mac (2026-11-11; every other target set under 6 s). 120 s is ten times that, room for a slower
+# CI runner and for a break that slows its tests without hanging them.
+TIME_LIMIT = 120
 MODEL = ("src/model/rules.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 CORE = ("src/collector/core.py", ["tests/test_core.py", "tests/test_http.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
@@ -300,6 +320,47 @@ COLLECTOR_MUTATIONS = {
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
 
 
+def verdict(returncode: int) -> str:
+    """CAUGHT when pytest says a test failed, MISSED when every test passed, ERROR for any other exit."""
+    if returncode == ExitCode.TESTS_FAILED:
+        return "CAUGHT"
+    if returncode == ExitCode.OK:
+        return "MISSED"
+    return "ERROR"
+
+
+def _exit_name(returncode: int) -> str:
+    try:
+        return ExitCode(returncode).name
+    except ValueError:  # a signal, or a code pytest does not define
+        return "not pytest's"
+
+
+def _telling_line(run: subprocess.CompletedProcess) -> str:
+    """The line of pytest's output that names why it could not run the tests: its last `E ` line (a collection
+    error's exception; the `ERROR` line after it names only the file), else its last `ERROR` line (a test file or
+    id not found), else its last line."""
+    lines = [line for line in (run.stdout + run.stderr).splitlines() if line.strip()]
+    exception = [line for line in lines if line.startswith("E ")]
+    error = [line for line in lines if line.startswith("ERROR")]
+    return (exception or error or lines or ["(no output)"])[-1]
+
+
+def run_limited(args: list[str], limit: float, **popen) -> subprocess.CompletedProcess | None:
+    """Run `args` to its end and return its exit code and output; None when it runs past `limit` seconds. It runs
+    in a session of its own, so that past the limit everything it started (a test's own subprocess, a shell script
+    under test) is killed with it, not left running."""
+    with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
+                          **popen) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=limit)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
+            return None
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
 def main(wanted: list[str]) -> int:
     """Run every mutation, or with `wanted` only those whose name contains one of its strings."""
     chosen = {name: m for name, m in MUTATIONS.items() if not wanted or any(w in name for w in wanted)}
@@ -308,6 +369,8 @@ def main(wanted: list[str]) -> int:
         return 2
     originals = {}
     missed = []
+    errors = []
+    timed_out = []
     try:
         for name, ((rel, tests), old, new) in chosen.items():
             path = ROOT / rel
@@ -318,19 +381,30 @@ def main(wanted: list[str]) -> int:
                 continue
             path.write_text(original.replace(old, new))
             try:
-                run = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
-                                     capture_output=True, text=True, cwd=ROOT)
+                run = run_limited([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
+                                  TIME_LIMIT, cwd=ROOT)
             finally:
                 path.write_text(original)
-            caught = run.returncode != 0
-            print(("CAUGHT " if caught else "MISSED ") + name)
-            if not caught:
-                missed.append(name)
+            if run is None:
+                print(f"TIMEOUT {name}: pytest ran past the {TIME_LIMIT:g} s limit and was killed; counted as caught")
+                timed_out.append(name)
+                continue
+            outcome = verdict(run.returncode)
+            if outcome == "ERROR":
+                print(f"ERROR  {name}: pytest exited {run.returncode} ({_exit_name(run.returncode)}), not a test "
+                      f"failure: {_telling_line(run)}")
+                errors.append(name)
+            else:
+                print(f"{outcome} {name}")
+                if outcome == "MISSED":
+                    missed.append(name)
     finally:
         for path, original in originals.items():
             path.write_text(original)
-    print("Files restored." + (f" Missed: {missed}" if missed else " Every mutation was caught."))
-    return 1 if missed else 0
+    found = (f" Missed: {missed}" if missed else "") + (f" Errors: {errors}" if errors else "")
+    print("Files restored." + (found or " Every mutation was caught.")
+          + (f" Timed out, counted as caught: {timed_out}" if timed_out else ""))
+    return 1 if missed or errors else 0
 
 
 if __name__ == "__main__":
