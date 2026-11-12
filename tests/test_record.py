@@ -55,6 +55,9 @@ def signs(h: int, *numbers, holes_=(), first_fetch: datetime = FIRST) -> dict[st
 
 
 READER = listing("d", D)
+# The reader retimed: it shows 12:00 on the 3rd at its 24-hour moment, and 15:00 from 14:00 on the 2nd
+RETIMED = (number("d", T(3, 15), last_seen_at=LATER),
+           [seen("d", _rn(FIRST), FIRST, sched_utc=D), seen("d", _rn(T(2, 14)), T(2, 14), sched_utc=T(3, 15))])
 
 
 def inbound(sched: datetime, *statuses, **row):
@@ -101,9 +104,7 @@ def test_s1_window(before, s1):
 def test_s1_window_from_the_time_shown_at_t():
     # LY 1 shows 12:00 on the 3rd at its 24-hour moment and is retimed to 15:00 at 14:00 on the 2nd. The inbound lands
     # 11 hours before the time shown at the moment, 14 hours before the final time.
-    retimed = (number("d", T(3, 15), last_seen_at=LATER),
-               [seen("d", _rn(FIRST), FIRST, sched_utc=D), seen("d", _rn(T(2, 14)), T(2, 14), sched_utc=T(3, 15))])
-    assert signs(24, retimed, inbound(T(3, 1)))["d"] == frozenset({"S1", "S3"})
+    assert signs(24, RETIMED, inbound(T(3, 1)))["d"] == frozenset({"S1", "S3"})
 
 
 @pytest.mark.parametrize("last_seen, found", [(T(2, 11), frozenset()), (AT, frozenset({"S1", "S3"}))])
@@ -147,6 +148,9 @@ NOT_TIED = {
     "nothing shared": (None, "AF", EST + timedelta(minutes=30), None, 3),
     "desks on the cancelled number only": ("20-25", "AF", EST + timedelta(minutes=30), None, 3),
     "desks on the other number only": (None, "AF", EST + timedelta(minutes=30), "20-25", 3),
+    # the same expected time ties only with the same desks
+    "the same expected time, desks on the cancelled number only": ("20-25", "AF", EST, None, 3),
+    "the same expected time, desks on the other number only": (None, "AF", EST, "20-25", 3),
 }
 
 
@@ -157,6 +161,25 @@ def test_whole_when_no_number_of_the_slot_is_tied(pair):
 
 def test_whole_when_every_tied_number_shows_cancelled():
     assert signs(24, READER, *slot_pair(None, "LY", EST, None, y_status="CANCELED")) == {"d": frozenset({"S3"})}
+
+
+def test_whole_when_the_tied_number_shows_no_status():
+    # a missing status counts for nothing, as in A0b's `not_whole` (NULL <> 'CANCELED' is NULL)
+    c, y = slot_pair(None, "LY", EST, None)
+    y = (y[0], [o | {"status": None} for o in y[1]])
+    assert signs(24, READER, c, y)["d"] == frozenset({"S3"})
+
+
+def test_whole_reads_the_slot_the_cancelled_number_showed_at_t():
+    # LY 5 to CDG shows 06:00 on the 3rd, listed as cancelled from 06:00 on the 2nd; at 13:00, after the reader's
+    # moment, it is listed on time again at 09:00. LY 6, on time in the 06:00 slot, ties to it at the moment.
+    c = (number("c", T(3, 9), flight_no="5", airport="CDG", last_seen_at=LATER),
+         [seen("c", _rn(FIRST), FIRST, sched_utc=EST),
+          seen("c", _rn(T(2, 6)), T(2, 6), sched_utc=EST, status="CANCELED"),
+          seen("c", _rn(T(2, 13)), T(2, 13), sched_utc=T(3, 9))])
+    y = listing("y", EST, flight_no="6", airport="CDG")
+    assert signs(24, READER, c, y)["d"] == frozenset()
+    assert signs(24, READER, c)["d"] == frozenset({"S3"})
 
 
 def test_not_whole_when_a_tied_number_left_as_departed():
@@ -204,6 +227,13 @@ def test_s2_the_same_time_is_not_before():
     assert signs(24, READER, same_time, earlier)["d"] == frozenset({"S3"})
 
 
+def test_s2_before_the_time_shown_at_t():
+    # LY 1 to CDG at 13:00 on the 3rd, listed as cancelled: after the reader's time as shown at its moment (12:00),
+    # before its final time (15:00), so not the latest before. Another flight of the airline within 24 hours (S3).
+    between = listing("p", T(3, 13), (FIRST, "CANCELED"), airport="CDG")
+    assert signs(24, RETIMED, between)["d"] == frozenset({"S3"})
+
+
 @pytest.mark.parametrize("cancelled, found", [("pa", frozenset({"S2", "S3"})), ("pb", frozenset({"S3"}))])
 def test_s2_a_tie_goes_to_the_smaller_flight_id(cancelled, found):
     # two flights of LY 1 at the same time a day before the reader, to two airports (so neither is tied to the other);
@@ -233,6 +263,22 @@ def test_s3_another_slot_within_24_hours(case):
     assert signs(24, READER, other)["d"] == (frozenset({"S3"}) if s3 else frozenset())
 
 
+def test_s3_window_from_the_time_shown_at_t():
+    # the retimed reader shows 12:00 on the 3rd at its moment: LY 7 to CDG 24 hours before that is within the window;
+    # 24 hours after the final time (15:00) is 27 hours after the time shown at the moment, outside it
+    other = listing("o", D - timedelta(hours=24), (FIRST, "CANCELED"), flight_no="7", airport="CDG")
+    assert signs(24, RETIMED, other)["d"] == frozenset({"S3"})
+    far = listing("o", T(3, 15) + timedelta(hours=24), (FIRST, "CANCELED"), flight_no="7", airport="CDG")
+    assert signs(24, RETIMED, far)["d"] == frozenset()
+
+
+def test_s3_own_slot_is_the_slot_shown_at_t():
+    # LY 7 to ATH at 12:00 on the 3rd, at another terminal (so not tied to the reader): the slot the retimed reader
+    # shows at its moment, not another one
+    own = listing("o", D, (FIRST, "CANCELED"), shown={"terminal": 1}, flight_no="7")
+    assert signs(24, RETIMED, own)["d"] == frozenset()
+
+
 # --- S4 -------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("first, s4", [(T(2, 12, 1), True), (T(2, 12), False)])
@@ -251,6 +297,19 @@ def test_s4_not_late_when_first_seen_at_the_first_list_or_after_a_hole():
                   first_fetch=snaps[0]["fetched_at"])
     assert found == {"at the first list": frozenset(), "after the hole": frozenset(),
                      "at the next download": frozenset({"S4"})}
+
+
+def test_s4_by_the_time_shown_when_first_listed():
+    # first listed at 13:00 on the 2nd, 47 hours ahead of 12:00 on the 4th, and moved to 14:00 an hour later: late
+    late = (number("r", T(4, 14), last_seen_at=LATER),
+            [seen("r", _rn(T(2, 13)), T(2, 13), sched_utc=T(4, 12)),
+             seen("r", _rn(T(2, 14)), T(2, 14), sched_utc=T(4, 14))])
+    assert signs(24, late) == {"r": frozenset({"S4"})}
+    # first listed 49 hours ahead of 14:00 on the 4th, and moved to 12:00 an hour later: not late
+    on_time = (number("r", T(4, 12), last_seen_at=LATER),
+               [seen("r", _rn(T(2, 13)), T(2, 13), sched_utc=T(4, 14)),
+                seen("r", _rn(T(2, 14)), T(2, 14), sched_utc=T(4, 12))])
+    assert signs(24, on_time) == {"r": frozenset()}
 
 
 # --- what a flight carries ---------------------------------------------------------------------------------
@@ -276,6 +335,12 @@ def test_a_cell_with_no_number_in_the_row_is_refused():
                         day=date(2026, 11, 3), first_seen=FIRST)
     with pytest.raises(ValueError, match="no number of the flight"):
         record.flight_signs([counting.Cell(24, f, AT, 0)], {"b": frozenset({"S4"})})
+
+
+def test_a_number_that_passed_with_no_status_is_not_in_the_row():
+    # as in A0b's `nrow` (NULL <> 'CANCELED' is NULL) and counting.cells: no signs are read for it
+    blank = (READER[0], [o | {"status": None} for o in READER[1]])
+    assert signs(24, blank) == {}
 
 
 # --- the sign test: the counted flights, the gate and its guard, what a run reads ---------------------------------

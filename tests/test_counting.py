@@ -164,6 +164,15 @@ def test_two_terminals_never_tie():
     assert numbers_of([cancelled, departed]) == [("ly5131",), ("ly5133",)]
 
 
+def test_an_arrival_and_a_departure_are_never_one_flight():
+    # LY 1 to ATH, listed as cancelled, and LY 2 from ATH at the same time, landed: they share the airline and no
+    # desks, but a slot is the direction, the airport and the scheduled time
+    out = number("out", T(4, 10), flight_no="1", outcome="canceled", counters_final="")
+    back = number("back", T(4, 10), flight_no="2", direction="A", counters_final="", outcome="landed")
+    assert counting.tied(out, back)
+    assert numbers_of([out, back]) == [("back",), ("out",)]
+
+
 def test_a_cancelled_number_ties_by_airline_or_desks_only():
     # A14: OS 1083, listed as cancelled, beside OS 083, which landed (arrivals show no desks).
     at = T(7, 2, 20)

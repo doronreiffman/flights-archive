@@ -23,7 +23,7 @@ import pytest
 
 from model import build as model_build
 from model_helpers import row, write_receipt, write_snapshot
-from timeline import counting, record
+from timeline import counting, rates, record
 from timeline.load import load
 
 ROOT = Path(__file__).parent.parent
@@ -381,7 +381,8 @@ def sql_a25(check, model: Model) -> dict[tuple[str, int], tuple]:
     rows = [dict(zip(names, r)) for r in cur.fetchall()]
     return {(r["sign"].split()[0], r["h"]): (r["cancelled_with"], r["flights_with"], r["cancelled_without"],
                                               r["flights_without"], r["airlines_with_a_cancellation"],
-                                              r["days_with_a_cancellation"], r["clears_floor"])
+                                              r["days_with_a_cancellation"], r["clears_floor"], r["times"],
+                                              r["times_from"], r["times_to"], r["passes"])
             for r in rows if r["sign"].split()[0] in record.SIGNS}
 
 
@@ -419,6 +420,53 @@ def test_planted_sign_differences_are_named(check, model):
         ("24 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code S3"),
         ("24 hours, D AMS 2026-11-02 18:00 DL 9433 (", "): A0 none, the code S2 S4"),
         ("12 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code none")])
+
+
+# A0b's floor in `ratio` (C8's, as in rates.rate) and the row from which it gives the grouped-over-plain column,
+# each lowered to 1 cancelled flight
+LOWERED = (("(t.k1 >= 10 AND t.airlines >= 5 AND t.days_ >= 5)", "(t.k1 >= 1 AND t.airlines >= 1 AND t.days_ >= 1)"),
+           ("CASE WHEN k1 >= 3 THEN round(se_ratio, 2) END", "CASE WHEN k1 >= 1 THEN round(se_ratio, 2) END"))
+
+
+def test_the_ratios_match_a0b(check, model, monkeypatch, tmp_path):
+    cells_ = model.cells()
+    carried = model.carried(check, cells_)
+    assert check.compare_ratios(model.con, cells_, carried) == []
+    # No sign here has 3 cancelled flights with it, so neither side gives a ratio, a range or the grouped-over-plain
+    # column in any row. With the floor and that column's row lowered to 1 cancelled flight (from 1 airline on 1 day),
+    # in A0b's text and in the code alike, four rows give them all, one passes, and they match.
+    doc = DOC
+    for old, new in LOWERED:
+        assert doc.count(old) == 1
+        doc = doc.replace(old, new)
+    (tmp_path / "figures.md").write_text(doc, encoding="utf-8")
+    monkeypatch.setattr(check, "DOC", tmp_path / "figures.md")
+    for name in ("FLOOR_CANCELLED", "FLOOR_AIRLINES", "FLOOR_DAYS"):
+        monkeypatch.setattr(rates, name, 1)
+    monkeypatch.setattr(check, "SE_RATIO_FROM", 1)
+    con = check.run_sql(model.dir, ("A0", "A0b"))
+    assert check.compare_ratios(con, cells_, carried) == []
+    given = {key: value for key, value in check.sql_ratios(con).items() if value != (None, None, None, False, None)}
+    assert sorted(given) == [("S3", 24), ("S3", 48), ("S4", 6), ("S4", 12)]
+    assert all(None not in value for value in given.values())
+    assert [key for key, value in given.items() if value[3]] == [("S4", 12)]
+
+
+def passing_s3_at_24(real):
+    """rates.lift as it stands, but passing for S3's 24-hour row on this model, 2 cancelled of 17 with the sign."""
+    def lift(with_, without):
+        out = real(with_, without)
+        return replace(out, passes=True) if (out.cancelled_with, out.flights_with) == (2, 17) else out
+    return lift
+
+
+def test_a_planted_ratio_difference_is_named(check, model, monkeypatch):
+    cells_ = model.cells()
+    carried = model.carried(check, cells_)
+    monkeypatch.setattr(rates, "lift", passing_s3_at_24(rates.lift))
+    assert check.compare_ratios(model.con, cells_, carried) == [
+        "A25 S3 24 hours: A0b no ratio, does not pass, grouped over plain none, "
+        "the code no ratio, passes, grouped over plain none"]
 
 
 def splitting(model: Model, real):
@@ -538,7 +586,8 @@ def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
         *(f"{name}: {check.show(v)} ok" for name, v in expected.items()),
         *(f"A25 {sign} {h} hours: {check.show_signs(v)} ok" for (sign, h), v in expected_a25.items()),
         *(f"A29 {name}: {check.show_a29(name, v)} ok" for name, v in expected_a29.items()),
-        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+        "ratios: 0 differences"]
 
     cancelled, flights, *ends = expected["24 hours"]
     monkeypatch.setattr(check, "EXPECTED", expected | {"24 hours": (cancelled, flights + 1, *ends)})
@@ -547,7 +596,8 @@ def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
     assert [line for line in out if not line.endswith(" ok")] == [
         f"24 hours: the code {check.show(expected['24 hours'])}, the figures file "
         f"{check.show((cancelled, flights + 1, *ends))}",
-        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+        "ratios: 0 differences"]
 
 
 def test_main_fails_on_an_a25_row_that_differs(check, model, monkeypatch, capsys):
@@ -562,7 +612,8 @@ def test_main_fails_on_an_a25_row_that_differs(check, model, monkeypatch, capsys
     assert [line for line in out if not line.endswith(" ok")] == [
         f"A25 S3 24 hours: the code {check.show_signs(expected_a25['S3', 24])}, the figures file "
         f"{check.show_signs((with_, flights_with + 1, *rest))}",
-        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+        "ratios: 0 differences"]
 
 
 @pytest.mark.parametrize("name", ["S3", "row"])
@@ -578,7 +629,8 @@ def test_main_fails_on_an_a29_row_that_differs(check, model, monkeypatch, capsys
     assert [line for line in out if not line.endswith(" ok")] == [
         f"A29 {name}: the code {check.show_a29(name, expected_a29[name])}, the figures file "
         f"{check.show_a29(name, (first + 1, *rest))}",
-        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+        "ratios: 0 differences"]
 
 
 def dropping_s1(model: Model, real):
@@ -592,14 +644,16 @@ def dropping_s1(model: Model, real):
     return flight_signs
 
 
-@pytest.mark.parametrize("plant", ["flight", "cell", "sign"])
-def test_main_fails_on_a_flight_cell_or_sign_difference(check, model, monkeypatch, capsys, plant):
+@pytest.mark.parametrize("plant", ["flight", "cell", "sign", "ratio"])
+def test_main_fails_on_a_flight_cell_sign_or_ratio_difference(check, model, monkeypatch, capsys, plant):
     if plant == "flight":
         monkeypatch.setattr(counting, "flights", splitting(model, counting.flights))
     elif plant == "cell":
         monkeypatch.setattr(counting, "cells", dropping(model, counting.cells))
-    else:
+    elif plant == "sign":
         monkeypatch.setattr(record, "flight_signs", dropping_s1(model, record.flight_signs))
+    else:
+        monkeypatch.setattr(rates, "lift", passing_s3_at_24(rates.lift))
     # every figure as the planted code gives it, so that only the planted difference can fail the run
     fig = counting.figures(model.table, model.obs, model.snaps)
     cells_ = model.cells()
@@ -619,12 +673,19 @@ def test_main_fails_on_a_flight_cell_or_sign_difference(check, model, monkeypatc
         assert None not in found and sorted(m.group(1) for m in found) == ["EY 607", "LY 9614"], out[:2]
         # in each of the flight's four rows: A0's flight not in the code's row, and the code's two not in A0's; in the
         # two rows where LY 9614 shows S3, A0's flight carries it and the code's LY 9614 alone does
-        assert summary == ["flights: 2 differences", "cells: 12 differences", "signs: 4 differences"]
+        assert summary == ["flights: 2 differences", "cells: 12 differences", "signs: 4 differences",
+                           "ratios: 0 differences"]
     elif plant == "cell":
-        assert summary == ["flights: 0 differences", "cells: 1 difference", "signs: 0 differences"] and len(out) == 4
+        assert summary == ["flights: 0 differences", "cells: 1 difference", "signs: 0 differences",
+                           "ratios: 0 differences"] and len(out) == 5
         assert one_each(out[1:2], [
             ("  70 hours, D ZRH 2026-11-02 14:00 LX 257 (",
              ": A0 in the row from 2026-10-30 16:00:00, not cancelled, the code not in the row")])
-    else:
-        assert summary == ["flights: 0 differences", "cells: 0 differences", "signs: 1 difference"] and len(out) == 4
+    elif plant == "sign":
+        assert summary == ["flights: 0 differences", "cells: 0 differences", "signs: 1 difference",
+                           "ratios: 0 differences"] and len(out) == 5
         assert one_each(out[2:3], [("  24 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code S3")])
+    else:
+        assert out == ["flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+                       "  A25 S3 24 hours: A0b no ratio, does not pass, grouped over plain none, the code no ratio, "
+                       "passes, grouped over plain none", "ratios: 1 difference"]

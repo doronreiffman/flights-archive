@@ -149,8 +149,8 @@ def test_scores_hand_case():
     assert got.one_rate == approx(0.029657, abs=1e-6)  # r(1 - r), as A33 has it
     assert got.split == approx(0.022142, abs=1e-6)
     assert got.gain == approx(got.one_rate - got.split, abs=1e-15)
-    # computed apart from this code (Task 7's report): the per-flight gain's grouped standard error is 0.00238809 by
-    # airline and week and by day alike (here both make the same five groups); the gain is 0.00751499
+    # computed apart from this code (scripts/scores_oracle.py): the per-flight gain's grouped standard error is
+    # 0.00238809 by airline and week and by day alike (here both make the same five groups); the gain is 0.00751499
     assert got.gain_from == approx(0.00273881, abs=1e-8)
     assert got.gain_to == approx(0.01229118, abs=1e-8)
 
@@ -173,6 +173,16 @@ def test_the_floor_for_a_sign():
     assert got.se_log is not None  # the range could be computed: only the floor holds it back
 
 
+def test_a_sign_with_no_cancelled_flight_without_it_has_no_ratio():
+    # 10 cancelled with the sign, from 5 airlines on 5 days, clear the floor; none without it: no ratio, no pass
+    days = [date(2026, 11, 2 + i) for i in range(5)]
+    with_ = [c for a, d in zip("ABCDE", days) for c in rows(a, d, 4, 2)]
+    without = [c for a, d in zip("ABCDE", days) for c in rows(a, d, 10, 0)]
+    got = lift(with_, without)
+    assert (got.clears_floor, got.times, got.times_from, got.times_to, got.passes) == (True, None, None, None, False)
+    assert lift(with_, []).passes is False
+
+
 def test_no_flights_no_figure():
     # before any counted flight is read, and for a sign no flight carries
     assert lift([], []) == Lift(0, 0, 0, 0, 0, 0, False, None, None, None, None, False)
@@ -191,7 +201,7 @@ def test_no_flights_no_figure():
 
 def test_a_ratio_above_1_whose_range_reaches_below_it_fails():
     # clears the floor (10 cancelled with the sign, from 5 airlines on 5 days) at 1.5 times the rate, but its range
-    # runs from 0.36 to 6.24 (computed apart from this code, Task 7's report, fix round 1): the range decides
+    # runs from 0.36 to 6.24 (computed apart from this code: scripts/scores_oracle.py): the range decides
     days = [date(2026, 11, 2 + i) for i in range(5)]
     with_ = [c for a, d, k in zip("ABCDE", days, (4, 1, 2, 2, 1)) for c in rows(a, d, 20, k)]
     without = [c for a, d, k in zip("ABCDE", days, (0, 2, 1, 1, 1)) for c in rows(a, d, 15, k)]
@@ -204,7 +214,7 @@ def test_a_ratio_above_1_whose_range_reaches_below_it_fails():
 def test_the_larger_grouping_is_used():
     # two airlines on two days of one week: by airline and week the groups are A and B, by day 2 and 3 November. The
     # log ratio's standard error is 0.1 by airline and 0.7 by day; the mean gain's is 0.0118490 by airline and
-    # 0.0063802 by day (computed apart from this code, Task 7's report, fix round 1). Each takes the larger.
+    # 0.0063802 by day (computed apart from this code: scripts/scores_oracle.py). Each takes the larger.
     d1, d2 = date(2026, 11, 2), date(2026, 11, 3)
     with_ = rows("A", d1, 4, 3) + rows("B", d1, 4, 0) + rows("A", d2, 4, 1) + rows("B", d2, 4, 1)
     without = rows("A", d1, 20, 1) + rows("B", d1, 20, 0) + rows("A", d2, 20, 2) + rows("B", d2, 20, 1)
