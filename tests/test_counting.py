@@ -1,13 +1,18 @@
 """The counting rule: which numbers are one flight, its result and when it is closed (docs/flight-lookup.md, C1 to
-C4; docs/flight-lookup-figures.md, A0's `tie`, `num` and `fl`, with values from A11 to A16), and the number-level
-"as of" reading: what the list showed for each number, and when it passed each checkpoint (C6; A0's `st`, `hole` and
-`cp`). Expected values by hand."""
+C4; docs/flight-lookup-figures.md, A0's `tie`, `num` and `fl`, with values from A11 to A16), the number-level "as of"
+reading: what the list showed for each number, and when it passed each checkpoint (C6; A0's `st`, `hole` and `cp`),
+and the flights in each row of the table, with the total and the rows' rates (C4 to C7; A0's `cell`, A2 and A6).
+Expected values by hand, but for the hand-built model's figures, which are A0's SQL's."""
 from datetime import date, datetime, timedelta
 from itertools import permutations
 
+from pytest import approx
+
+import counting_fixture
 from counting_helpers import T, board, number, seen
 from timeline import counting
 from timeline.counting import Flight, Stretch
+from timeline.rates import Counted
 
 LAST = T(12, 10, 16, 45)  # the last sighting of the model the figures were run on (docs/flight-lookup-figures.md)
 
@@ -311,3 +316,131 @@ def test_the_grouping_airline():
     assert airline(("LH", "0691"), ("EY", "607")) == "EY"  # "0691" < "607" as strings
     assert airline(("AB", "100"), ("AA", "100")) == "AA"
     assert airline(("AA", "ABC"), ("ZZ", "9999")) == "ZZ"
+
+
+# C5 to C7. A closed flight with a known result is in a row when any of its numbers was listed, at that point, with a
+# status other than cancelled; it counts there when its result is cancelled, however late the listing came.
+
+def in_rows(table: list[dict], obs: list[dict]) -> list[tuple[int, tuple[str, ...], datetime, int]]:
+    """Each cell's row, numbers, moment and k, on a board with no hole."""
+    passed = counting.passings(counting.stretches(table, obs), ())
+    return [(c.h, c.flight.numbers, c.t, c.k) for c in counting.cells(counting.flights(table, LAST), passed)]
+
+
+def test_already_cancelled_at_the_point_is_not_in_the_row():
+    # Scheduled 5 Nov 12:00, listed on time from 75 hours before, and as cancelled from 4 Nov 00:00, 36 hours before.
+    s = T(5, 12)
+    table = [number("a", s, outcome="canceled", last_seen_at=T(6, 12))]
+    obs = [seen("a", 1, T(2, 9), sched_utc=s), seen("a", 50, T(4, 0), sched_utc=s, status="CANCELED")]
+    assert in_rows(table, obs) == [(70, ("a",), T(2, 14), 1), (48, ("a",), T(3, 12), 1)]
+    # Already listed as cancelled when first seen: in the total and in no row.
+    obs = [seen("a", 1, T(2, 9), sched_utc=s, status="CANCELED")]
+    assert in_rows(table, obs) == []
+    fig = counting.figures(table, obs, board(LAST))
+    assert (fig.total.cancelled, fig.total.flights) == (1, 1)
+    assert [(h, r.flights) for h, r in fig.rows] == [(h, 0) for h in counting.CHECKPOINTS]
+
+
+def test_a_delayed_number_is_in_the_row():
+    # Listed on time from 72 hours before its time, then DELAYED from 30 hours before, to leave 50 minutes late.
+    s = T(5, 12)
+    table = [number("a", s, est_utc_final=T(5, 12, 50))]
+    obs = [seen("a", 1, T(2, 12), sched_utc=s),
+           seen("a", 40, T(4, 6), sched_utc=s, est_utc=T(5, 12, 50), status="DELAYED")]
+    passed = counting.passings(counting.stretches(table, obs), ())
+    assert [passed[("a", h)][1] for h in counting.CHECKPOINTS] == ["ON TIME"] * 2 + ["DELAYED"] * 4
+    assert [(h, k) for h, _, _, k in in_rows(table, obs)] == [(h, 0) for h in counting.CHECKPOINTS]
+
+
+def test_a_flight_is_in_the_row_when_any_number_passed_listed_normally():
+    # EY 607 and LY 9614, one flight (the same expected time, terminal and desks), scheduled 5 Nov 12:00 and listed
+    # from 72 hours before: LY 9614 as cancelled from 50 hours before, EY 607 from 20 hours before.
+    s = T(5, 12)
+    table = [number("ey607", s, airline="EY", flight_no="607", outcome="canceled"),
+             number("ly9614", s, flight_no="9614", outcome="canceled")]
+    obs = [seen("ey607", 1, T(2, 12), sched_utc=s), seen("ey607", 70, T(4, 16), sched_utc=s, status="CANCELED"),
+           seen("ly9614", 1, T(2, 12), sched_utc=s), seen("ly9614", 10, T(3, 10), sched_utc=s, status="CANCELED")]
+    both = ("ey607", "ly9614")
+    assert in_rows(table, obs) == [(70, both, T(2, 14), 1), (48, both, T(3, 12), 1), (24, both, T(4, 12), 1)]
+
+
+def test_the_rows_moment_is_the_earliest_passing():
+    # EY 607 and LY 9614, one flight, scheduled 5 Nov 12:00. EY 607 showed 13:00 until a retime seen 4 Nov 00:00, so
+    # it passed 70 and 48 hours an hour after LY 9614, which showed 12:00 throughout.
+    s = T(5, 12)
+    table = [number("ey607", s, airline="EY", flight_no="607", sched_local_first=T(5, 15)),
+             number("ly9614", s, flight_no="9614")]
+    obs = [seen("ey607", 1, T(2, 12), sched_utc=T(5, 13)), seen("ey607", 50, T(4, 0), sched_utc=s),
+           seen("ly9614", 1, T(2, 12), sched_utc=s)]
+    passed = counting.passings(counting.stretches(table, obs), ())
+    assert [passed[(fid, 70)][0] for fid in ("ey607", "ly9614")] == [T(2, 15), T(2, 14)]
+    assert [passed[(fid, 48)][0] for fid in ("ey607", "ly9614")] == [T(3, 13), T(3, 12)]
+    assert [(h, t) for h, _, t, _ in in_rows(table, obs)] == [
+        (70, T(2, 14)), (48, T(3, 12)), (24, T(4, 12)), (12, T(5, 0)), (6, T(5, 6)), (3, T(5, 9))]
+
+
+def test_cancelled_after_its_time_counts_in_every_row_it_was_in():
+    # Listed on time from 72 hours before its time, 5 Nov 12:00, and as cancelled from an hour after it.
+    s = T(5, 12)
+    table = [number("a", s, outcome="canceled", last_seen_at=T(6, 12))]
+    obs = [seen("a", 1, T(2, 12), sched_utc=s), seen("a", 90, T(5, 13), sched_utc=s, status="CANCELED")]
+    assert [(h, k) for h, _, _, k in in_rows(table, obs)] == [(h, 1) for h in counting.CHECKPOINTS]
+    fig = counting.figures(table, obs, board(LAST))
+    assert [(h, r.cancelled, r.flights) for h, r in fig.rows] == [(h, 1, 1) for h in counting.CHECKPOINTS]
+    # A cell counts as its flight: k, the grouping airline and the Israel day.
+    (f,) = counting.flights(table, LAST)
+    assert counting.counted(f) == Counted(1, "LY", date(2026, 11, 5))
+    assert counting.counted(counting.flights([number("b", s)], LAST)[0]) == Counted(0, "LY", date(2026, 11, 5))
+
+
+def test_open_and_unknown_flights_make_no_rate():
+    # Four flights, each listed on time from 72 hours before its time and through every point: one cancelled an hour
+    # before and one that departed, both closed; one cancelled an hour before, scheduled 47 hours before the last
+    # sighting (open); and one that left the list 2 hours before its time with no final status (unknown).
+    cases = {"cancelled": (T(6, 12), "canceled"), "departed": (T(6, 14), "departed"),
+             "open": (LAST - timedelta(hours=47), "canceled"), "unknown": (T(7, 12), "vanished")}
+    table, obs = [], []
+    for fid, (s, outcome) in cases.items():
+        left = s - timedelta(hours=2) if outcome == "vanished" else s + timedelta(hours=12)
+        table.append(number(fid, s, outcome=outcome, last_seen_at=left))
+        obs.append(seen(fid, 1, s - timedelta(hours=72), sched_utc=s))
+        if outcome == "canceled":
+            obs.append(seen(fid, 2, s - timedelta(hours=1), sched_utc=s, status="CANCELED"))
+    passed = counting.passings(counting.stretches(table, obs), ())
+    assert all(passed[(fid, h)][1] == "ON TIME" for fid in cases for h in counting.CHECKPOINTS)
+    assert {f.numbers: (f.closed, f.result) for f in counting.flights(table, LAST)} == {
+        ("cancelled",): (True, "cancelled"), ("departed",): (True, "operated"), ("open",): (False, "cancelled"),
+        ("unknown",): (True, "unknown")}
+    assert sorted({c.flight.numbers for c in counting.cells(counting.flights(table, LAST), passed)}) == [
+        ("cancelled",), ("departed",)]
+    fig = counting.figures(table, obs, board(LAST))
+    assert (fig.total.cancelled, fig.total.flights) == (1, 2)
+    assert [(h, r.cancelled, r.flights) for h, r in fig.rows] == [(h, 1, 2) for h in counting.CHECKPOINTS]
+
+
+# The figures on a model built by hand (tests/counting_fixture.py): 650 flights over 6 Israel days and 6 airlines, 12
+# of them closed and cancelled. The expected values are A0's SQL's (docs/flight-lookup-figures.md, A0 with A2 and A6)
+# run over the same rows, with the rate and its ends unrounded and the standard errors themselves.
+FIXTURE = {  # cancelled, flights, airlines, days, clears_floor; one_in, from, to; se_airline_week, se_day
+    "total": ((12, 492, 6, 5, True), (41.0, 26.7870, 63.0467), (0.00522317, 0.00279113)),
+    70: ((7, 222, 5, 3, False), (31.7143, 16.6073, 61.4439), (0.0103367, 0.00474344)),
+    48: ((8, 286, 5, 4, False), (35.75, 18.2871, 70.8534), (0.00949215, 0.00355744)),
+    24: ((8, 407, 5, 5, False), (50.875, 25.2561, 103.5523), (0.00694530, 0.00488680)),
+    12: ((7, 439, 6, 4, False), (62.7143, 31.0234, 127.8563), (0.00565302, 0.00473275)),
+    6: ((8, 462, 5, 5, False), (57.75, 30.7713, 109.1767), (0.00548865, 0.00489028)),
+    3: ((5, 459, 3, 4, False), (91.8, 35.2523, 241.7035), (0.00525211, 0.00365602)),
+}
+
+
+def test_the_hand_computed_fixture():
+    table, obs, snaps = counting_fixture.model()
+    fl = counting.flights(table, counting.last_sighting(snaps))
+    assert (len(fl), len({f.day for f in fl}), len({f.airline for f in fl}),
+            sum(f.closed and f.result == "cancelled" for f in fl)) == (650, 6, 6, 12)
+    fig = counting.figures(table, obs, snaps)
+    assert [h for h, _ in fig.rows] == list(counting.CHECKPOINTS)
+    for name, r in [("total", fig.total), *fig.rows]:
+        counts, ends, ses = FIXTURE[name]
+        assert (r.cancelled, r.flights, r.airlines, r.days, r.clears_floor) == counts, name
+        assert (r.one_in, r.one_in_from, r.one_in_to) == approx(ends, abs=1e-4), name
+        assert (r.se_airline_week, r.se_day) == approx(ses, rel=1e-5), name

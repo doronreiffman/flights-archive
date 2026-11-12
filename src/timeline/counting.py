@@ -1,7 +1,8 @@
 """The counting rule: which numbers are one flight, its result and when it is closed (docs/flight-lookup.md, C1 to
-C4; docs/flight-lookup-figures.md, A0's `tie`, `num` and `fl`); and, read number by number "as of" a moment, what
-the list showed for each number from one change to the next, and the first moment it passed each checkpoint (C5 and
-C6; A0's `st`, `hole` and `cp`).
+C4; docs/flight-lookup-figures.md, A0's `tie`, `num` and `fl`); read number by number "as of" a moment, what the list
+showed for each number from one change to the next, and the first moment it passed each checkpoint (C5 and C6; A0's
+`st`, `hole` and `cp`); and the flights in each row of the "from here" table, with the total and the rows' rates (C4
+to C7; A0's `cell`, A2 and A6).
 
 Part of the frozen rule (docs/flight-lookup.md, "The record", condition 1): it imports no timeline module but the
 frozen ones (tests/test_frozen.py). Pure functions over the rows `timeline.load.load` returns; model times are
@@ -16,6 +17,8 @@ from datetime import date, datetime, timedelta
 from itertools import combinations
 
 from model.rules import GAP_HOURS
+
+from . import rates
 
 CLOSED_AFTER = timedelta(hours=48)  # C4: a flight is closed this long after its scheduled time
 OPERATED = frozenset({"departed", "landed"})  # the outcomes of a number that departed or landed (A0's `n0`)
@@ -214,3 +217,51 @@ def flights(table: list[dict], last_sighting_: datetime) -> list[Flight]:
 def flight_of(flights_: list[Flight]) -> dict[str, Flight]:
     """Each number's flight, by flight_id."""
     return {fid: f for f in flights_ for fid in f.numbers}
+
+
+def _in_rates(f: Flight) -> bool:
+    """C4: only closed flights with a known result make a rate."""
+    return f.closed and f.result != "unknown"
+
+
+def counted(f: Flight) -> rates.Counted:
+    """The flight as one item of a rate: k is 1 when its result is cancelled (C7), however late the listing came."""
+    return rates.Counted(int(f.result == "cancelled"), f.airline, f.day)
+
+
+@dataclass(frozen=True)
+class Cell:
+    """A closed flight with a known result in the row of checkpoint h (A0's `cell`)."""
+    h: int
+    flight: Flight
+    t: datetime  # the earliest passing of h by one of its numbers listed with a status other than CANCELED
+    k: int
+
+
+def cells(flights_: list[Flight], passings_: dict[tuple[str, int], tuple[datetime, str]]) -> list[Cell]:
+    """The flights in each row, in CHECKPOINTS order, then in the order of `flights_` (C5 to C7): a closed flight
+    with a known result is in row h when any of its numbers passed h with a status other than CANCELED (C6). A flight
+    already listed as cancelled when first seen is in no row."""
+    of = flight_of(flights_)
+    moment: dict[tuple[int, tuple], datetime] = {}
+    for (fid, h), (t, status) in passings_.items():
+        if status != "CANCELED":
+            at = (h, of[fid].key)
+            moment[at] = min(t, moment.get(at, t))
+    return [Cell(h, f, moment[(h, f.key)], counted(f).k) for h in CHECKPOINTS for f in flights_
+            if _in_rates(f) and (h, f.key) in moment]
+
+
+@dataclass(frozen=True)
+class Figures:
+    """The total and the "from here" table's rows (A2, A6)."""
+    total: rates.Rate  # closed flights with a known result
+    rows: tuple[tuple[int, rates.Rate], ...]  # (h, rate) in CHECKPOINTS order
+
+
+def figures(table: list[dict], obs: list[dict], snaps: list[dict]) -> Figures:
+    """The total and each row's rate on the model `load` returns, as of its last sighting (C1 to C8)."""
+    flights_ = flights(table, last_sighting(snaps))
+    in_rows = cells(flights_, passings(stretches(table, obs), holes(snaps)))
+    return Figures(total=rates.rate([counted(f) for f in flights_ if _in_rates(f)]),
+                   rows=tuple((h, rates.rate([counted(c.flight) for c in in_rows if c.h == h])) for h in CHECKPOINTS))
