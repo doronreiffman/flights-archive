@@ -23,9 +23,9 @@ from timeline.load import load
 SECOND = timedelta(seconds=1)
 
 
-def z(hour: int, minute: int = 0) -> datetime:
+def z(hour: int, minute: int = 0, second: int = 0) -> datetime:
     """A download time on 30 October 2026 (naive UTC)."""
-    return datetime(2026, 10, 30, hour, minute)
+    return datetime(2026, 10, 30, hour, minute, second)
 
 
 def utc(hour: int, minute: int = 0) -> datetime:
@@ -89,6 +89,19 @@ def flight_changes_after(a: Archive) -> None:
                     listing("LY", "9614", utc(0), counters="12-21" if t <= z(12) else "30-35")])
 
 
+def leaves_between_downloads(a: Archive, seen_again: bool = False) -> None:
+    """LY 300 is in the 11:00 download and gone from 11:15 on; its 24-hour moment, 11:07, falls between its last
+    sighting and the next download. The variant adds unchanged receipts at 11:04 and 11:08, so A0's last sighting of
+    it is 11:08."""
+    ly300 = listing("LY", "300", utc(11, 7))
+    for t in GRID:
+        rows = [STEADY] + ([ly300] if t <= z(11) else [])
+        sid = a.store(t, rows)
+        if seen_again and t == z(11):
+            for minute in (4, 8):
+                a.unchanged(sid, z(11, minute), rows)
+
+
 def repeated_store(a: Archive) -> None:
     """The 11:15 board is stored again at 11:17 with the same hash and its own receipt: R2 drops the copy and R9
     credits its sighting. LY 500 is last listed on that board; its 24-hour moment is 11:16."""
@@ -140,6 +153,9 @@ CASES = {
     "return-after-a-same-number-key": (return_after_a_same_number_key, (z(11, 15), z(11, 22), z(11, 30), z(12, 30))),
     "retime-at-the-cut": (retime_at_the_cut, (z(11), z(11, 7), z(11, 15))),
     "flight-changes-after": (flight_changes_after, (z(12), z(12, 7))),
+    "leaves-between-downloads": (leaves_between_downloads, (z(11, 6), z(11, 7), z(11, 10), z(11, 20))),
+    "leaves-between-downloads-seen-again": (lambda a: leaves_between_downloads(a, seen_again=True),
+                                            (z(11, 6), z(11, 7), z(11, 10), z(11, 20))),
     "repeated-store": (repeated_store, (z(11, 15), z(11, 16), z(11, 17))),
     "superseded": (superseded, (z(11, 15), z(11, 16), z(11, 17))),
     "unchanged-downloads": (unchanged_downloads, (z(11, 17), z(11, 18), z(11, 21), z(11, 25))),
@@ -184,27 +200,21 @@ def models(tmp_path_factory):
 
 
 # --- reading a model ---------------------------------------------------------------------------------
+# Keys name a number by its flight_id and a board key by its key_id; values are the models' own. Labels are only for
+# failure messages.
 
-def _names(*models: Model) -> dict[str, str]:
-    return {f["flight_id"]: f"{f['airline']} {f['flight_no']} at {f['sched_local_first']:%d %b %H:%M} Israel time"
-            for m in models for f in m.table}
-
-
-def _show(v):
-    if isinstance(v, datetime):
-        return "never" if v == datetime.max else f"{v:%d %H:%M:%S}"
-    if isinstance(v, (tuple, list)):
-        return tuple(_show(x) for x in v)
-    return v
+class _Absent:
+    def __repr__(self):
+        return "ABSENT"
 
 
-def differences(full: dict, cut: dict, names: dict[str, str]) -> dict[tuple, tuple]:
-    """what -> (the full model's value, the cut's), for every key whose values differ; keys name a number by its
-    flight_id, shown by its airline, number and first scheduled time (Israel time)."""
-    def label(key):
-        return tuple(names.get(k, k) if isinstance(k, str) else k for k in key)
-    return {label(k): (_show(full.get(k, "absent")), _show(cut.get(k, "absent")))
-            for k in sorted(set(full) | set(cut), key=str) if full.get(k, "absent") != cut.get(k, "absent")}
+ABSENT = _Absent()  # a key one model has and the other does not
+
+
+def differences(full: dict, cut: dict) -> dict[tuple, tuple]:
+    """key -> (the full model's value, the cut's), for every key whose values differ."""
+    return {k: (full.get(k, ABSENT), cut.get(k, ABSENT)) for k in set(full) | set(cut)
+            if full.get(k, ABSENT) != cut.get(k, ABSENT)}
 
 
 def record(m: Model, last: datetime) -> dict:
@@ -226,16 +236,16 @@ def record(m: Model, last: datetime) -> dict:
 
 
 def chains(m: Model, last: datetime) -> dict:
-    """Each number's retime chain (flights.key_ids), among keys first seen at or before `last`."""
-    con = duckdb.connect()
-    con.execute("SET TimeZone = 'UTC'")
+    """Each number's retime chain (flights.key_ids), among keys first seen at or before `last`: a key's first sighting
+    is its observation whose change_kind is `first` or `retime`."""
     path = str(m.dir / "observations.parquet").replace("'", "''")
-    first = {k: (t, f"{airline} {no} at {sched:%H:%M}Z") for k, t, airline, no, sched in con.execute(
-        f"""SELECT key_id, min(observed_at), any_value(airline), any_value(flight_no), any_value(sched_utc)
-            FROM '{path}' WHERE change_kind IN ('first', 'retime') GROUP BY key_id""").fetchall()}
+    with duckdb.connect() as con:
+        con.execute("SET TimeZone = 'UTC'")
+        first = dict(con.execute(f"""SELECT key_id, min(observed_at) FROM '{path}'
+                                     WHERE change_kind IN ('first', 'retime') GROUP BY key_id""").fetchall())
     out = {}
     for f in m.table:
-        keys = tuple(first[k][1] for k in f["key_ids"] if first[k][0] <= last)
+        keys = tuple(k for k in f["key_ids"] if first[k] <= last)
         if keys:
             out["chain", f["flight_id"]] = keys
     return out
@@ -247,35 +257,77 @@ def inputs(m: Model, last: datetime) -> dict:
             for f in m.table if f["first_seen_at"] <= last}
 
 
+def explain(found: dict, expected: dict, *models: Model) -> str:
+    """The differences that are not as accepted, each number and key named by airline, number, direction, airport
+    and first scheduled time (Israel time); for a failure message only."""
+    names = {f["flight_id"]: f"{f['airline']} {f['flight_no']} {f['direction']} {f['airport']} first scheduled "
+                             f"{f['sched_local_first']:%Y-%m-%d %H:%M} Israel time" for m in models for f in m.table}
+
+    def show(v):
+        if isinstance(v, datetime):
+            return "never" if v == datetime.max else f"{v:%Y-%m-%d %H:%M:%S}"
+        if isinstance(v, (tuple, list)):
+            return tuple(show(x) for x in v)
+        return names.get(v, v) if isinstance(v, str) else v
+    lines = [f"not accepted: {show(k)}: full {show(a)}, cut {show(b)}" for k, (a, b) in found.items() if expected.get(k) != (a, b)]
+    lines += [f"accepted but not found: {show(k)}: full {show(a)}, cut {show(b)}"
+              for k, (a, b) in expected.items() if found.get(k) != (a, b)]
+    return "\n".join(sorted(lines))
+
+
 # --- the differences the ruling accepts ----------------------------------------------------------------
 # The owner's ruling (docs/flight-lookup.md, "The record", "Measured and ruled, 2026-11-12"): "My call: the record reads
 # the full model by A0's rule, with these differences as its stated limits, and is not computed from cut builds."
-# Each entry below is one of those differences, exactly as this comparison measured it; values are shown as
-# "DD HH:MM:SS" (UTC), "absent" where a model has no such key.
+# Each entry below is one of those differences, exactly as this comparison measured it. A number is written as N(...)
+# and resolved to its flight_id in the two models; ABSENT marks a key one model does not have.
 
-def piece(from_at: str, to_at: str, sched: str) -> tuple:
-    """One stretch as `record` shows it: on time, scheduled and expected at `sched`, terminal 3, desks 1-5."""
+@dataclass(frozen=True)
+class N:
+    """A number of these archives by its first board key: direction D from JFK (the row defaults), first scheduled at
+    `sched_utc` (Israel time is UTC+2 on these dates). Its flight_id is that key's key_id (R4's keymap)."""
+    airline: str
+    flight_no: str
+    sched_utc: datetime
+
+    def id(self, *models: Model) -> str:
+        ids = {f["flight_id"] for m in models for f in m.table
+               if (f["airline"], f["flight_no"], f["direction"], f["airport"], f["sched_local_first"])
+               == (self.airline, self.flight_no, "D", "JFK", self.sched_utc + timedelta(hours=2))}
+        assert len(ids) == 1, (self, ids)
+        return ids.pop()
+
+
+def resolve(v, models: tuple[Model, ...]):
+    if isinstance(v, N):
+        return v.id(*models)
+    if isinstance(v, tuple):
+        return tuple(resolve(x, models) for x in v)
+    return v
+
+
+def piece(from_at: datetime, to_at: datetime, sched: datetime) -> tuple:
+    """One stretch as `record` gives it: on time, scheduled and expected at `sched`, terminal 3, desks 1-5."""
     return (from_at, to_at, "ON TIME", sched, sched, 3, "1-5")
 
 
-AWAY = "LY 100 at 31 Oct 13:30 Israel time"  # leave-and-return
-FIRST, LATER = "LY 100 at 31 Oct 12:30 Israel time", "LY 100 at 31 Oct 15:30 Israel time"  # the same-number key
+AWAY = N("LY", "100", utc(11, 30))  # leave-and-return
+FIRST, LATER = N("LY", "100", utc(10, 30)), N("LY", "100", utc(13, 30))  # the same-number key
+LY200, LY9614 = N("LY", "200", utc(11, 10)), N("LY", "9614", utc(0))
 
 
-def same_number_key(end: str) -> dict[str, dict]:
+def same_number_key(end: datetime) -> dict[str, dict]:
     """Kind 2 at a cut whose last sighting is a second before `end`: the cut links LATER to FIRST as a retime (the two
     keys sit on adjacent lists), which the full model cannot, since FIRST's last list is 14:00. "A cut build would
     also link 3 of those numbers as retimes, at no checkpoint moment." (the ruling's paragraph)"""
     return {
-        "record": {("first record", LATER): (("30 11:15:00", "31 13:30:00", "ON TIME"), "absent"),
-                   ("stretches", LATER): ((piece("30 11:15:00", end, "31 13:30:00"),), "absent"),
-                   ("stretches", FIRST): ((piece("30 10:00:00", end, "31 10:30:00"),),
-                                          (piece("30 10:00:00", "30 11:15:00", "31 10:30:00"),
-                                           piece("30 11:15:00", end, "31 13:30:00")))},
-        "chains": {("chain", LATER): (("LY 100 at 13:30Z",), "absent"),
-                   ("chain", FIRST): (("LY 100 at 10:30Z",), ("LY 100 at 10:30Z", "LY 100 at 13:30Z"))},
-        "inputs": {("C1 inputs", LATER): (("31 13:30:00", 3, "1-5"), "absent"),
-                   ("C1 inputs", FIRST): (("31 10:30:00", 3, "1-5"), ("31 13:30:00", 3, "1-5"))},
+        "record": {("first record", LATER): ((z(11, 15), utc(13, 30), "ON TIME"), ABSENT),
+                   ("stretches", LATER): ((piece(z(11, 15), end, utc(13, 30)),), ABSENT),
+                   ("stretches", FIRST): ((piece(z(10), end, utc(10, 30)),),
+                                          (piece(z(10), z(11, 15), utc(10, 30)), piece(z(11, 15), end, utc(13, 30))))},
+        "chains": {("chain", LATER): ((LATER,), ABSENT),
+                   ("chain", FIRST): ((FIRST,), (FIRST, LATER))},
+        "inputs": {("C1 inputs", LATER): ((utc(13, 30), 3, "1-5"), ABSENT),
+                   ("C1 inputs", FIRST): ((utc(10, 30), 3, "1-5"), (utc(13, 30), 3, "1-5"))},
     }
 
 
@@ -284,25 +336,22 @@ ACCEPTED: dict[tuple[str, str], dict] = {
     # changes, not absences), the cut sees it gone after 11:00. "7 checkpoint moments of the 7 numbers that left the
     # list and came back fell while they were off it, so a cut build would leave those flights out of those rows."
     ("record", "leave-and-return-1130"): {
-        ("passing", AWAY, 24): (("30 11:30:00", "ON TIME"), "absent"),
-        ("stretches", AWAY): ((piece("30 10:00:00", "30 11:30:01", "31 11:30:00"),),
-                              (piece("30 10:00:00", "30 11:00:01", "31 11:30:00"),))},
+        ("passing", AWAY, 24): ((z(11, 30), "ON TIME"), ABSENT),
+        ("stretches", AWAY): ((piece(z(10), z(11, 30, 1), utc(11, 30)),), (piece(z(10), z(11, 0, 1), utc(11, 30)),))},
     # Kind 3, C1's inputs read at the end: "C1's inputs read at the end are compared in the plan's Task 6."
-    ("inputs", "retime-at-the-cut-1100"): {
-        ("C1 inputs", "LY 200 at 31 Oct 13:10 Israel time"): (("31 13:10:00", 3, "1-5"), ("31 11:10:00", 3, "1-5"))},
-    ("inputs", "retime-at-the-cut-1107"): {
-        ("C1 inputs", "LY 200 at 31 Oct 13:10 Israel time"): (("31 13:10:00", 3, "1-5"), ("31 11:10:00", 3, "1-5"))},
-    ("inputs", "flight-changes-after-1200"): {
-        ("C1 inputs", "LY 9614 at 31 Oct 02:00 Israel time"): (("31 00:00:00", 3, "30-35"), ("31 00:00:00", 3, "12-21"))},
-    ("inputs", "flight-changes-after-1207"): {
-        ("C1 inputs", "LY 9614 at 31 Oct 02:00 Israel time"): (("31 00:00:00", 3, "30-35"), ("31 00:00:00", 3, "12-21"))},
+    ("inputs", "retime-at-the-cut-1100"): {("C1 inputs", LY200): ((utc(13, 10), 3, "1-5"), (utc(11, 10), 3, "1-5"))},
+    ("inputs", "retime-at-the-cut-1107"): {("C1 inputs", LY200): ((utc(13, 10), 3, "1-5"), (utc(11, 10), 3, "1-5"))},
+    ("inputs", "flight-changes-after-1200"): {("C1 inputs", LY9614): ((utc(0), 3, "30-35"), (utc(0), 3, "12-21"))},
+    ("inputs", "flight-changes-after-1207"): {("C1 inputs", LY9614): ((utc(0), 3, "30-35"), (utc(0), 3, "12-21"))},
 } | {(test, f"return-after-a-same-number-key-{moment}"): diffs  # kind 2 (and its C1 inputs, kind 3)
-     for moment, end in (("1115", "30 11:15:01"), ("1122", "30 11:15:01"), ("1130", "30 11:30:01"))
+     for moment, end in (("1115", z(11, 15, 1)), ("1122", z(11, 15, 1)), ("1130", z(11, 30, 1)))
      for test, diffs in same_number_key(end).items()}
 
 
-def accepted(test: str, name: str, moment: datetime) -> dict:
-    return ACCEPTED.get((test, f"{name}-{moment:%H%M}"), {})
+def check(test: str, name: str, moment: datetime, full: Model, cut: Model, found: dict) -> None:
+    expected = {resolve(k, (full, cut)): resolve(v, (full, cut))
+                for k, v in ACCEPTED.get((test, f"{name}-{moment:%H%M}"), {}).items()}
+    assert found == expected, explain(found, expected, full, cut)
 
 
 def test_every_accepted_difference_names_a_case_and_moment():
@@ -322,14 +371,14 @@ def test_cut_builds_build(models, name, moment):
 def test_record_readings_match(models, name, moment):
     full, cut = models(name, moment)
     last = counting.last_sighting(cut.snaps)
-    assert differences(record(full, last), record(cut, last), _names(full, cut)) == accepted("record", name, moment)
+    check("record", name, moment, full, cut, differences(record(full, last), record(cut, last)))
 
 
 @pytest.mark.parametrize("name, moment", MOMENTS)
 def test_retime_chains_match(models, name, moment):
     full, cut = models(name, moment)
     last = counting.last_sighting(cut.snaps)
-    assert differences(chains(full, last), chains(cut, last), _names(full, cut)) == accepted("chains", name, moment)
+    check("chains", name, moment, full, cut, differences(chains(full, last), chains(cut, last)))
 
 
 @pytest.mark.parametrize("name, moment", MOMENTS)
@@ -339,4 +388,4 @@ def test_flight_inputs_match(models, name, moment):
     rule C1 exists."""
     full, cut = models(name, moment)
     last = counting.last_sighting(cut.snaps)
-    assert differences(inputs(full, last), inputs(cut, last), _names(full, cut)) == accepted("inputs", name, moment)
+    check("inputs", name, moment, full, cut, differences(inputs(full, last), inputs(cut, last)))

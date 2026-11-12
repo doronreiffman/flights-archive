@@ -15,8 +15,10 @@ from model.rules import GAP_HOURS
 
 CHECKPOINTS = (70, 48, 24, 12, 6, 3)  # C5: hours before the scheduled time the list showed at the moment
 # A number's last stretch ends a second after its last sighting, as A0's `st` reads it. The record reads the full
-# model by this rule; where a model built from the archive cut at a moment would read that moment otherwise, the
-# difference is a stated limit (docs/flight-lookup.md, "The record", "Measured and ruled, 2026-11-12").
+# model by this rule. The ways a model built from the archive cut at a moment was measured to read that moment
+# otherwise are the rule's stated limits: a number that left the list and came back, a key of the same number
+# linked as a retime during such an absence, and C1's inputs read at the end (docs/flight-lookup.md, "The record",
+# "Measured and ruled, 2026-11-12"; tests/test_record_cut.py).
 
 
 @dataclass(frozen=True)
