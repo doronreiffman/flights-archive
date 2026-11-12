@@ -45,6 +45,8 @@ Measured first (this Mac, synthetic copies of the real snapshots 15 min apart, a
 | 150 (1.5 days) | 0.3 M | 3.5 s | 1.0 GB |
 | 600 (6 days) | 1.2 M | 13 s | 1.5 GB |
 
+DuckDB picks its own memory limit when none is set, and the model sets none: on this 8 GiB Mac it is 6.3 GiB (`SELECT current_setting('memory_limit')`, 2026-11-12). A peak near that limit shows the limit, not the need: the full build of 2026-11-12 (1,322 snapshots) peaked at 5.9 GiB. To measure the need, set `memory_limit` explicitly.
+
 The full rebuild is fine on a laptop for months, and it is what the model does today. It is not a nightly Lambda: memory grows with the whole history, so a 2 GB function would run out after about two weeks of snapshots, and reading every raw file every night makes S3 requests grow linearly (35,000 a night by month twelve). The proposal is therefore in two steps, and only the second one creates infrastructure:
 
 1. **Make the build incremental** (code only, next piece of work). Stage one appends each night's new raw files to a date-partitioned `rows/` Parquet, idempotent by snapshot id. Stage two rebuilds observations and flights only for the trailing window of flights that can still change (a flight lives on the board at most about five days, so roughly ten days of rows) and keeps closed flights as they are. Nightly work is then about 100 files and a few hundred thousand rows whatever the history's size.
