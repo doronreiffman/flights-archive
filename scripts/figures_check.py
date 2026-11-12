@@ -6,17 +6,19 @@ repository root:
     PYTHONPATH=src .venv/bin/python scripts/figures_check.py --model data/model-2026-11-12
 
 It prints each figure the code gives with "ok" when it matches the figures file's printed value (EXPECTED), or with
-both values, and A25's sign counts the same way (EXPECTED_A25); then each number rule C1 groups differently from A0's
-`num`, each flight whose place in a row of the table (its moment, and whether it ended cancelled) differs from A0's
-`cell`, each flight whose signs in a row differ from A0b's, and anything the code holds twice, with the count of
-each. Exit 1 on any difference. EXPECTED and EXPECTED_A25 hold the figures file's results, which come from the model
-saved as data/model-2026-11-12: `data/model` is rebuilt after every sync, so its figures move, while its flights,
-cells and signs must still match A0 and A0b.
+both values, A25's sign counts the same way (EXPECTED_A25), and A29's dry run of the sign test (EXPECTED_A29); then
+each number rule C1 groups differently from A0's `num`, each flight whose place in a row of the table (its moment,
+and whether it ended cancelled) differs from A0's `cell`, each flight whose signs in a row differ from A0b's, and
+anything the code holds twice, with the count of each. Exit 1 on any difference. EXPECTED, EXPECTED_A25 and
+EXPECTED_A29 hold the figures file's results, which come from the model saved as data/model-2026-11-12:
+`data/model` is rebuilt after every sync, so its figures move, while its flights, cells and signs must still match
+A0 and A0b.
 """
 import argparse
 import re
 import sys
 from collections import Counter
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -59,6 +61,17 @@ EXPECTED_A25: dict[tuple[str, int], tuple] = {
     ("S4", 6): (2, 30, 17, 3674, 2, 2, False),
 }
 A25_HOURS = (48, 24, 12, 6)
+# A29: the sign test as a dry run from a counting start of 2026-11-05 22:00Z (record.run): each sign's cancelled and
+# flights with it, and cancelled and flights without it; then the row's cancelled flights, its days to one decimal
+# and the gate (None: not reached)
+A29_START = datetime(2026, 11, 5, 22)
+EXPECTED_A29: dict[str, tuple] = {
+    "S1": (1, 2, 2, 269),
+    "S2": (1, 9, 2, 515),
+    "S3": (1, 73, 2, 451),
+    "S4": (0, 7, 3, 517),
+    "row": (3, 4.5, None),
+}
 
 
 def sql_blocks(doc: str, *names: str) -> dict[str, str]:
@@ -195,6 +208,14 @@ def sign_counts(cells_: list[counting.Cell], carried: dict[int, dict[tuple, froz
     return out
 
 
+def a29_counts(result: record.Result) -> dict[str, tuple]:
+    """A29's columns as the code gives them (record.run's result): each sign's counts with and without it, and the
+    row's cancelled flights, days to one decimal and gate."""
+    return {sign: (lift.cancelled_with, lift.flights_with, lift.cancelled_without, lift.flights_without)
+            for sign, (lift, _) in result.signs.items()} | {
+        "row": (result.row_cancelled, one_decimal(result.days), result.gate_at)}
+
+
 def one_decimal(x: float | None) -> float | None:
     """As DuckDB's round(x, 1) on a double: x * 10 to the nearest whole number, halves away from zero, over 10."""
     return None if x is None else float(Decimal(x * 10).to_integral_value(ROUND_HALF_UP)) / 10
@@ -227,6 +248,20 @@ def show_signs(value) -> str:
             "with a cancellation, " + ("clears the floor" if clears else "below the floor"))
 
 
+def show_a29(name: str, value) -> str:
+    """A29's columns as a29_counts gives them for a sign or the row, in words; "nothing" for one the code does not
+    give."""
+    if value is None:
+        return "nothing"
+    if name == "row":
+        cancelled, days, gate = value
+        return (f"{cancelled:,} cancelled in the row, " + ("no flight read" if days is None else f"{days:.1f} days")
+                + ", " + ("gate not reached" if gate is None else f"gate reached at {gate:%Y-%m-%d %H:%M}"))
+    cancelled_with, flights_with, cancelled_without, flights_without = value
+    return (f"{cancelled_with:,} of {flights_with:,} with the sign, {cancelled_without:,} of {flights_without:,} "
+            "without")
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", type=Path, required=True, help="the model folder (data/model-2026-11-12)")
@@ -253,6 +288,14 @@ def main(argv: list[str]) -> int:
         else:
             print(f"A25 {sign} {h} hours: the code {show_signs(counts.get((sign, h)))}, the figures file "
                   f"{show_signs(expected)}")
+            failed = True
+    a29 = a29_counts(record.run(table, obs, snaps, A29_START))
+    for name, expected in EXPECTED_A29.items():
+        if a29.get(name) == expected:
+            print(f"A29 {name}: {show_a29(name, expected)} ok")
+        else:
+            print(f"A29 {name}: the code {show_a29(name, a29.get(name))}, the figures file "
+                  f"{show_a29(name, expected)}")
             failed = True
     for what, found in (("flights", compare_flights(con, flights_)), ("cells", compare_cells(con, cells_)),
                         ("signs", compare_signs(con, cells_, carried))):

@@ -1,10 +1,12 @@
-"""Rule C8: the grouped range, the floor and the rounding (docs/flight-lookup.md, C8; A0's `rng`, A35)."""
+"""Rule C8: the grouped range, the floor and the rounding (docs/flight-lookup.md, C8; A0's `rng`, A35); and a sign's
+lift and scores ("Signs"; A0b's `ratio`)."""
 from datetime import date
 
 import pytest
 from pytest import approx
 
-from timeline.rates import Counted, rate, round_middle, round_range, step, week
+from timeline.rates import (LIFT_SE, Counted, Lift, Scores, lift, passes, rate, round_middle, round_range, scores, step,
+                            week)
 
 
 def rows(airline, day, n, k):
@@ -114,3 +116,74 @@ def test_the_ends_round_outward_each_by_its_own_step(lo, hi, expected):
 def test_the_real_rows_print_by_c8(one_in, lo, hi, printed):
     low, high = round_range(lo, hi)
     assert (round_middle(one_in), low, high) == printed
+
+
+# --- the sign test and its score (docs/flight-lookup.md, "Signs"; A0b's `ratio`) -----------------------------
+
+def hand_case() -> tuple[list[Counted], list[Counted]]:
+    """Airlines A to E in the week of 1 November 2026, airline i on 2026-11-0(2+i): (flights, cancelled) with the sign,
+    and without it."""
+    with_ = {"A": (5, 3), "B": (4, 2), "C": (6, 2), "D": (3, 2), "E": (5, 1)}
+    without = {"A": (100, 1), "B": (120, 2), "C": (90, 0), "D": (110, 1), "E": (80, 2)}
+
+    def flights(of):
+        return [c for i, (airline, (n, k)) in enumerate(of.items()) for c in rows(airline, date(2026, 11, 2 + i), n, k)]
+    return flights(with_), flights(without)
+
+
+def test_the_lift_hand_case():
+    # checked against A0b's `ratio` on the same rows: 36.2 times, 13.1 to 99.9, passes
+    got = lift(*hand_case())
+    assert (got.cancelled_with, got.flights_with, got.cancelled_without, got.flights_without) == (10, 23, 6, 500)
+    assert (got.airlines, got.days, got.clears_floor) == (5, 5, True)
+    assert got.times == approx(36.2319, abs=1e-4)
+    assert got.se_log == approx(0.405866, abs=1e-6)
+    assert got.times_from == approx(13.1349, abs=1e-4)
+    assert got.times_to == approx(99.9434, abs=1e-4)
+    assert got.passes is True
+    assert LIFT_SE == 2.5
+
+
+def test_scores_hand_case():
+    got = scores(*hand_case())
+    assert got.one_rate == approx(0.029657, abs=1e-6)  # r(1 - r), as A33 has it
+    assert got.split == approx(0.022142, abs=1e-6)
+    assert got.gain == approx(got.one_rate - got.split, abs=1e-15)
+    # computed apart from this code (Task 7's report): the per-flight gain's grouped standard error is 0.00238809 by
+    # airline and week and by day alike (here both make the same five groups); the gain is 0.00751499
+    assert got.gain_from == approx(0.00273881, abs=1e-8)
+    assert got.gain_to == approx(0.01229118, abs=1e-8)
+
+
+def test_a_range_that_touches_1_fails():
+    assert passes(True, 1.0) is False
+    assert passes(True, 1.000001) is True
+    assert passes(False, 5.0) is False
+    assert passes(True, None) is False
+
+
+def test_the_floor_for_a_sign():
+    with_, without = hand_case()
+    nine = with_[1:]  # one of A's three cancelled flights left out: 9 cancelled, still from 5 airlines on 5 days
+    got = lift(nine, without)
+    assert (got.cancelled_with, got.airlines, got.days) == (9, 5, 5)
+    assert got.clears_floor is False
+    assert got.times is None and got.times_from is None and got.times_to is None
+    assert got.passes is False
+    assert got.se_log is not None  # the range could be computed: only the floor holds it back
+
+
+def test_no_flights_no_figure():
+    # before any counted flight is read, and for a sign no flight carries
+    assert lift([], []) == Lift(0, 0, 0, 0, 0, 0, False, None, None, None, None, False)
+    assert scores([], []) == Scores(None, None, None, None, None)
+    _, without = hand_case()
+    none_with = lift([], without)
+    assert (none_with.flights_with, none_with.cancelled_without, none_with.se_log) == (0, 6, None)
+    assert none_with.passes is False
+    alone = scores([], without)  # no split: the one rate is the without set's own
+    assert alone.split == approx(alone.one_rate) and alone.gain == 0 and alone.gain_from == alone.gain_to == 0
+    # one airline on one day is one group in each grouping: no standard error, so no range
+    one_group = (rows("A", date(2026, 11, 2), 4, 2), rows("A", date(2026, 11, 2), 8, 1))
+    assert lift(*one_group).se_log is None
+    assert scores(*one_group).gain_from is None and scores(*one_group).gain_to is None

@@ -382,6 +382,21 @@ COLLECTOR_MUTATIONS = {
     "record: S1 and S3 from any airline": (RECORD, 'cancelled.setdefault(r["airline"], []).append(s)', '[cancelled.setdefault(airline, []).append(s) for airline in {x["airline"] for x in table}]'),
     "record: S2 the same time counts as before": (RECORD, "a.sched_utc < sched)", "a.sched_utc <= sched)"),
     "record: S2 tie broken by the larger flight_id": (RECORD, "key=lambda a: a.flight_id)", "key=lambda a: a.flight_id, reverse=True)"),
+    # the sign test: the counted flights, the gate and its guard, what a run reads, and the record's files
+    "record: uncounted flights read": (RECORD, "return [c for c in cells_24 if c.flight.first_seen >= start]", "return list(cells_24)"),
+    "record: flights after the gate read": (RECORD, "[c for c in counted_ if gate_at is None or c.t + timedelta(hours=SIGN_ROW) <= gate_at]", "list(counted_)"),
+    "record: gate at 199": (RECORD, "GATE_CANCELLED, GATE_DAYS, SIGN_ROW = 200, 60, 24", "GATE_CANCELLED, GATE_DAYS, SIGN_ROW = 199, 60, 24"),
+    "record: gate without the 60 days": (RECORD, " and at >= start + timedelta(days=GATE_DAYS)", ""),
+    "record: gate declared before the row is closed": (RECORD, "return None if any(u + timedelta(hours=SIGN_ROW) <= at for u in unclosed_) else at", "return at"),
+    "record: S1's sets with arrivals": (RECORD, 'row = [c for c in read if sign != "S1" or c.flight.key[0] == "D"]', "row = list(read)"),
+    "record: a second run replaces the first": (RECORD, 'open(path, "x" if once else "w"', 'open(path, "w"'),
+    "record: result keys unsorted": (RECORD, "sort_keys=True", "sort_keys=False"),
+    "record: floats written in full": (RECORD, 'return float(f"{value:.12g}")', "return value"),
+    "record: the re-test counts from the first start": (RECORD, "retest_start(args.first_upload)", "COUNTING_START"),
+    "record: re-test start at the upload": (RECORD, "    return datetime.combine(day, time(), tzinfo=ISRAEL).astimezone(timezone.utc).replace(tzinfo=None)\n", "    return first_upload\n"),
+    "record: re-test start from a naive conversion": (RECORD, "first_upload.replace(tzinfo=timezone.utc).astimezone(ISRAEL)", "first_upload.astimezone(ISRAEL)"),
+    "record: re-test written over the main result": (RECORD, 'folder / f"retest-{args.retest}"', "folder"),
+    "record: first upload without Z accepted": (RECORD, '    if not value.endswith("Z"):\n', "    if False:\n"),
     # rule C8: the range, the floor and the rounding
     "rates: a range from one airline-and-week group": (RATES, "        if len({(i.airline, week(i.day)) for i in items}) >= 2:", "        if True:"),
     "rates: a range from one day group": (RATES, "        if len({i.day for i in items}) >= 2:", "        if True:"),
@@ -398,6 +413,12 @@ COLLECTOR_MUTATIONS = {
     "rates: halves down": (RATES, "math.floor(x / s + 0.5) * s", "math.ceil(x / s - 0.5) * s"),
     "rates: no step of 10": (RATES, "    if x < 1000:\n        return 10\n", ""),
     "rates: ends rounded inward": (RATES, "return math.floor(lo / step(lo)) * step(lo), math.ceil(hi / step(hi)) * step(hi)", "return math.ceil(lo / step(lo)) * step(lo), math.floor(hi / step(hi)) * step(hi)"),
+    # a sign's lift and its scores
+    "rates: lift range at 2 standard errors": (RATES, "LIFT_SE = 2.5", "LIFT_SE = 2"),
+    "rates: a range touching 1 passes": (RATES, "return clears_floor and lower is not None and lower > 1", "return clears_floor and lower is not None and lower >= 1"),
+    "rates: lift without the floor": (RATES, "    clears = w.clears_floor\n", "    clears = True\n"),
+    "rates: split scored with the one rate": (RATES, "rated += [(i, half) for i in side]", "rated += [(i, one) for i in side]"),
+    "rates: gain range from the plain standard error": (RATES, "    se = max(found) if None not in found else None\n", "    se = math.sqrt(math.fsum((g - gain) ** 2 for _, g in gains) / (n - 1) / n)\n"),
     # the figures check: the code against the figures file's SQL
     "figures: SQL from the wrong section": (FIGURES, "search(doc, heading.end(), stop)", "search(doc, 0, stop)"),
     "figures: a flight difference not reported": (FIGURES, "if a0.get(fid) != code.get(fid)}", "if (fid in a0) != (fid in code)}"),
@@ -411,6 +432,7 @@ COLLECTOR_MUTATIONS = {
     "figures: the whole `sign` table read": (FIGURES, '"SELECT sign, h, flight_key FROM signcell WHERE present"', '"SELECT sign, h, flight_key FROM sign"'),
     "figures: the last snapshot as first_fetch": (FIGURES, 'snaps[0]["fetched_at"]', 'snaps[-1]["fetched_at"]'),
     "figures: signs compared on one side only": (FIGURES, "for h, numbers in a0.keys() | code.keys()", "for h, numbers in a0.keys() & code.keys()"),
+    "figures: an A29 difference does not fail": (FIGURES, '                  f"{show_a29(name, expected)}")\n            failed = True\n', '                  f"{show_a29(name, expected)}")\n'),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
