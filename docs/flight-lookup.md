@@ -198,7 +198,9 @@ The total: 81 of 4,658 flights with a known result were listed as cancelled, 1 i
 | 24 hours | 3,449 | 35 | 98.5 | 49.3 to 197.9 | 1 in 100 (between 1 in 45 and 1 in 200) |
 | 12 hours | 3,625 | 25 | 145.0 | 71.4 to 295.6 | 1 in 150 (between 1 in 70 and 1 in 300) |
 | 6 hours | 3,704 | 19 | 194.9 | 96.6 to 394.4 | 1 in 190 (between 1 in 95 and 1 in 400) |
-| 3 hours | 3,754 | 16 | 234.6 | 120.0 to 459.7 | 1 in 230 (between 1 in 120 and 1 in 460) |
+| 3 hours | 3,754 | 16 | 234.6 | 120.0 to 459.7 | 1 in 230 (between 1 in 110 and 1 in 460) |
+
+The 3-hour row's range starts at 1 in 119.99 before rounding (120.0 at one decimal). C8 rounds the ends outward, so it shows as 1 in 110. Corrected 2026-11-12: the first version printed 1 in 120.
 
 Every row clears the floor: the thinnest has 16 cancelled flights from 11 airlines on 10 days (A6). The later rows hold more flights because the record's first days caught flights only in their last hours. Leaving out any one airline's flights moves the 24-hour row between 1 in 77.5 and 1 in 123.8, inside its range (A8).
 

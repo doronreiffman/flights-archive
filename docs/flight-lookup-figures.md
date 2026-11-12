@@ -978,8 +978,10 @@ total: 81 of 4,658: about 1 in 60 (between 1 in 35 and 1 in 95)
 24 hours: 35 of 3,449: about 1 in 100 (between 1 in 45 and 1 in 200)
 12 hours: 25 of 3,625: about 1 in 150 (between 1 in 70 and 1 in 300)
 6 hours: 19 of 3,704: about 1 in 190 (between 1 in 95 and 1 in 400)
-3 hours: 16 of 3,754: about 1 in 230 (between 1 in 120 and 1 in 460)
+3 hours: 16 of 3,754: about 1 in 230 (between 1 in 110 and 1 in 460)
 ```
+
+The 3-hour row's range starts at 1 in 119.99 before rounding (120.0 at one decimal). C8 rounds the ends outward, so it shows as 1 in 110. Corrected 2026-11-12: the first version printed 1 in 120.
 
 ## A36. The front page's headline today, on this model
 
