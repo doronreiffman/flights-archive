@@ -202,6 +202,8 @@ def _flight(rows: list[dict], last_sighting_: datetime) -> Flight:
 def flights(table: list[dict], last_sighting_: datetime) -> list[Flight]:
     """Every flight of the flights table (C1 to C4), sorted by key: the numbers of each slot (direction, airport,
     sched_utc_final) joined by rule C1, closed or not at `last_sighting_` (A0's `max(confirmed_until)`)."""
+    # By exact values. A0's slot string cuts the time to the minute, and a NULL part makes it NULL, which joins
+    # nothing; the two agree on today's data, whose times are whole minutes and whose slot parts are never NULL.
     slots: dict[tuple, list[dict]] = {}
     for r in table:
         slots.setdefault((r["direction"], r["airport"], r["sched_utc_final"]), []).append(r)

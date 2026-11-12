@@ -168,7 +168,8 @@ def test_a_cancelled_number_ties_by_airline_or_desks_only():
                    outcome="landed", est_utc_final=T(7, 2, 4))
     assert counting.tied(os1083, os083)
     assert numbers_of([os1083, os083]) == [("os083", "os1083")]
-    # A14: U8 103, listed as cancelled, beside BZ 112, which departed from the same desks.
+    # A14: U8 103, listed as cancelled, beside BZ 112, which departed from the same desks. A14 lists only the pair;
+    # the desks are made up.
     at = T(4, 8, 30)
     u8 = number("u8103", at, airline="U8", flight_no="103", airport="LCA", counters_final="60-63",
                 outcome="canceled")
@@ -224,6 +225,14 @@ def test_a_chain_never_joins_two_departed_numbers_apart():
     fl = counting.flights([ly001, ly002, ly9001], LAST)
     assert [(f.numbers, f.result) for f in fl] == [(("ly001",), "operated"), (("ly002",), "operated"),
                                                    (("ly9001",), "cancelled")]
+    # With DL 6002, LY 002's partner (the same expected time, terminal and desks), and a second LY number listed as
+    # cancelled: the numbers that departed regroup by expected time, terminal and desks, and each number that did not
+    # stands alone.
+    dl6002 = number("dl6002", at, airline="DL", flight_no="6002", est_utc_final=T(4, 10, 40))
+    ly9002 = number("ly9002", at, flight_no="9002", outcome="canceled")
+    fl = counting.flights([ly001, ly002, ly9001, dl6002, ly9002], LAST)
+    assert [(f.numbers, f.result) for f in fl] == [(("dl6002", "ly002"), "operated"), (("ly001",), "operated"),
+                                                   (("ly9001",), "cancelled"), (("ly9002",), "cancelled")]
 
 
 def test_nulls_tie_as_equal():
