@@ -339,6 +339,8 @@ The design's answer: it does, for the sign test, on three conditions.
 
 The first task of the plan is a test that cuts a synthetic archive at several moments and compares, with these cases in it: a number that leaves and returns, a retime at the cut, and a number whose flight changes after the moment. Where the two differ, the record has to be computed from cut builds. That means a build for every moment read, thousands of them, and neither the time nor the memory one build needs has been measured; the plan sizes it if the test fails.
 
+**Measured and ruled, 2026-11-12** (the plan's Task 1). The test found the known cases and one more: a build cut while a collection gap is still going on cannot know it is in one, which matters only to a record computed from cut builds. On the model of 2026-11-12, reading a moment by A0's rule and reading it as what the last download before the moment showed give the same table: no flight enters or leaves any row, although A0's rule uses the next download to know that a number had left. The differences from cut builds are the cases listed above. 7 checkpoint moments of the 7 numbers that left the list and came back fell while they were off it, so a cut build would leave those flights out of those rows: at most 3 flights in a row, none of them cancelled. A cut build would also link 3 of those numbers as retimes, at no checkpoint moment. C1's inputs read at the end are compared in the plan's Task 6. A record from cut builds would take about 86 builds per Israel day, about 124 to 365 hours of machine time over 60 days on this machine. My call: the record reads the full model by A0's rule, with these differences as its stated limits, and is not computed from cut builds. Apart from the table, these figures were measured once by the build and not rechecked: UNVERIFIED.
+
 What counts. The counting start is an Israel midnight written into the tagged commit, later than the moment the tag is pushed. Nothing about a counted flight was visible when the rule was fixed.
 
 What makes the freeze checkable. The tag is public, in the repository this site links to. The archive is private, so a reader cannot recompute the record either way; a daily file in a private bucket would be no more checkable than a tag. What a reader can check is that the rule existed before the flights it was scored on. CI runs on every push with no filter (`.github/workflows/ci.yml`), so pushing the tag should start a public run that the hosting service dates itself. That it starts such a run for a tag push is UNVERIFIED; the owner confirms when pushing.
@@ -462,7 +464,7 @@ Markup and CSS within the look rules of `docs/site-redesign.md`; how the table s
 
 ## Unverified
 
-- The model read "as of" a moment equals the model built from the archive cut at that moment, outside the known cases ("The record", condition 3). What cut builds would cost if it does not.
+- The size of the differences between the record and cut builds, apart from the table, and what cut builds would cost: measured once by the build ("The record", condition 3, "Measured and ruled").
 - That the hosting service starts a public run when a tag is pushed.
 - The upload price, the free invalidations and "every build rewrites every file" come from `docs/publishing.md`; the 1,040 files are the local build of 2026-11-04. None was re-read from AWS. The price of an invalidation beyond the free ones is not in the repository.
 - How much memory the full model build needs.
