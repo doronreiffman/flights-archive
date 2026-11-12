@@ -61,6 +61,9 @@ SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
 REPORT = ("src/model/report.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 RUNNER = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])
+LOAD = ("src/timeline/load.py", ["tests/test_timeline_build.py"])
+COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py"])
+FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -323,9 +326,22 @@ COLLECTOR_MUTATIONS = {
     "style: a label without its color": (STYLE, ".l-delayed { color: var(--delay-fg); background: var(--delay-bg); }", ""),
     "style: a web font": (STYLE, "/* --- page ", "@import url(font.css);\n/* --- page "),
     "style: flight numbers may wrap": (STYLE, ".cancellations td:nth-child(2) .d { white-space: pre; }", ".cancellations td:nth-child(2) .d { white-space: pre-wrap; }"),
-    "site: gap sentence from the store, not the last sighting": (SITE, "SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s", "SELECT fetched_at, confirmed_until, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s"),
+    "site: gap sentence from the store, not the last sighting": (LOAD, "SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s", "SELECT fetched_at, confirmed_until, lag(fetched_at) OVER (ORDER BY snap_rn) AS prev, gap_before_s"),
     "site: last updated from the store, not the last sighting": (SITE, 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]', 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]'),
     "report: gap from the store, not the last sighting": (REPORT, "lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev FROM snapshots", "lag(fetched_at) OVER (ORDER BY snap_rn) AS prev FROM snapshots"),
+    # the counting rule's number-level "as of" reading (docs/flight-lookup.md, C6), and the frozen rule's import guard
+    "counting: a number's last stretch ends at its last sighting": (COUNTING, "        return last_seen_at + timedelta(seconds=1)\n", "        return last_seen_at\n"),
+    "counting: every stretch runs to the last sighting": (COUNTING, 'to_at=nxt["observed_at"] if nxt else end,', "to_at=end,"),
+    "counting: carry-forward ends a second after the last sighting": (COUNTING, "    return fetches[i] if i < len(fetches) else datetime.max\n", "    return last_seen_at + timedelta(seconds=1)\n"),
+    "counting: the clock from the final scheduled time": (COUNTING, "t = s.sched_utc - timedelta(hours=h)", "t = own[-1].sched_utc - timedelta(hours=h)"),
+    "counting: the last passing counts": (COUNTING, "out.setdefault((fid, h), (t, s.status))", "out[(fid, h)] = (t, s.status)"),
+    "counting: a passing before the number was listed": (COUNTING, "if s.from_at <= t < s.to_at and not in_hole", "if t < s.to_at and not in_hole"),
+    "counting: a hole's edges count as inside it": (COUNTING, "any(a < t < b for a, b in holes_)", "any(a <= t <= b for a, b in holes_)"),
+    "counting: a hole at exactly an hour": (COUNTING, 's["gap_before_s"] > GAP_HOURS * 3600', 's["gap_before_s"] >= GAP_HOURS * 3600'),
+    "counting: the first list read as following a hole": (COUNTING, 's["gap_before_s"] is not None and ', 's["gap_before_s"] is None or '),
+    "counting: listed at a stretch's end": (COUNTING, "            if s.from_at <= t < s.to_at:\n", "            if s.from_at <= t <= s.to_at:\n"),
+    "counting: the last sighting from the latest store": (COUNTING, 'return snaps[-1]["confirmed_until"]', 'return snaps[-1]["fetched_at"]'),
+    "frozen: counting imports words": (FROZEN_GUARD, "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

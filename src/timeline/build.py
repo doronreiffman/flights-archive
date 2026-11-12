@@ -7,12 +7,11 @@ import sys
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-import duckdb
-
 from model.report import ATTRIBUTION
 from model.rules import GAP_HOURS
 
 from . import flights, views, words
+from .load import load
 
 STATIC = Path(__file__).parent / "static"
 MARKER = ".timeline-site"
@@ -20,31 +19,11 @@ MARKER = ".timeline-site"
 BOARD_KEEPS = timedelta(hours=22)
 BOARD_AHEAD = timedelta(hours=72)
 CHART_DAYS = 14  # past days (today included) with flights on the front page's chart; every later day is added
-OBS_COLUMNS = ("flight_id", "snap_rn", "observed_at", "prev_observed_at", "change_kind", "changed_fields",
-               "sched_local", "est_local", "status", "status_he", "terminal", "counters", "zone",
-               "airline_name", "airport_name", "city_en", "city_he", "country_en", "country_he")
-
-
-def _rows(con, sql: str) -> list[dict]:
-    cur = con.execute(sql)
-    names = [d[0] for d in cur.description]
-    return [dict(zip(names, r)) for r in cur.fetchall()]
 
 
 def _utc(day: date) -> datetime:
     """Midnight starting a local Israel date, as naive UTC like the model's times."""
     return datetime.combine(day, time(), tzinfo=words.ISRAEL).astimezone(timezone.utc).replace(tzinfo=None)
-
-
-def load(model_dir: Path) -> tuple[list[dict], list[dict], list[dict]]:
-    con = duckdb.connect()
-    con.execute("SET TimeZone = 'UTC'")
-    src = {t: str(model_dir / f"{t}.parquet").replace("'", "''") for t in ("flights", "observations", "snapshots")}
-    table = _rows(con, f"SELECT * FROM '{src['flights']}' ORDER BY sched_local_final, direction, airline, flight_no, flight_id")
-    obs = _rows(con, f"SELECT {', '.join(OBS_COLUMNS)} FROM '{src['observations']}' ORDER BY flight_id, snap_rn")
-    snaps = _rows(con, f"""SELECT fetched_at, confirmed_until, lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev, gap_before_s
-                           FROM '{src['snapshots']}' ORDER BY snap_rn""")
-    return table, obs, snaps
 
 
 def _partial_days(days: set[date], first_check: datetime, last_check: datetime) -> set[date]:
