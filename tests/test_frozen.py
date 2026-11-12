@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 TIMELINE = Path(__file__).resolve().parent.parent / "src" / "timeline"
-FROZEN = {"load", "counting"}  # Tasks 2 and 6 add "rates" and "record"
+FROZEN = {"load", "counting", "rates"}  # Task 6 adds "record"
+MODEL = TIMELINE.parent / "model"  # frozen too (the plan's "Frozen files"): it must import no timeline module at all
 ALLOWED = {"model", "duckdb"}  # beside the standard library
 
 
@@ -38,6 +39,39 @@ def foreign_imports(source: str) -> list[str]:
             elif outside(parts[0]):
                 bad.append(line)
     return bad
+
+
+def timeline_imports(source: str) -> list[str]:
+    """Each import in `source` that reaches the timeline package, absolute or by a relative path."""
+    bad = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "timeline" for a in node.names):
+            bad.append(ast.unparse(node))
+        elif isinstance(node, ast.ImportFrom):
+            parts = node.module.split(".") if node.module else []
+            if (node.level == 0 and parts[:1] == ["timeline"]) or (
+                    node.level > 0 and (parts[:1] == ["timeline"] or (not parts and any(
+                        a.name == "timeline" for a in node.names)))):
+                bad.append(ast.unparse(node))
+    return bad
+
+
+def test_model_modules_import_no_timeline_module():
+    found = {p.name: timeline_imports(p.read_text(encoding="utf-8")) for p in sorted(MODEL.glob("*.py"))}
+    assert found and found == {name: [] for name in found}
+
+
+@pytest.mark.parametrize("source", [
+    "import timeline.words", "import timeline", "from timeline import counting", "from timeline.rates import rate",
+    "from .. import timeline", "from ..timeline import words", "def f():\n    import timeline.load",
+])
+def test_the_model_guard_refuses_a_timeline_import(source):
+    assert timeline_imports(source) != []
+
+
+@pytest.mark.parametrize("source", ["import duckdb", "from . import rules", "from .rules import GAP_HOURS", "import model.rules"])
+def test_the_model_guard_allows_the_rest(source):
+    assert timeline_imports(source) == []
 
 
 def test_frozen_modules_import_only_frozen_modules():

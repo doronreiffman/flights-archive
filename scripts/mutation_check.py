@@ -63,6 +63,7 @@ REPORT = ("src/model/report.py", ["tests/test_model.py", "tests/test_model_recei
 RUNNER = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])
 LOAD = ("src/timeline/load.py", ["tests/test_timeline_build.py"])
 COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py"])
+RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
@@ -342,6 +343,20 @@ COLLECTOR_MUTATIONS = {
     "counting: listed at a stretch's end": (COUNTING, "            if s.from_at <= t < s.to_at:\n", "            if s.from_at <= t <= s.to_at:\n"),
     "counting: the last sighting from the latest store": (COUNTING, 'return snaps[-1]["confirmed_until"]', 'return snaps[-1]["fetched_at"]'),
     "frozen: counting imports words": (FROZEN_GUARD, "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
+    "frozen: model imports timeline": (("src/model/rules.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nimport timeline.words\n"),
+    "frozen: rates imports words": (("src/timeline/rates.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
+    # rule C8: the range, the floor and the rounding
+    "rates: the smaller standard error": (RATES, "max(se_aw, se_d)", "min(se_aw, se_d)"),
+    "rates: no small-sample factor": (RATES, "math.sqrt(groups / (groups - 1) * squares)", "math.sqrt(squares)"),
+    "rates: weeks start on Monday": (RATES, "(day.weekday() + 1) % 7", "day.weekday()"),
+    "rates: range on the rate scale": (RATES, "hi = 1 / (1 / (1 + math.exp(-(logit + half))))", "hi = 1 / (r + 2 * max(se_aw, se_d))"),
+    "rates: floor at 9": (RATES, "FLOOR_CANCELLED, FLOOR_AIRLINES, FLOOR_DAYS = 10, 5, 5", "FLOOR_CANCELLED, FLOOR_AIRLINES, FLOOR_DAYS = 9, 5, 5"),
+    "rates: floor without the airline count": (RATES, " and airlines >= FLOOR_AIRLINES", ""),
+    "rates: floor without the day count": (RATES, " and days >= FLOOR_DAYS", ""),
+    "rates: floor counts every flight's airline": (RATES, "len({i.airline for i in items if i.k})", "len({i.airline for i in items})"),
+    "rates: halves down": (RATES, "math.floor(x / s + 0.5) * s", "math.ceil(x / s - 0.5) * s"),
+    "rates: no step of 10": (RATES, "    if x < 1000:\n        return 10\n", ""),
+    "rates: ends rounded inward": (RATES, "return math.floor(lo / step(lo)) * step(lo), math.ceil(hi / step(hi)) * step(hi)", "return math.ceil(lo / step(lo)) * step(lo), math.floor(hi / step(hi)) * step(hi)"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
