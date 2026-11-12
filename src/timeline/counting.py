@@ -8,20 +8,15 @@ naive UTC.
 """
 from __future__ import annotations
 
-from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from model.rules import GAP_HOURS
 
 CHECKPOINTS = (70, 48, 24, 12, 6, 3)  # C5: hours before the scheduled time the list showed at the moment
-# Two candidate readings of where a number's last stretch ends ("The record", condition 3):
-#   "a0"     a second after the number's last sighting, as A0's `st` reads it;
-#   "carry"  at the fetch of the next kept snapshot after that sighting (the model's snapshots table: R2 drops a
-#            repeated store, and R9 folds an unchanged download into the sighting), or never (datetime.max) when
-#            the number is on the latest kept snapshot.
-READINGS = ("a0", "carry")
-READING = "a0"  # the reading the frozen rule uses; set by the owner's ruling at this task's stop
+# A number's last stretch ends a second after its last sighting, as A0's `st` reads it. The record reads the full
+# model by this rule; where a model built from the archive cut at a moment would read that moment otherwise, the
+# difference is a stated limit (docs/flight-lookup.md, "The record", "Measured and ruled, 2026-11-12").
 
 
 @dataclass(frozen=True)
@@ -30,7 +25,7 @@ class Stretch:
     flight_id: str
     snap_rn: int
     from_at: datetime  # this observation's time
-    to_at: datetime  # the next observation's time; after the last, where the reading ends it (READINGS)
+    to_at: datetime  # the next observation's time; after the last, a second after the number's last sighting
     to_ever: datetime  # the next observation's time, else datetime.max: the last state, kept after the number left
     sched_utc: datetime
     est_utc: datetime | None
@@ -39,27 +34,16 @@ class Stretch:
     desks: str  # the check-in counters, or ""
 
 
-def _last_end(last_seen_at: datetime, fetches: list[datetime], reading: str) -> datetime:
-    """Where a number's last stretch ends, by reading; `fetches` are the kept snapshots' fetch times in snap_rn order
-    (R2, R9), not every download."""
-    if reading == "a0":
-        return last_seen_at + timedelta(seconds=1)
-    i = bisect_right(fetches, last_seen_at)
-    return fetches[i] if i < len(fetches) else datetime.max
-
-
-def stretches(table: list[dict], obs: list[dict], snaps: list[dict], reading: str = READING) -> dict[str, tuple[Stretch, ...]]:
-    """Each number's stretches in snap_rn order, keyed by flight_id in the table's order."""
-    if reading not in READINGS:
-        raise ValueError(f"unknown reading {reading!r}; the readings are {READINGS}")
-    fetches = [s["fetched_at"] for s in snaps]
+def stretches(table: list[dict], obs: list[dict]) -> dict[str, tuple[Stretch, ...]]:
+    """Each number's stretches in snap_rn order, keyed by flight_id in the table's order. The last ends a second
+    after the number's last sighting (`last_seen_at`, R9)."""
     by_flight: dict[str, list[dict]] = {}
     for o in obs:
         by_flight.setdefault(o["flight_id"], []).append(o)
     out = {}
     for f in table:
         own = sorted(by_flight.get(f["flight_id"], []), key=lambda o: o["snap_rn"])
-        end = _last_end(f["last_seen_at"], fetches, reading)
+        end = f["last_seen_at"] + timedelta(seconds=1)
         out[f["flight_id"]] = tuple(
             Stretch(o["flight_id"], o["snap_rn"], from_at=o["observed_at"],
                     to_at=nxt["observed_at"] if nxt else end,

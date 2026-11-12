@@ -331,9 +331,8 @@ COLLECTOR_MUTATIONS = {
     "site: last updated from the store, not the last sighting": (SITE, 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]', 'first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["fetched_at"]'),
     "report: gap from the store, not the last sighting": (REPORT, "lag(confirmed_until) OVER (ORDER BY snap_rn) AS prev FROM snapshots", "lag(fetched_at) OVER (ORDER BY snap_rn) AS prev FROM snapshots"),
     # the counting rule's number-level "as of" reading (docs/flight-lookup.md, C6), and the frozen rule's import guard
-    "counting: a number's last stretch ends at its last sighting": (COUNTING, "        return last_seen_at + timedelta(seconds=1)\n", "        return last_seen_at\n"),
+    "counting: a number's last stretch ends at its last sighting": (COUNTING, 'end = f["last_seen_at"] + timedelta(seconds=1)', 'end = f["last_seen_at"]'),
     "counting: every stretch runs to the last sighting": (COUNTING, 'to_at=nxt["observed_at"] if nxt else end,', "to_at=end,"),
-    "counting: carry-forward ends a second after the last sighting": (COUNTING, "    return fetches[i] if i < len(fetches) else datetime.max\n", "    return last_seen_at + timedelta(seconds=1)\n"),
     "counting: the clock from the final scheduled time": (COUNTING, "t = s.sched_utc - timedelta(hours=h)", "t = own[-1].sched_utc - timedelta(hours=h)"),
     "counting: the last passing counts": (COUNTING, "out.setdefault((fid, h), (t, s.status))", "out[(fid, h)] = (t, s.status)"),
     "counting: a passing before the number was listed": (COUNTING, "if s.from_at <= t < s.to_at and not in_hole", "if t < s.to_at and not in_hole"),

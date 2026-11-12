@@ -4,6 +4,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -79,6 +80,27 @@ def write_receipt(receipts: Path, snapshot_id: str, *, action: str = "stored", w
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc))
     return str(path)
+
+
+def _path_time(day_folder: Path, name: str) -> datetime:
+    """The time in a collector path: date=YYYY-MM-DD/HHMMSSZ-..."""
+    return datetime.strptime(day_folder.name.removeprefix("date=") + name[:6], "%Y-%m-%d%H%M%S")
+
+
+def cut_archive(raw: Path, receipts: Path, moment: datetime, dest: Path) -> tuple[Path, Path]:
+    """The archive as it stood at `moment`: a copy under `dest` of the snapshot folders and receipt files whose path
+    time is at or before it. Returns the copy's (raw, receipts)."""
+    out_raw, out_receipts = dest / "raw", dest / "receipts"
+    out_raw.mkdir(parents=True)
+    out_receipts.mkdir(parents=True)
+    for folder in sorted(raw.glob("date=*/*Z-*")):
+        if folder.is_dir() and _path_time(folder.parent, folder.name) <= moment:
+            shutil.copytree(folder, out_raw / folder.parent.name / folder.name)
+    for file in sorted(receipts.glob("date=*/*Z-*.json")):
+        if _path_time(file.parent, file.name) <= moment:
+            (out_receipts / file.parent.name).mkdir(exist_ok=True)
+            shutil.copy2(file, out_receipts / file.parent.name / file.name)
+    return out_raw, out_receipts
 
 
 def build(raw: Path, receipts: Path | None = None):
