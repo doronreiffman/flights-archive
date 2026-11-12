@@ -6,11 +6,12 @@ Expected values by hand, but for the hand-built model's figures, which are A0's 
 from datetime import date, datetime, timedelta
 from itertools import permutations
 
+import pytest
 from pytest import approx
 
 import counting_fixture
 from counting_helpers import T, board, number, seen
-from timeline import counting
+from timeline import counting, record
 from timeline.counting import Flight, Stretch
 from timeline.rates import Counted
 
@@ -263,6 +264,63 @@ def test_nulls_tie_as_equal():
     a = number("a", at, airline="AA", est_utc_final=None)
     b = number("b", at, airline="BB", est_utc_final=None)
     assert counting.tied(a, b) and numbers_of([a, b]) == [("a", "b")]
+
+
+# A number the rule cannot place stops it by name, where A0 leaves the number out (docs/flight-lookup.md, "The record",
+# condition 2): a flights-table row with no scheduled time, direction, airport, airline or flight number, or an
+# observation with no scheduled time.
+
+UNPLACED = {"sched_utc_final": "a (LY 1) has no sched_utc_final", "direction": "a (LY 1) has no direction",
+            "airport": "a (LY 1) has no airport", "airline": "a (None 1) has no airline",
+            "flight_no": "a (LY None) has no flight_no"}
+
+
+@pytest.mark.parametrize("missing", UNPLACED)
+def test_a_number_with_a_missing_field_stops_the_rule_by_name(missing):
+    assert tuple(UNPLACED) == counting.PLACED_BY
+    table = [number("b", T(4, 10), flight_no="2"), number("a", T(4, 10)) | {missing: None}]
+    with pytest.raises(ValueError) as stop:
+        counting.flights(table, LAST)
+    assert str(stop.value) == f"1 number the counting rule cannot place: {UNPLACED[missing]}"
+
+
+def test_the_numbers_the_rule_cannot_place_are_named_in_one_order():
+    # every field a number lacks, in PLACED_BY's order, and the numbers by flight_id, whatever the table's order
+    table = [number("c", T(4, 10)) | {"airport": None, "sched_utc_final": None}, number("b", T(4, 10), flight_no="2"),
+             number("a", T(4, 11)) | {"flight_no": None}]
+    expected = ("2 numbers the counting rule cannot place: a (LY None) has no flight_no; "
+                "c (LY 1) has no sched_utc_final, airport")
+    for order in (table, table[::-1]):
+        with pytest.raises(ValueError) as stop:
+            counting.flights(order, LAST)
+        assert str(stop.value) == expected
+
+
+def test_an_observation_with_no_scheduled_time_stops_the_rule_by_name():
+    # LY 1 showed no scheduled time at snapshots 12 and 3, LY 2 at snapshot 7; an observation of a number not in the
+    # table is not read
+    table = [number("b", SCHED, flight_no="2", last_seen_at=T(3, 12, 30)), TABLE[0]]
+    obs = [*OBS, seen("b", 7, T(3, 10), sched_utc=None), seen("a", 12, T(3, 12), sched_utc=None),
+           seen("a", 3, T(3, 10, 30), sched_utc=None), seen("z", 4, T(3, 10), sched_utc=None)]
+    with pytest.raises(ValueError) as stop:
+        counting.stretches(table, obs)
+    assert str(stop.value) == ("3 observations with no scheduled time (sched_utc), which the counting rule cannot "
+                               "read: a at snapshot 3; a at snapshot 12; b at snapshot 7")
+
+
+@pytest.mark.parametrize("path", ["the figures", "the sign test"])
+def test_every_path_into_the_rule_stops_by_name(path):
+    def run(table: list[dict], obs: list[dict]):
+        snaps = board(T(3, 10), LAST)
+        return counting.figures(table, obs, snaps) if path == "the figures" else record.run(table, obs, snaps, T(1, 0))
+
+    placed = number("b", SCHED, flight_no="2")
+    obs = [seen("a", 1, T(3, 10), sched_utc=SCHED), seen("b", 1, T(3, 10), sched_utc=SCHED)]
+    run([placed, number("a", SCHED)], obs)  # both placed: it runs
+    with pytest.raises(ValueError, match=r"^1 number the counting rule cannot place: a \(LY 1\) has no airport$"):
+        run([placed, number("a", SCHED, airport=None)], obs)
+    with pytest.raises(ValueError, match=r"^1 observation with no scheduled time \(sched_utc\), .*: a at snapshot 1$"):
+        run([placed, number("a", SCHED)], [seen("a", 1, T(3, 10), sched_utc=None), obs[1]])
 
 
 # C2. Operated when any number departed or landed; cancelled when none did and one ended listed as cancelled;

@@ -347,6 +347,8 @@ COLLECTOR_MUTATIONS = {
     "counting: expected time left out of the tie": (COUNTING, 'return r["est_utc_final"], r["terminal_final"], _desks(r)', 'return r["terminal_final"], _desks(r)'),
     "counting: two desk ranges tie": (COUNTING, '    if da != "" and db != "" and da != db:\n', "    if False:\n"),
     "counting: two terminals tie": (COUNTING, '    if a["terminal_final"] != b["terminal_final"]:\n', "    if False:\n"),
+    "counting: a row with no scheduled time is read": (COUNTING, '    if unplaced:\n        raise ValueError(f"{len(unplaced)} number', '    if False:\n        raise ValueError(f"{len(unplaced)} number'),
+    "counting: an observation with no scheduled time is read": (COUNTING, '    if unplaced:\n        raise ValueError(f"{len(unplaced)} observation', '    if False:\n        raise ValueError(f"{len(unplaced)} observation'),
     "counting: a slot without the direction": (COUNTING, 'slots.setdefault((r["direction"], r["airport"], r["sched_utc_final"]), [])', 'slots.setdefault((r["airport"], r["sched_utc_final"]), [])'),
     "counting: two operated numbers tie by airline": (COUNTING, "return not (_operated(a) and _operated(b)) and (", "return ("),
     "counting: a cancelled number ties to any airline": (COUNTING, ' and (a["airline"] == b["airline"] or (da != "" and da == db))', ""),

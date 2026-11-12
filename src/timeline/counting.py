@@ -47,10 +47,19 @@ class Stretch:
 
 def stretches(table: list[dict], obs: list[dict]) -> dict[str, tuple[Stretch, ...]]:
     """Each number's stretches in snap_rn order, keyed by flight_id in the table's order. The last ends a second
-    after the number's last sighting (`last_seen_at`, R9)."""
+    after the number's last sighting (`last_seen_at`, R9). ValueError naming, by flight_id and snap_rn, every
+    observation of the table's numbers with no scheduled time, which the clock of each passing is read from (C6):
+    the counting code stops on it (docs/flight-lookup.md, "The record", condition 2). A table row's missing fields
+    are `flights`' check, which every path into the rule meets first."""
     by_flight: dict[str, list[dict]] = {}
     for o in obs:
         by_flight.setdefault(o["flight_id"], []).append(o)
+    unplaced = sorted((o["flight_id"], o["snap_rn"]) for f in table for o in by_flight.get(f["flight_id"], [])
+                      if o["sched_utc"] is None)
+    if unplaced:
+        raise ValueError(f"{len(unplaced)} observation{'' if len(unplaced) == 1 else 's'} with no scheduled time "
+                         "(sched_utc), which the counting rule cannot read: "
+                         + "; ".join(f"{fid} at snapshot {rn}" for fid, rn in unplaced))
     out = {}
     for f in table:
         own = sorted(by_flight.get(f["flight_id"], []), key=lambda o: o["snap_rn"])
@@ -202,11 +211,24 @@ def _flight(rows: list[dict], last_sighting_: datetime) -> Flight:
         first_seen=min(r["first_seen_at"] for r in rows))
 
 
+PLACED_BY = ("sched_utc_final", "direction", "airport", "airline", "flight_no")  # a number's slot, and C8's order
+
+
 def flights(table: list[dict], last_sighting_: datetime) -> list[Flight]:
     """Every flight of the flights table (C1 to C4), sorted by key: the numbers of each slot (direction, airport,
-    sched_utc_final) joined by rule C1, closed or not at `last_sighting_` (A0's `max(confirmed_until)`)."""
-    # By exact values. A0's slot string cuts the time to the minute, and a NULL part makes it NULL, which joins
-    # nothing; the two agree on today's data, whose times are whole minutes and whose slot parts are never NULL.
+    sched_utc_final) joined by rule C1, closed or not at `last_sighting_` (A0's `max(confirmed_until)`). ValueError
+    naming, by flight_id, airline and number, every row with no scheduled time, direction, airport, airline or flight
+    number, and which of them it lacks: the counting code stops on it (docs/flight-lookup.md, "The record",
+    condition 2)."""
+    unplaced = sorted(((r["flight_id"], r["airline"], r["flight_no"], [name for name in PLACED_BY if r[name] is None])
+                       for r in table if any(r[name] is None for name in PLACED_BY)), key=lambda u: tuple(map(str, u)))
+    if unplaced:
+        raise ValueError(f"{len(unplaced)} number{'' if len(unplaced) == 1 else 's'} the counting rule cannot place: "
+                         + "; ".join(f"{fid} ({airline} {flight_no}) has no {', '.join(names)}"
+                                     for fid, airline, flight_no, names in unplaced))
+    # By exact values. A0's slot string cuts the time to the minute; the two agree on today's data, whose times are
+    # whole minutes. A NULL slot part makes A0's slot NULL, which joins nothing, so A0 leaves such a number out; the
+    # code stops and names it instead (the check above).
     slots: dict[tuple, list[dict]] = {}
     for r in table:
         slots.setdefault((r["direction"], r["airport"], r["sched_utc_final"]), []).append(r)
