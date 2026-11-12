@@ -354,12 +354,13 @@ def test_a_delayed_number_is_in_the_row():
 
 def test_a_flight_is_in_the_row_when_any_number_passed_listed_normally():
     # EY 607 and LY 9614, one flight (the same expected time, terminal and desks), scheduled 5 Nov 12:00 and listed
-    # from 72 hours before: LY 9614 as cancelled from 50 hours before, EY 607 from 20 hours before.
+    # from 72 hours before: EY 607 as cancelled from 50 hours before, LY 9614 from 20 hours before. The number listed
+    # normally longer is neither the first of the flight's numbers nor the grouping airline's.
     s = T(5, 12)
     table = [number("ey607", s, airline="EY", flight_no="607", outcome="canceled"),
              number("ly9614", s, flight_no="9614", outcome="canceled")]
-    obs = [seen("ey607", 1, T(2, 12), sched_utc=s), seen("ey607", 70, T(4, 16), sched_utc=s, status="CANCELED"),
-           seen("ly9614", 1, T(2, 12), sched_utc=s), seen("ly9614", 10, T(3, 10), sched_utc=s, status="CANCELED")]
+    obs = [seen("ey607", 1, T(2, 12), sched_utc=s), seen("ey607", 10, T(3, 10), sched_utc=s, status="CANCELED"),
+           seen("ly9614", 1, T(2, 12), sched_utc=s), seen("ly9614", 70, T(4, 16), sched_utc=s, status="CANCELED")]
     both = ("ey607", "ly9614")
     assert in_rows(table, obs) == [(70, both, T(2, 14), 1), (48, both, T(3, 12), 1), (24, both, T(4, 12), 1)]
 
@@ -377,6 +378,26 @@ def test_the_rows_moment_is_the_earliest_passing():
     assert [passed[(fid, 48)][0] for fid in ("ey607", "ly9614")] == [T(3, 13), T(3, 12)]
     assert [(h, t) for h, _, t, _ in in_rows(table, obs)] == [
         (70, T(2, 14)), (48, T(3, 12)), (24, T(4, 12)), (12, T(5, 0)), (6, T(5, 6)), (3, T(5, 9))]
+
+
+def test_a_passing_with_no_status_puts_its_flight_in_no_row():
+    # As in A0's `cell`, where NULL <> 'CANCELED' is NULL: a passing with no status puts its flight in no row and
+    # sets no moment. An empty status is a status, listed normally (the model has 4 such observations and no NULL).
+    s = T(5, 12)
+    table = [number("a", s), number("b", s, airport="LCA")]
+    obs = [seen("a", 1, T(2, 12), sched_utc=s, status=None), seen("a", 40, T(4, 6), sched_utc=s),
+           seen("b", 1, T(2, 12), sched_utc=s, status="")]
+    assert [(h, numbers) for h, numbers, _, _ in in_rows(table, obs)] == [
+        (70, ("b",)), (48, ("b",)), (24, ("a",)), (24, ("b",)), (12, ("a",)), (12, ("b",)), (6, ("a",)), (6, ("b",)),
+        (3, ("a",)), (3, ("b",))]
+    # One flight: LY 9614, with no status, passes 70 and 48 hours an hour before EY 607, which showed 13:00 until a
+    # retime seen 4 Nov 00:00. The flight's moments there are EY 607's.
+    table = [number("ey607", s, airline="EY", flight_no="607", sched_local_first=T(5, 15)),
+             number("ly9614", s, flight_no="9614")]
+    obs = [seen("ey607", 1, T(2, 12), sched_utc=T(5, 13)), seen("ey607", 50, T(4, 0), sched_utc=s),
+           seen("ly9614", 1, T(2, 12), sched_utc=s, status=None), seen("ly9614", 50, T(4, 0), sched_utc=s)]
+    assert [(h, t) for h, _, t, _ in in_rows(table, obs)] == [
+        (70, T(2, 15)), (48, T(3, 13)), (24, T(4, 12)), (12, T(5, 0)), (6, T(5, 6)), (3, T(5, 9))]
 
 
 def test_cancelled_after_its_time_counts_in_every_row_it_was_in():
@@ -420,7 +441,8 @@ def test_open_and_unknown_flights_make_no_rate():
 
 # The figures on a model built by hand (tests/counting_fixture.py): 650 flights over 6 Israel days and 6 airlines, 12
 # of them closed and cancelled. The expected values are A0's SQL's (docs/flight-lookup-figures.md, A0 with A2 and A6)
-# run over the same rows, with the rate and its ends unrounded and the standard errors themselves.
+# run over the same rows, with the rate and its ends unrounded and the standard errors themselves:
+# `.venv/bin/python scripts/counting_fixture_oracle.py` prints them.
 FIXTURE = {  # cancelled, flights, airlines, days, clears_floor; one_in, from, to; se_airline_week, se_day
     "total": ((12, 492, 6, 5, True), (41.0, 26.7870, 63.0467), (0.00522317, 0.00279113)),
     70: ((7, 222, 5, 3, False), (31.7143, 16.6073, 61.4439), (0.0103367, 0.00474344)),

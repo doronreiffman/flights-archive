@@ -238,14 +238,15 @@ class Cell:
     k: int
 
 
-def cells(flights_: list[Flight], passings_: dict[tuple[str, int], tuple[datetime, str]]) -> list[Cell]:
+def cells(flights_: list[Flight], passings_: dict[tuple[str, int], tuple[datetime, str | None]]) -> list[Cell]:
     """The flights in each row, in CHECKPOINTS order, then in the order of `flights_` (C5 to C7): a closed flight
     with a known result is in row h when any of its numbers passed h with a status other than CANCELED (C6). A flight
-    already listed as cancelled when first seen is in no row."""
+    already listed as cancelled when first seen is in no row. A passing with no status counts for nothing, as in A0's
+    `cell`, where NULL <> 'CANCELED' is NULL (the model has none so far; an empty status is listed normally)."""
     of = flight_of(flights_)
     moment: dict[tuple[int, tuple], datetime] = {}
     for (fid, h), (t, status) in passings_.items():
-        if status != "CANCELED":
+        if status not in (None, "CANCELED"):
             at = (h, of[fid].key)
             moment[at] = min(t, moment.get(at, t))
     return [Cell(h, f, moment[(h, f.key)], counted(f).k) for h in CHECKPOINTS for f in flights_

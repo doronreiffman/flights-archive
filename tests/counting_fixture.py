@@ -5,9 +5,10 @@ to 3 November 2026, and 6 airlines.
 Downloads every 30 minutes from 28 October 06:00 UTC, none from 02:30 to 07:30 on 31 October (a hole), the last at
 4 November 10:00, seen again until 10:16:45 (the last sighting). So the flights scheduled up to 2 November 10:16:45 UTC
 are closed (C4), the first days' flights were caught only in their last hours, and the hole takes out closed flights'
-checkpoints in every row but the 70-hour one (there it falls on open flights only). Twelve flights are closed and cancelled, each a case of its own (`cancelled`); the rest are everyday flights
-with delays, late listings, retimes and codeshares (`everyday`), and the cases beside them (`others`): open flights,
-flights with no known result, retimes, codeshares and the hole's edges.
+checkpoints in every row but the 70-hour one (there it falls on open flights only). Twelve flights are closed and
+cancelled, each a case of its own (`cancelled`); the rest are everyday flights with delays, late listings, retimes and
+codeshares (`everyday`), and the cases beside them (`others`): open flights, flights with no known result, retimes,
+codeshares and the hole's edges.
 
 Plain deterministic Python, so CI runs it. The figures it gives were computed outside the code, with A0's SQL
 (docs/flight-lookup-figures.md) run over these same rows. All times are naive UTC; Israel time is UTC+2 throughout.
@@ -202,9 +203,9 @@ def everyday(count: int) -> list[tuple[dict, list[dict]]]:
     """`count` everyday flights: on each Israel day each airline flies 17 (and the first pairs of day and airline an
     18th, up to `count`), 80 minutes apart, departures and arrivals in turn. One in ten codeshares with another
     airline (whose number is the lower one on every other day; half these partners are first listed 30 hours before);
-    one in ten is DELAYED from 8 hours before; one in twenty is
-    first listed 30 hours before, one in twenty 9 hours before, and one in twenty retimed an hour later 20 hours
-    before. Arrivals show NOT FINAL from 7 hours before, departures FINAL from 2 hours before."""
+    one in ten is DELAYED from 8 hours before; one in twenty is first listed 30 hours before, one in twenty 9 hours
+    before, and one in twenty retimed an hour later 20 hours before. Arrivals show NOT FINAL from 7 hours before,
+    departures FINAL from 2 hours before."""
     out = []
     pairs = [(d, a) for d in range(6) for a in range(6)]
     extra = count - 17 * len(pairs)
@@ -234,7 +235,8 @@ def everyday(count: int) -> list[tuple[dict, list[dict]]]:
             if v in (3, 13):
                 partner = AIRLINES[(a + 3) % 6]
                 no = str(9000 + 100 * a + j) if d % 2 == 0 else str(10 + j)
-                out.append(listing(partner, no, direction, airport, sched, **kw | {"listed": -30 if v == 13 else listed}))
+                own = kw | {"listed": -30 if v == 13 else listed}
+                out.append(listing(partner, no, direction, airport, sched, **own))
     return out
 
 
