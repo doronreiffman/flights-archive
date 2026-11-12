@@ -440,7 +440,7 @@ Implementer: integration (Opus). Design: C4 to C7, "The figures under the method
 - Create: `tests/counting_fixture.py` (the hand-computed model, in CI)
 
 **Interfaces:**
-- Consumes: Task 1's `stretches` (with `READING`), `holes` and `passings`; Task 3's `flights`; `rates.rate`, `rates.Counted`.
+- Consumes: Task 1's `stretches(table, obs)` (A0's rule, the owner's ruling; it has no reading option since Step 10), `holes` and `passings`; Task 3's `flights`; `rates.rate`, `rates.Counted`.
 - Produces, in `timeline.counting`:
 
 ```python
