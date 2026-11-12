@@ -346,6 +346,10 @@ COLLECTOR_MUTATIONS = {
     "frozen: model imports timeline": (("src/model/rules.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nimport timeline.words\n"),
     "frozen: rates imports words": (("src/timeline/rates.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
     # rule C8: the range, the floor and the rounding
+    "rates: a range from one airline-and-week group": (RATES, "        if len({(i.airline, week(i.day)) for i in items}) >= 2:", "        if True:"),
+    "rates: a range from one day group": (RATES, "        if len({i.day for i in items}) >= 2:", "        if True:"),
+    "rates: a range at zero cancelled": (RATES, "if 0 < cancelled < n_all:", "if cancelled < n_all:"),
+    "rates: a range when all are cancelled": (RATES, "if 0 < cancelled < n_all:", "if 0 < cancelled:"),
     "rates: the smaller standard error": (RATES, "max(se_aw, se_d)", "min(se_aw, se_d)"),
     "rates: no small-sample factor": (RATES, "math.sqrt(groups / (groups - 1) * squares)", "math.sqrt(squares)"),
     "rates: weeks start on Monday": (RATES, "(day.weekday() + 1) % 7", "day.weekday()"),

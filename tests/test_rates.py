@@ -78,6 +78,9 @@ def test_no_range_at_zero_or_with_one_group():
     one_day = rate(rows("A", date(2026, 10, 26), 5, 1) + rows("B", date(2026, 10, 26), 5, 0))
     assert one_day.one_in == 10.0
     assert one_day.one_in_from is None and one_day.one_in_to is None and one_day.se_day is None
+    one_group = rate(rows("A", date(2026, 10, 26), 5, 1) + rows("A", date(2026, 10, 27), 5, 0))  # one airline, one week
+    assert one_group.one_in == 10.0
+    assert one_group.se_airline_week is None and one_group.one_in_from is None and one_group.one_in_to is None
     everything = rate(rows("A", date(2026, 10, 26), 3, 3) + rows("B", date(2026, 10, 27), 3, 3))
     assert everything.one_in == 1.0 and everything.one_in_from is None
 
