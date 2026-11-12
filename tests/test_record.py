@@ -68,6 +68,16 @@ def test_s1_departures_only():
     assert signs(24, READER, out) == {"d": frozenset({"S3"})}
 
 
+def test_s1_needs_an_inbound_from_the_same_airport():
+    # LY 2 lands from CDG, not ATH: another flight of the airline (S3), not LY 1's inbound
+    assert signs(24, READER, inbound(T(3, 8), airport="CDG"))["d"] == frozenset({"S3"})
+
+
+def test_s1_and_s3_need_the_same_airline():
+    # AF 2 lands from ATH 4 hours before LY 1 leaves for it, listed as cancelled as a whole: another airline's
+    assert signs(24, READER, inbound(T(3, 8), airline="AF"))["d"] == frozenset()
+
+
 @pytest.mark.parametrize("before, s1", [(timedelta(minutes=30), True), (timedelta(hours=12), True),
                                         (timedelta(minutes=29), False), (timedelta(hours=12, minutes=1), False)])
 def test_s1_window(before, s1):
@@ -173,6 +183,23 @@ def test_s2_absent_when_the_latest_before_departed():
     assert signs(24, READER, early)["d"] == frozenset({"S2"})
 
 
+def test_s2_the_same_time_is_not_before():
+    # LY 1 to CDG at the reader's own time, listed as cancelled: another flight of the airline (S3); the latest before
+    # is LY 1 to ATH a day earlier, which departed
+    same_time = listing("same", D, (FIRST, "CANCELED"), airport="CDG")
+    earlier = listing("earlier", T(2, 8), (FIRST, "ON TIME"), (T(2, 8, 10), "DEPARTED"), last_seen_at=T(2, 10))
+    assert signs(24, READER, same_time, earlier)["d"] == frozenset({"S3"})
+
+
+@pytest.mark.parametrize("cancelled, found", [("pa", frozenset({"S2", "S3"})), ("pb", frozenset({"S3"}))])
+def test_s2_a_tie_goes_to_the_smaller_flight_id(cancelled, found):
+    # two flights of LY 1 at the same time a day before the reader, to two airports (so neither is tied to the other);
+    # one is listed as cancelled. The latest before is pa, the smaller flight_id: S2 only when pa is the cancelled one
+    pair = [listing(fid, AT, (FIRST, "CANCELED" if fid == cancelled else "ON TIME"), airport=airport)
+            for fid, airport in (("pb", "CDG"), ("pa", "FCO"))]
+    assert signs(24, READER, *pair)["d"] == found
+
+
 # --- S3 -------------------------------------------------------------------------------------------------
 
 S3_CASES = {
@@ -231,5 +258,8 @@ def test_a_flight_carries_s1_when_one_number_shows_it_and_s4_only_when_all_do():
         out_of_row.flight.key: frozenset({"S4"})}
 
 
-def test_the_signs():
-    assert record.SIGNS == ("S1", "S2", "S3", "S4")
+def test_a_cell_with_no_number_in_the_row_is_refused():
+    f = counting.Flight(key=("D", "ATH", D, "a"), numbers=("a",), result="operated", closed=True, airline="LY",
+                        day=date(2026, 11, 3), first_seen=FIRST)
+    with pytest.raises(ValueError, match="no number of the flight"):
+        record.flight_signs([counting.Cell(24, f, AT, 0)], {"b": frozenset({"S4"})})

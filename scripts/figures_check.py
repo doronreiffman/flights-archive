@@ -6,12 +6,12 @@ repository root:
     PYTHONPATH=src .venv/bin/python scripts/figures_check.py --model data/model-2026-11-12
 
 It prints each figure the code gives with "ok" when it matches the figures file's printed value (EXPECTED), or with
-both values, A25's sign counts the same way; then each number rule C1 groups differently from A0's `num`, each flight
-whose place in a row of the table (its moment, and whether it ended cancelled) differs from A0's `cell`, each flight
-whose signs in a row differ from A0b's, and anything the code holds twice, with the count of each. Exit 1 on any
-difference. EXPECTED holds the figures file's results, which come from the model saved as data/model-2026-11-12:
-`data/model` is rebuilt after every sync, so its figures move, while its flights, cells and signs must still match A0
-and A0b.
+both values, and A25's sign counts the same way (EXPECTED_A25); then each number rule C1 groups differently from A0's
+`num`, each flight whose place in a row of the table (its moment, and whether it ended cancelled) differs from A0's
+`cell`, each flight whose signs in a row differ from A0b's, and anything the code holds twice, with the count of
+each. Exit 1 on any difference. EXPECTED and EXPECTED_A25 hold the figures file's results, which come from the model
+saved as data/model-2026-11-12: `data/model` is rebuilt after every sync, so its figures move, while its flights,
+cells and signs must still match A0 and A0b.
 """
 import argparse
 import re
@@ -37,26 +37,26 @@ EXPECTED: dict[str, object] = {
     "12 hours": (25, 3625, 145.0, 71.4, 295.6),
     "6 hours": (19, 3704, 194.9, 96.6, 394.4),
     "3 hours": (16, 3754, 234.6, 120.0, 459.7),
-    # A25: each sign at 48, 24, 12 and 6 hours: cancelled and flights with it, cancelled and flights without it, the
-    # airlines and the days among the cancelled flights with it, and whether those clear the floor (C8)
-    "A25": {
-        ("S1", 48): (1, 1, 27, 1660, 1, 1, False),
-        ("S1", 24): (2, 5, 20, 1715, 1, 2, False),
-        ("S1", 12): (2, 7, 13, 1816, 2, 2, False),
-        ("S1", 6): (1, 8, 9, 1842, 1, 1, False),
-        ("S2", 48): (4, 15, 43, 3301, 3, 3, False),
-        ("S2", 24): (4, 30, 31, 3419, 2, 3, False),
-        ("S2", 12): (2, 36, 23, 3589, 2, 2, False),
-        ("S2", 6): (1, 38, 18, 3666, 1, 1, False),
-        ("S3", 48): (8, 170, 39, 3146, 3, 5, False),
-        ("S3", 24): (11, 491, 24, 2958, 4, 7, False),
-        ("S3", 12): (10, 987, 15, 2638, 5, 6, True),
-        ("S3", 6): (7, 1151, 12, 2553, 4, 4, False),
-        ("S4", 48): (0, 0, 47, 3316, 0, 0, False),
-        ("S4", 24): (1, 11, 34, 3438, 1, 1, False),
-        ("S4", 12): (2, 23, 23, 3602, 2, 2, False),
-        ("S4", 6): (2, 30, 17, 3674, 2, 2, False),
-    },
+}
+# A25: each sign at 48, 24, 12 and 6 hours: cancelled and flights with it, cancelled and flights without it, the
+# airlines and the days among the cancelled flights with it, and whether those clear the floor (C8)
+EXPECTED_A25: dict[tuple[str, int], tuple] = {
+    ("S1", 48): (1, 1, 27, 1660, 1, 1, False),
+    ("S1", 24): (2, 5, 20, 1715, 1, 2, False),
+    ("S1", 12): (2, 7, 13, 1816, 2, 2, False),
+    ("S1", 6): (1, 8, 9, 1842, 1, 1, False),
+    ("S2", 48): (4, 15, 43, 3301, 3, 3, False),
+    ("S2", 24): (4, 30, 31, 3419, 2, 3, False),
+    ("S2", 12): (2, 36, 23, 3589, 2, 2, False),
+    ("S2", 6): (1, 38, 18, 3666, 1, 1, False),
+    ("S3", 48): (8, 170, 39, 3146, 3, 5, False),
+    ("S3", 24): (11, 491, 24, 2958, 4, 7, False),
+    ("S3", 12): (10, 987, 15, 2638, 5, 6, True),
+    ("S3", 6): (7, 1151, 12, 2553, 4, 4, False),
+    ("S4", 48): (0, 0, 47, 3316, 0, 0, False),
+    ("S4", 24): (1, 11, 34, 3438, 1, 1, False),
+    ("S4", 12): (2, 23, 23, 3602, 2, 2, False),
+    ("S4", 6): (2, 30, 17, 3674, 2, 2, False),
 }
 A25_HOURS = (48, 24, 12, 6)
 
@@ -240,8 +240,6 @@ def main(argv: list[str]) -> int:
     got = {"total": figure(fig.total)} | {f"{h} hours": figure(r) for h, r in fig.rows}
     failed = False
     for name, expected in EXPECTED.items():
-        if name == "A25":
-            continue
         value = got.get(name)
         if value == expected:
             print(f"{name}: {show(value)} ok")
@@ -249,7 +247,7 @@ def main(argv: list[str]) -> int:
             print(f"{name}: the code {show(value)}, the figures file {show(expected)}")
             failed = True
     counts = sign_counts(cells_, carried)
-    for (sign, h), expected in EXPECTED.get("A25", {}).items():
+    for (sign, h), expected in EXPECTED_A25.items():
         if counts.get((sign, h)) == expected:
             print(f"A25 {sign} {h} hours: {show_signs(expected)} ok")
         else:

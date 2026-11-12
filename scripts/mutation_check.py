@@ -366,6 +366,7 @@ COLLECTOR_MUTATIONS = {
     "frozen: counting imports words": (FROZEN_GUARD, "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
     "frozen: model imports timeline": (("src/model/rules.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nimport timeline.words\n"),
     "frozen: rates imports words": (("src/timeline/rates.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
+    "frozen: record imports words": (("src/timeline/record.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
     # the signs S1 to S4, each read as of its number's checkpoint moment, and what a flight carries
     "record: S1 for arrivals too": (RECORD, 'if r["direction"] == "D" and any(', "if any("),
     "record: S1 window from the departure's final time": (RECORD, "_between(of_airline, sched - INBOUND[1], sched - INBOUND[0])", '_between(of_airline, r["sched_utc_final"] - INBOUND[1], r["sched_utc_final"] - INBOUND[0])'),
@@ -377,6 +378,10 @@ COLLECTOR_MUTATIONS = {
     "record: S4 carried when one number shows it": (RECORD, 'EVERY = frozenset({"S4"})', "EVERY = frozenset()"),
     "record: S1 carried only when all show it": (RECORD, 'EVERY = frozenset({"S4"})', 'EVERY = frozenset({"S4", "S1"})'),
     "record: a number first seen after the moment read": (RECORD, "y.from_at <= t < y.to_ever", "t < y.to_ever"),
+    "record: S1 inbound from any airport": (RECORD, 'by_id[a.flight_id]["direction"] == "A" and by_id[a.flight_id]["airport"] == r["airport"]', 'by_id[a.flight_id]["direction"] == "A"'),
+    "record: S1 and S3 from any airline": (RECORD, 'cancelled.setdefault(r["airline"], []).append(s)', '[cancelled.setdefault(airline, []).append(s) for airline in {x["airline"] for x in table}]'),
+    "record: S2 the same time counts as before": (RECORD, "a.sched_utc < sched)", "a.sched_utc <= sched)"),
+    "record: S2 tie broken by the larger flight_id": (RECORD, "key=lambda a: a.flight_id)", "key=lambda a: a.flight_id, reverse=True)"),
     # rule C8: the range, the floor and the rounding
     "rates: a range from one airline-and-week group": (RATES, "        if len({(i.airline, week(i.day)) for i in items}) >= 2:", "        if True:"),
     "rates: a range from one day group": (RATES, "        if len({i.day for i in items}) >= 2:", "        if True:"),
@@ -400,6 +405,12 @@ COLLECTOR_MUTATIONS = {
     "figures: a cell difference not reported": (FIGURES, "if a0.get((h, ids)) != code.get((h, ids))]", "if False]"),
     "figures: cells compared on one side only": (FIGURES, "for h, ids in a0.keys() | code.keys()", "for h, ids in a0.keys() & code.keys()"),
     "figures: a found difference does not fail": (FIGURES, "failed = failed or bool(found)", "failed = failed"),
+    "figures: an A25 difference does not fail": (FIGURES, '                  f"{show_signs(expected)}")\n            failed = True\n', '                  f"{show_signs(expected)}")\n'),
+    "figures: S1 counted with arrivals": (FIGURES, 'c.h == h and (sign != "S1" or c.flight.key[0] == "D")', "c.h == h"),
+    "figures: a sign difference not reported": (FIGURES, "if a0.get((h, numbers)) != code.get((h, numbers)))", "if False)"),
+    "figures: the whole `sign` table read": (FIGURES, '"SELECT sign, h, flight_key FROM signcell WHERE present"', '"SELECT sign, h, flight_key FROM sign"'),
+    "figures: the last snapshot as first_fetch": (FIGURES, 'snaps[0]["fetched_at"]', 'snaps[-1]["fetched_at"]'),
+    "figures: signs compared on one side only": (FIGURES, "for h, numbers in a0.keys() | code.keys()", "for h, numbers in a0.keys() & code.keys()"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

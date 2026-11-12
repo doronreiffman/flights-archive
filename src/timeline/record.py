@@ -121,10 +121,14 @@ def number_signs(h: int, table: list[dict], st: dict[str, tuple[Stretch, ...]], 
 def flight_signs(cells_h: list[Cell], number_signs_: dict[str, frozenset[str]]) -> dict[tuple, frozenset[str]]:
     """Flight key -> the signs the flight carries in one checkpoint's row, for each of `cells_h` (that row's cells),
     from `number_signs_` (number_signs at the same checkpoint): S1 to S3 when any of its numbers in the row shows it,
-    S4 when every one of them does (A0b's `sign`)."""
+    S4 when every one of them does (A0b's `sign`). ValueError for a cell with no number in `number_signs_`: a cell
+    is in the row because one of its numbers is, so the two come from different checkpoints (and S4 would hold of no
+    number at all)."""
     out = {}
     for c in cells_h:
         shown = [number_signs_[fid] for fid in c.flight.numbers if fid in number_signs_]
+        if not shown:
+            raise ValueError(f"row {c.h}: no number of the flight {c.flight.key} has signs in this row")
         out[c.flight.key] = frozenset(sign for sign in SIGNS
                                       if (all if sign in EVERY else any)(sign in signs for signs in shown))
     return out

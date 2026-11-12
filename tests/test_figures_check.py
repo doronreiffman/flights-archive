@@ -493,25 +493,36 @@ def test_run_sql_refuses_an_a0_that_reads_no_model_path(check, model, tmp_path, 
 
 
 def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
-    expected = {name: sql_figure(r) for name, r in sql_figures(check, model).items()} | {"A25": sql_a25(check, model)}
+    expected = {name: sql_figure(r) for name, r in sql_figures(check, model).items()}
+    expected_a25 = sql_a25(check, model)
     monkeypatch.setattr(check, "EXPECTED", expected)
+    monkeypatch.setattr(check, "EXPECTED_A25", expected_a25)
     assert check.main(["--model", str(model.dir)]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        *(f"{name}: {check.show(v)} ok" for name, v in expected.items() if name != "A25"),
-        *(f"A25 {sign} {h} hours: {check.show_signs(v)} ok" for (sign, h), v in expected["A25"].items()),
+        *(f"{name}: {check.show(v)} ok" for name, v in expected.items()),
+        *(f"A25 {sign} {h} hours: {check.show_signs(v)} ok" for (sign, h), v in expected_a25.items()),
         "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
 
     cancelled, flights, *ends = expected["24 hours"]
-    with_, flights_with, *rest = expected["A25"]["S3", 24]
-    monkeypatch.setattr(check, "EXPECTED", expected | {
-        "24 hours": (cancelled, flights + 1, *ends),
-        "A25": expected["A25"] | {("S3", 24): (with_, flights_with + 1, *rest)}})
+    monkeypatch.setattr(check, "EXPECTED", expected | {"24 hours": (cancelled, flights + 1, *ends)})
     assert check.main(["--model", str(model.dir)]) == 1
     out = capsys.readouterr().out.splitlines()
     assert [line for line in out if not line.endswith(" ok")] == [
         f"24 hours: the code {check.show(expected['24 hours'])}, the figures file "
         f"{check.show((cancelled, flights + 1, *ends))}",
-        f"A25 S3 24 hours: the code {check.show_signs(expected['A25']['S3', 24])}, the figures file "
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
+
+
+def test_main_fails_on_an_a25_row_that_differs(check, model, monkeypatch, capsys):
+    """An A25 row alone fails the run, every figure and comparison matching."""
+    expected_a25 = sql_a25(check, model)
+    with_, flights_with, *rest = expected_a25["S3", 24]
+    monkeypatch.setattr(check, "EXPECTED", {name: sql_figure(r) for name, r in sql_figures(check, model).items()})
+    monkeypatch.setattr(check, "EXPECTED_A25", expected_a25 | {("S3", 24): (with_, flights_with + 1, *rest)})
+    assert check.main(["--model", str(model.dir)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert [line for line in out if not line.endswith(" ok")] == [
+        f"A25 S3 24 hours: the code {check.show_signs(expected_a25['S3', 24])}, the figures file "
         f"{check.show_signs((with_, flights_with + 1, *rest))}",
         "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
 
@@ -539,8 +550,8 @@ def test_main_fails_on_a_flight_cell_or_sign_difference(check, model, monkeypatc
     fig = counting.figures(model.table, model.obs, model.snaps)
     cells_ = model.cells()
     monkeypatch.setattr(check, "EXPECTED", {"total": check.figure(fig.total)}
-                        | {f"{h} hours": check.figure(r) for h, r in fig.rows}
-                        | {"A25": check.sign_counts(cells_, model.carried(check, cells_))})
+                        | {f"{h} hours": check.figure(r) for h, r in fig.rows})
+    monkeypatch.setattr(check, "EXPECTED_A25", check.sign_counts(cells_, model.carried(check, cells_)))
     assert check.main(["--model", str(model.dir)]) == 1
     out = [line for line in capsys.readouterr().out.splitlines() if not line.endswith(" ok")]
     summary = [line for line in out if not line.startswith("  ")]
