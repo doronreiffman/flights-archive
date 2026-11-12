@@ -201,7 +201,7 @@ def last_sighting(snaps: list[dict]) -> datetime                        # snaps[
 - [ ] **Step 1: Write the failing tests** in `tests/test_counting.py`. Rows come from `tests/counting_helpers.py`: `number(fid, sched_utc, **kw)` is a flights-table row holding the columns counting reads; `seen(fid, rn, at, **state)` an observation; `board(*fetches, gaps=…)` the snapshot rows as `load` returns them. All times are naive UTC in November 2026.
   - `test_a_stretch_runs_to_the_next_change_and_the_last_to_a_second_after_the_last_sighting`. A first record at 10:00 (rn 1), a change at 11:00 (rn 5), `last_seen_at` 12:30. Expected stretches (10:00, 11:00) and (11:00, 12:30:01), with `to_ever` 11:00 and `datetime.max`.
   - `test_carry_forward_runs_the_last_stretch_to_the_next_download`. The same number with the next download at 12:45: `to_at` is 12:45. On the latest list, `to_at` is `datetime.max`.
-  - `test_the_clock_is_the_time_shown_at_the_moment`. Scheduled 2 Nov 12:00 until a retime seen 1 Nov 11:00 moves it to 2 Nov 14:00. Expected: `passings[(id, 24)] == (1 Nov 14:00, that stretch's status)`, and no passing at 1 Nov 12:00.
+  - `test_the_clock_is_the_time_shown_at_the_moment`. Scheduled 2 Nov 12:00 until a retime seen 1 Nov 13:00 moves it to 2 Nov 14:00. At 1 Nov 12:00 the list still showed 2 Nov 12:00, so expected: `passings[(id, 24)] == (1 Nov 12:00, the first stretch's status)`. A reading by the final scheduled time would give 1 Nov 14:00, so this test separates the two.
   - `test_a_number_first_listed_past_a_point_has_no_passing_there`. First seen 20 h before its time: no `(id, 24)`; `(id, 12)` present.
   - `test_a_moment_inside_a_hole_is_not_a_checkpoint`. A hole from 10:00 to 13:00. At t = 11:00 there is no passing. At t = 10:00 and t = 13:00 there is, because the hole is strict.
   - `test_the_first_passing_counts`. Two stretches each hold their own 24-hour moment; expected the earlier stretch's (t, status).
@@ -1073,3 +1073,6 @@ The sections are placed after "Probably the same flight".
 ## Deviations
 
 The executor appends here whenever reality forces a change from this plan: what changed, why, and the commit.
+
+- 2026-11-12, before Task 1 (pre-flight scan): the clock test's retime moved from 1 Nov 11:00 to 1 Nov 13:00. Seen at 11:00, before the old 24-hour moment, a reading by the final scheduled time gave the same passing, so the mutation "the clock from the final scheduled time" could not be caught.
+- 2026-11-12, the owner: every implementer on Opus, Task 1 included (marked architecture above); Fable stays for the two whole-branch reviews and for fix rounds 4 and 5.
