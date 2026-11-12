@@ -62,9 +62,10 @@ PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
 REPORT = ("src/model/report.py", ["tests/test_model.py", "tests/test_model_receipts.py"])
 RUNNER = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])
 LOAD = ("src/timeline/load.py", ["tests/test_timeline_build.py"])
-COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py"])
+COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py", "tests/test_figures_check.py"])
 RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
+FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -380,6 +381,10 @@ COLLECTOR_MUTATIONS = {
     "rates: halves down": (RATES, "math.floor(x / s + 0.5) * s", "math.ceil(x / s - 0.5) * s"),
     "rates: no step of 10": (RATES, "    if x < 1000:\n        return 10\n", ""),
     "rates: ends rounded inward": (RATES, "return math.floor(lo / step(lo)) * step(lo), math.ceil(hi / step(hi)) * step(hi)", "return math.ceil(lo / step(lo)) * step(lo), math.floor(hi / step(hi)) * step(hi)"),
+    # the figures check: the code against the figures file's SQL
+    "figures: SQL from the wrong section": (FIGURES, "search(doc, heading.end(), stop)", "search(doc, 0, stop)"),
+    "figures: a flight difference not reported": (FIGURES, "if a0.get(fid) != code.get(fid)}", "if (fid in a0) != (fid in code)}"),
+    "figures: a figure off by one passes": (FIGURES, "        if value == expected:\n", "        if all(abs(a - b) <= 1 for a, b in zip(value, expected)):\n"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
