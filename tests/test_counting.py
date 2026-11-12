@@ -34,16 +34,6 @@ def test_a_stretch_runs_to_the_next_change_and_the_last_to_a_second_after_the_la
                 est_utc=T(4, 12, 40), status="DELAYED", terminal=3, desks=""))}
 
 
-def test_a_number_is_listed_from_its_first_record_to_the_end_of_its_last_stretch():
-    st = counting.stretches(TABLE, OBS)
-    first, changed = st["a"]
-    assert counting.state_at(st, T(3, 9, 59)) == {}
-    assert counting.state_at(st, T(3, 10)) == {"a": first}
-    assert counting.state_at(st, T(3, 11)) == {"a": changed}
-    assert counting.state_at(st, T(3, 12, 30)) == {"a": changed}
-    assert counting.state_at(st, T(3, 12, 30, 1)) == {}
-
-
 def test_the_clock_is_the_time_shown_at_the_moment():
     # Scheduled 2 Nov 12:00 until a retime seen 1 Nov 13:00 moves it to 2 Nov 14:00. At 1 Nov 12:00 the list still
     # showed 2 Nov 12:00; a reading by the final scheduled time would put the 24-hour moment at 1 Nov 14:00.

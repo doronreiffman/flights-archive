@@ -100,17 +100,6 @@ def passings(st: dict[str, tuple[Stretch, ...]], holes_) -> dict[tuple[str, int]
     return out
 
 
-def state_at(st: dict[str, tuple[Stretch, ...]], t: datetime) -> dict[str, Stretch]:
-    """The numbers listed at t, each with the stretch that holds t (from_at <= t < to_at)."""
-    out = {}
-    for fid, own in st.items():
-        for s in own:
-            if s.from_at <= t < s.to_at:
-                out[fid] = s
-                break
-    return out
-
-
 def last_sighting(snaps: list[dict]) -> datetime:
     """The last time the board was seen: the latest snapshot's last sighting (R9)."""
     return snaps[-1]["confirmed_until"]
