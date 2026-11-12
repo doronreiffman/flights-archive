@@ -2,7 +2,7 @@
 model's own."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def T(day: int, hour: int, minute: int = 0, second: int = 0) -> datetime:
@@ -11,9 +11,15 @@ def T(day: int, hour: int, minute: int = 0, second: int = 0) -> datetime:
 
 
 def number(fid: str, sched_utc: datetime, **kw) -> dict:
-    """A row of the model's flights table with the columns counting reads; `kw` sets any of them. The last
-    sighting defaults to the scheduled time."""
-    r = {"flight_id": fid, "sched_utc_final": sched_utc, "last_seen_at": sched_utc}
+    """A row of the model's flights table with the columns counting reads, and the first scheduled time a retime
+    leaves behind; `kw` sets any of them. By default: LY 1 departing to ATH, never retimed, departed on time from
+    terminal 3 at desks 1-5, first seen three days before its time and last seen at it. Israel time is UTC+2, as in
+    November."""
+    local = sched_utc + timedelta(hours=2)
+    r = {"flight_id": fid, "airline": "LY", "flight_no": "1", "direction": "D", "airport": "ATH",
+         "sched_utc_final": sched_utc, "sched_local_first": local, "sched_local_final": local,
+         "est_utc_final": sched_utc, "terminal_final": 3, "counters_final": "1-5", "outcome": "departed",
+         "first_seen_at": sched_utc - timedelta(days=3), "last_seen_at": sched_utc}
     unknown = set(kw) - set(r)
     assert not unknown, unknown
     return r | kw
