@@ -455,6 +455,7 @@ def test_the_retest_counts_only_from_its_own_start(israeli_machine, record_model
     assert record.main([*args, "--retest", "S2", "--first-upload", "2026-11-01T23:00:00Z"]) == 0
     retest = json.loads((tmp_path / record.TAG / "retest-S2" / "progress.json").read_text())
     assert retest["start"] == "2026-11-02T22:00:00Z"
+    assert list(retest["signs"]) == ["S2"]  # the re-test is of the one sign whose split was uploaded
     table, obs, snaps = load(record_model)
     flights_ = counting.flights(table, counting.last_sighting(snaps))
     row = [c for c in counting.cells(flights_, counting.passings(counting.stretches(table, obs),
@@ -539,6 +540,21 @@ def test_a_second_run_does_not_replace_the_first(record_model, tmp_path, started
     assert (tmp_path / record.TAG / "result.json").read_bytes() == stored
 
 
+def test_a_run_that_loses_a_recorded_gate_fails(record_model, tmp_path, started, monkeypatch, capsys):
+    # a later run that does not reach the gate (here, with the gate moved to 100 cancelled flights) differs from the
+    # stored result: it prints both and exits 1, and the stored result stays as it was
+    args = ["--model", str(record_model), "--out", str(tmp_path)]
+    assert record.main(args) == 0
+    stored = (tmp_path / record.TAG / "result.json").read_bytes()
+    monkeypatch.setattr(record, "GATE_CANCELLED", 100)
+    capsys.readouterr()
+    assert record.main(args) == 1
+    out, err = capsys.readouterr()
+    assert out.endswith("gate not reached\n")
+    assert stored.decode() in err and '"gate_at": null,' in err
+    assert (tmp_path / record.TAG / "result.json").read_bytes() == stored
+
+
 def test_two_runs_under_different_hash_seeds_write_the_same_bytes(record_model, tmp_path):
     outs = []
     for seed in ("0", "1"):
@@ -583,7 +599,7 @@ def test_the_result_file_is_sorted_with_fixed_floats(record_model, tmp_path, sta
                     for v in d.values() if isinstance(v, Decimal)]
         assert decimals and max(len(d.normalize().as_tuple().digits) for d in decimals) <= 12
         assert (data["start"], data["gate_at"]) == ("2026-10-31T22:00:00Z", "2026-11-03T02:00:00Z")
-        assert list(data["signs"]["S1"]) == ["lift", "scores"]
+        assert list(data["signs"]) == list(record.SIGNS) and list(data["signs"]["S1"]) == ["lift", "scores"]
 
 
 def test_a_retest_writes_its_own_folder(record_model, tmp_path, started):
@@ -599,10 +615,11 @@ def test_a_retest_writes_its_own_folder(record_model, tmp_path, started):
     # no flight was first seen after 22:00 UTC on 11 January 2027: nothing read, no gate
     assert (retest["start"], retest["gate_at"], retest["row_cancelled"], retest["days"]) == (
         "2027-01-11T22:00:00Z", None, 0, None)
+    assert list(retest["signs"]) == ["S3"]
 
 
 @pytest.mark.parametrize("value", ["2027-01-10T23:00:00", "2027-01-10T23:00:00+02:00", "yesterday",
-                                   "2027-01-32T23:00:00Z", "2027-01-10T23:00:00+02:00Z"])
+                                   "2027-01-32T23:00:00Z", "2027-01-10T23:00:00+02:00Z", "2027-01-10Z"])
 def test_first_upload_must_end_in_z(record_model, tmp_path, started, capsys, value):
     with pytest.raises(SystemExit) as stop:
         record.main(["--model", str(record_model), "--out", str(tmp_path), "--retest", "S3", "--first-upload", value])

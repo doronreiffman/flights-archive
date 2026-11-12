@@ -187,3 +187,28 @@ def test_no_flights_no_figure():
     one_group = (rows("A", date(2026, 11, 2), 4, 2), rows("A", date(2026, 11, 2), 8, 1))
     assert lift(*one_group).se_log is None
     assert scores(*one_group).gain_from is None and scores(*one_group).gain_to is None
+
+
+def test_a_ratio_above_1_whose_range_reaches_below_it_fails():
+    # clears the floor (10 cancelled with the sign, from 5 airlines on 5 days) at 1.5 times the rate, but its range
+    # runs from 0.36 to 6.24 (computed apart from this code, Task 7's report, fix round 1): the range decides
+    days = [date(2026, 11, 2 + i) for i in range(5)]
+    with_ = [c for a, d, k in zip("ABCDE", days, (4, 1, 2, 2, 1)) for c in rows(a, d, 20, k)]
+    without = [c for a, d, k in zip("ABCDE", days, (0, 2, 1, 1, 1)) for c in rows(a, d, 15, k)]
+    got = lift(with_, without)
+    assert got.clears_floor is True and got.times == approx(1.5)
+    assert got.times_from == approx(0.360684, abs=1e-6) and got.times_to == approx(6.238155, abs=1e-6)
+    assert got.passes is False
+
+
+def test_the_larger_grouping_is_used():
+    # two airlines on two days of one week: by airline and week the groups are A and B, by day 2 and 3 November. The
+    # log ratio's standard error is 0.1 by airline and 0.7 by day; the mean gain's is 0.0118490 by airline and
+    # 0.0063802 by day (computed apart from this code, Task 7's report, fix round 1). Each takes the larger.
+    d1, d2 = date(2026, 11, 2), date(2026, 11, 3)
+    with_ = rows("A", d1, 4, 3) + rows("B", d1, 4, 0) + rows("A", d2, 4, 1) + rows("B", d2, 4, 1)
+    without = rows("A", d1, 20, 1) + rows("B", d1, 20, 0) + rows("A", d2, 20, 2) + rows("B", d2, 20, 1)
+    assert lift(with_, without).se_log == approx(0.7)
+    got = scores(with_, without)
+    assert got.gain == approx(0.0095703125)
+    assert got.gain_from == approx(-0.014127604, abs=1e-8) and got.gain_to == approx(0.033268229, abs=1e-8)

@@ -25,7 +25,7 @@ import argparse
 import json
 import sys
 from bisect import bisect_left, bisect_right
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -211,6 +211,7 @@ class Result:
     gate_at: datetime | None
     row_cancelled: int
     days: float | None
+    # a sign's Lift.passes counts only once gate_at is set (A29's `sign_passes`); before the gate it decides nothing
     signs: dict[str, tuple[rates.Lift, rates.Scores]]
 
 
@@ -285,14 +286,15 @@ def _first_upload(value: str) -> datetime:
         t = datetime.fromisoformat(value.removesuffix("Z"))
     except ValueError:
         t = None
-    if t is None or t.tzinfo is not None:
+    if t is None or t.tzinfo is not None or "T" not in value:  # a date alone is not a time
         raise argparse.ArgumentTypeError(f"{value!r} is not a UTC time such as 2027-01-10T23:00:00Z")
     return t
 
 
 def main(argv: list[str] | None = None) -> int:
     """The test, or with --retest the re-test of one sign: progress.json on every run, result.json once the gate is
-    reached. Exit 2 while COUNTING_START is not set, and 1 when a stored result differs from this run's."""
+    reached. Exit 2 while COUNTING_START is not set, and 1 when a stored result differs from this run's, whether this
+    run reaches the gate or not."""
     parser = argparse.ArgumentParser(prog="python -m timeline.record", description="The sign test and its re-test "
                                      "(docs/flight-lookup.md, \"Signs\", \"The gate\", \"The re-test\").")
     parser.add_argument("--model", type=Path, required=True, help="the model folder (data/model)")
@@ -311,18 +313,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.retest:
         folder, start = folder / f"retest-{args.retest}", retest_start(args.first_upload)
     result = run(*load(args.model), start)
+    if args.retest:  # the re-test is of the one sign whose split was uploaded ("The re-test")
+        result = replace(result, signs={args.retest: result.signs[args.retest]})
     folder.mkdir(parents=True, exist_ok=True)
     write(result, folder / "progress.json", once=False)
     print(f"{folder}: {result.row_cancelled} cancelled in the row, "
           + ("gate not reached" if result.gate_at is None else f"gate reached at {_utc(result.gate_at)}"))
-    if result.gate_at is None:
+    stored_at = folder / "result.json"
+    if result.gate_at is None and not stored_at.exists():
         return 0
-    try:
-        write(result, folder / "result.json", once=True)
+    try:  # the first result is written once; every later run is compared with it, its gate reached or not
+        write(result, stored_at, once=True)
     except FileExistsError:
-        stored, now = (folder / "result.json").read_text(encoding="utf-8"), _text(result)
+        stored, now = stored_at.read_text(encoding="utf-8"), _text(result)
         if stored != now:
-            print(f"{folder / 'result.json'} differs from this run's result and is kept as it is.\n"
+            print(f"{stored_at} differs from this run's result and is kept as it is.\n"
                   f"Stored:\n{stored}This run:\n{now}", file=sys.stderr, end="")
             return 1
     return 0

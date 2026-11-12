@@ -397,6 +397,8 @@ COLLECTOR_MUTATIONS = {
     "record: re-test start from a naive conversion": (RECORD, "first_upload.replace(tzinfo=timezone.utc).astimezone(ISRAEL)", "first_upload.astimezone(ISRAEL)"),
     "record: re-test written over the main result": (RECORD, 'folder / f"retest-{args.retest}"', "folder"),
     "record: first upload without Z accepted": (RECORD, '    if not value.endswith("Z"):\n', "    if False:\n"),
+    "record: a lost gate passes": (RECORD, " and not stored_at.exists()", ""),
+    "record: a re-test holds every sign": (RECORD, "        result = replace(result, signs={args.retest: result.signs[args.retest]})\n", "        pass\n"),
     # rule C8: the range, the floor and the rounding
     "rates: a range from one airline-and-week group": (RATES, "        if len({(i.airline, week(i.day)) for i in items}) >= 2:", "        if True:"),
     "rates: a range from one day group": (RATES, "        if len({i.day for i in items}) >= 2:", "        if True:"),
@@ -419,6 +421,9 @@ COLLECTOR_MUTATIONS = {
     "rates: lift without the floor": (RATES, "    clears = w.clears_floor\n", "    clears = True\n"),
     "rates: split scored with the one rate": (RATES, "rated += [(i, half) for i in side]", "rated += [(i, one) for i in side]"),
     "rates: gain range from the plain standard error": (RATES, "    se = max(found) if None not in found else None\n", "    se = math.sqrt(math.fsum((g - gain) ** 2 for _, g in gains) / (n - 1) / n)\n"),
+    "rates: lift passes on the ratio": (RATES, "passes(clears, lo))", "passes(clears, times))"),
+    "rates: lift with the smaller standard error": (RATES, "se_log = max(found)", "se_log = min(found)"),
+    "rates: gain range from the smaller standard error": (RATES, "    se = max(found) if None not in found else None\n", "    se = min(found) if None not in found else None\n"),
     # the figures check: the code against the figures file's SQL
     "figures: SQL from the wrong section": (FIGURES, "search(doc, heading.end(), stop)", "search(doc, 0, stop)"),
     "figures: a flight difference not reported": (FIGURES, "if a0.get(fid) != code.get(fid)}", "if (fid in a0) != (fid in code)}"),
