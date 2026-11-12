@@ -14,7 +14,7 @@ SCHED = T(4, 12)
 TABLE = [number("a", SCHED, last_seen_at=T(3, 12, 30))]
 OBS = [seen("a", 1, T(3, 10), sched_utc=SCHED),
        seen("a", 5, T(3, 11), sched_utc=SCHED, est_utc=T(4, 12, 40), status="DELAYED", counters=None)]
-BOARD = board(T(3, 10), T(3, 10, 15), T(3, 10, 30), T(3, 10, 45), T(3, 11), T(3, 12, 30), T(3, 12, 45))
+BOARD = board(*(T(3, 10) + timedelta(minutes=15 * i) for i in range(12)))  # every 15 minutes, 10:00 to 12:45
 
 
 def test_a_stretch_runs_to_the_next_change_and_the_last_to_a_second_after_the_last_sighting():

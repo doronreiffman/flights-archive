@@ -17,7 +17,9 @@ from model.rules import GAP_HOURS
 CHECKPOINTS = (70, 48, 24, 12, 6, 3)  # C5: hours before the scheduled time the list showed at the moment
 # Two candidate readings of where a number's last stretch ends ("The record", condition 3):
 #   "a0"     a second after the number's last sighting, as A0's `st` reads it;
-#   "carry"  at the next download after that sighting, or never (datetime.max) when it is on the latest list.
+#   "carry"  at the fetch of the next kept snapshot after that sighting (the model's snapshots table: R2 drops a
+#            repeated store, and R9 folds an unchanged download into the sighting), or never (datetime.max) when
+#            the number is on the latest kept snapshot.
 READINGS = ("a0", "carry")
 READING = "a0"  # the reading the frozen rule uses; set by the owner's ruling at this task's stop
 
@@ -38,7 +40,8 @@ class Stretch:
 
 
 def _last_end(last_seen_at: datetime, fetches: list[datetime], reading: str) -> datetime:
-    """Where a number's last stretch ends, by reading; `fetches` are the downloads in order."""
+    """Where a number's last stretch ends, by reading; `fetches` are the kept snapshots' fetch times in snap_rn order
+    (R2, R9), not every download."""
     if reading == "a0":
         return last_seen_at + timedelta(seconds=1)
     i = bisect_right(fetches, last_seen_at)
