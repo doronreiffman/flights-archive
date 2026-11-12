@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 TIMELINE = Path(__file__).resolve().parent.parent / "src" / "timeline"
-FROZEN = {"load", "counting", "rates"}  # Task 6 adds "record"
+FROZEN = {"load", "counting", "rates", "record"}
 MODEL = TIMELINE.parent / "model"  # frozen too (the plan's "Frozen files"): it must import no timeline module at all
 ALLOWED = {"model", "duckdb"}  # beside the standard library
 

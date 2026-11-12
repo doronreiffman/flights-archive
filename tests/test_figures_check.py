@@ -1,14 +1,14 @@
-"""The figures check (scripts/figures_check.py): A0's SQL (docs/flight-lookup-figures.md) and the counting code run on
-one model, every difference reported.
+"""The figures check (scripts/figures_check.py): A0's and A0b's SQL (docs/flight-lookup-figures.md) and the counting
+and sign code run on one model, every difference reported.
 
 Here on a synthetic model built through the real model build (`model.build`, from tests/model_helpers.py): a week
 of downloads every 30 minutes with a hole, everyday flights with cancellations at every lead time, and rule C1's and
-rule C6's cases beside them, with the edges a break in the counting code would cross (the closed line, the last
-second of a number's listing, an hour between downloads, a second passing of one point). It holds no slot where C1's
-fallback fires (A0 leaves the fallback out, the comment above its `num`; tests/test_counting.py covers it), no chain
-over three numbers (A0 chains in three label rounds) and no blank status (A0 reads a passing's moment and status with
-two separate arg_min calls, which skip NULL). All times are naive UTC; Israel time is UTC+2 after the 25 October
-clock change.
+rule C6's cases and the signs' cases beside them, with the edges a break in the counting code would cross (the closed
+line, the last second of a number's listing, an hour between downloads, a second passing of one point). It holds no
+slot where C1's fallback fires (A0 leaves the fallback out, the comment above its `num`; tests/test_counting.py covers
+it), no chain over three numbers (A0 chains in three label rounds) and no blank status (A0 reads a passing's moment
+and status with two separate arg_min calls, which skip NULL). All times are naive UTC; Israel time is UTC+2 after the
+25 October clock change.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ import pytest
 
 from model import build as model_build
 from model_helpers import row, write_receipt, write_snapshot
-from timeline import counting
+from timeline import counting, record
 from timeline.load import load
 
 ROOT = Path(__file__).parent.parent
@@ -190,6 +190,30 @@ ROWS_OF = {"FB 472": (12, 6, 3), "RO 152": (), "CY 2101": (70, 48, 24, 12, 3), "
            "LX 257": (70, 48, 24, 12, 6, 3), "LO 152": (70, 48, 24, 12, 6, 3), "TP 1735": (),
            "LY 1105": (70, 48, 24, 12, 6, 3)}  # each case's rows
 
+SIGN_CASES = (
+    # S1: LH 687 lands from FRA at 20:00 on 1 November, listed as cancelled 30 hours ahead and alone in its slot; LH 686
+    # leaves for FRA 6 hours later and carries S1 from its 24-hour moment on
+    Number("LH", "687", "FRA", nov(1, 20), direction="A", cancelled=30 * H),
+    Number("LH", "686", "FRA", nov(2, 2)),
+    # no S1: LH 1689 lands from MUC at 09:00 on 2 November, listed as cancelled 30 hours ahead, but LY 8689, tied to it
+    # by the expected time and no desks, is listed normally and lands; LH 1688 leaves for MUC 5 hours later
+    Number("LH", "1689", "MUC", nov(2, 9), direction="A", cancelled=30 * H),
+    Number("LY", "8689", "MUC", nov(2, 9), direction="A"),
+    Number("LH", "1688", "MUC", nov(2, 14)),
+    # S2: OS 860 to VIE at 10:00 on 1 November is listed as cancelled 30 hours ahead; the same number a day later
+    # carries S2 from its 48-hour moment on, also after the first has left the list (its last status kept)
+    Number("OS", "860", "VIE", nov(1, 10), cancelled=30 * H),
+    Number("OS", "860", "VIE", nov(2, 10)),
+    # S4 not carried: KL 3433 and DL 9433 are one flight (the same expected time, terminal and desks); KL 3433 is first
+    # listed 30 hours ahead, DL 9433 72 hours ahead, so from 24 hours on only one of its numbers in the row shows S4
+    Number("KL", "3433", "AMS", nov(2, 18), counters="50-52", first=30 * H),
+    Number("DL", "9433", "AMS", nov(2, 18), counters="50-52"),
+    # never late: SN 3271 to BRU at 00:00 on 3 November would be first listed 19 hours ahead, in the hole; it is first
+    # seen at the hole's end, 17 hours ahead
+    Number("SN", "3271", "BRU", nov(3, 0), first=19 * H),
+)
+TOGETHER |= {frozenset({"LH 1689", "LY 8689"}), frozenset({"KL 3433", "DL 9433"})}
+
 LEADS = (1, 36, -0.5, 9, 60, 4, 20)  # hours before the scheduled time an everyday cancellation is listed
 
 
@@ -206,7 +230,7 @@ def everyday() -> list[Number]:
     return out
 
 
-NUMBERS = (*C1_CASES, *C6_CASES, *everyday())
+NUMBERS = (*C1_CASES, *C6_CASES, *SIGN_CASES, *everyday())
 
 
 def downloads() -> list[datetime]:
@@ -248,6 +272,9 @@ class Model:
     def named(self, numbers) -> frozenset[str]:
         return frozenset(self.labels[fid] for fid in numbers)
 
+    def carried(self, check, cells_: list[counting.Cell]) -> dict[int, dict[tuple, frozenset[str]]]:
+        return check.signs_carried(self.table, self.obs, self.snaps, cells_)
+
 
 @pytest.fixture(scope="module")
 def model(check, tmp_path_factory) -> Model:
@@ -256,7 +283,7 @@ def model(check, tmp_path_factory) -> Model:
     model_build.build(raw, root / "model", receipts)
     table, obs, snaps = load(root / "model")
     assert counting.last_sighting(snaps) == LAST
-    return Model(root / "model", table, obs, snaps, check.run_sql(root / "model", ("A0",)),
+    return Model(root / "model", table, obs, snaps, check.run_sql(root / "model", ("A0", "A0b")),
                  {f["flight_id"]: f"{f['airline']} {f['flight_no']}" for f in table})
 
 
@@ -321,6 +348,77 @@ def test_the_rates_match_a0s_rng(check, model):
             s["clears_floor"]), name
         assert check.figure(r) == sql_figure(s), name
         assert None not in check.figure(r) and 0 < r.cancelled < r.flights, name  # every end is compared
+
+
+def carry(model: Model, carried: dict, cells_: list[counting.Cell], name: str, sched: datetime) -> dict:
+    """h -> the signs the flight of number `name` scheduled at `sched` carries in row h, for each row it is in."""
+    return {c.h: carried[c.h][c.flight.key] for c in cells_
+            if name in model.named(c.flight.numbers) and c.flight.key[2] == sched}
+
+
+def test_the_signs_match_a0b(check, model):
+    cells_ = model.cells()
+    carried = model.carried(check, cells_)
+    assert check.compare_signs(model.con, cells_, carried) == []
+    # the model holds the signs' cases
+    none = frozenset()
+    assert carry(model, carried, cells_, "LH 686", nov(2, 2)) == {
+        70: none, 48: none, **{h: frozenset({"S1", "S3"}) for h in (24, 12, 6, 3)}}
+    assert carry(model, carried, cells_, "LH 1688", nov(2, 14)) == {
+        70: none, 48: frozenset({"S3"}), 24: frozenset({"S3"}), 12: none, 6: none, 3: none}
+    assert carry(model, carried, cells_, "OS 860", nov(2, 10)) == {
+        70: none, 48: frozenset({"S2", "S3"}), 24: frozenset({"S2", "S3"}), 12: frozenset({"S2"}), 3: frozenset({"S2"})}
+    assert carry(model, carried, cells_, "KL 3433", nov(2, 18)) == {h: none for h in (70, 48, 24, 6, 3)}
+    assert carry(model, carried, cells_, "FB 472", nov(2, 23)) == {h: frozenset({"S4"}) for h in (12, 6, 3)}
+    assert carry(model, carried, cells_, "SN 3271", nov(3, 0)) == {h: none for h in (12, 6, 3)}
+
+
+def sql_a25(check, model: Model) -> dict[tuple[str, int], tuple]:
+    """A25's own query on the model, as figures_check.sign_counts gives it: S1 to S4 by the start of their names, the
+    dropped X signs left out."""
+    cur = model.con.execute(check.sql_blocks(DOC, "A25")["A25"])
+    names = [d[0] for d in cur.description]
+    rows = [dict(zip(names, r)) for r in cur.fetchall()]
+    return {(r["sign"].split()[0], r["h"]): (r["cancelled_with"], r["flights_with"], r["cancelled_without"],
+                                              r["flights_without"], r["airlines_with_a_cancellation"],
+                                              r["days_with_a_cancellation"], r["clears_floor"])
+            for r in rows if r["sign"].split()[0] in record.SIGNS}
+
+
+def test_the_sign_counts_match_a25(check, model):
+    cells_ = model.cells()
+    code = check.sign_counts(cells_, model.carried(check, cells_))
+    assert list(code) == [(sign, h) for sign in record.SIGNS for h in (48, 24, 12, 6)]
+    assert code == sql_a25(check, model)
+    assert {sign for (sign, _), counts in code.items() if counts[1]} == set(record.SIGNS)  # each sign is carried
+
+
+def test_an_arrival_is_never_in_s1s_with_or_without_set(check, model):
+    cells_ = model.cells()
+    carried = model.carried(check, cells_)
+    counts = check.sign_counts(cells_, carried)
+    planted = {h: {key: signs | {"S1"} if key[0] == "A" else signs for key, signs in of.items()}
+               for h, of in carried.items()}
+    assert check.sign_counts(cells_, planted) == counts  # every arrival carrying S1 moves nothing
+    for h in (48, 24, 12, 6):
+        departures = sum(c.h == h and c.flight.key[0] == "D" for c in cells_)
+        flights = sum(c.h == h for c in cells_)
+        s1, s2 = counts["S1", h], counts["S2", h]
+        assert s1[1] + s1[3] == departures < flights == s2[1] + s2[3]
+
+
+def test_planted_sign_differences_are_named(check, model):
+    cells_ = model.cells()
+    carried = model.carried(check, cells_)
+    key = {model.named(c.flight.numbers): c.flight.key for c in cells_ if c.h == 24}
+    planted = {h: dict(of) for h, of in carried.items()}
+    planted[24][key[frozenset({"LH 686"})]] = frozenset({"S3"})
+    planted[24][key[frozenset({"KL 3433", "DL 9433"})]] = frozenset({"S2", "S4"})
+    planted[12] = {k: signs for k, signs in planted[12].items() if k != key[frozenset({"LH 686"})]}
+    assert one_each(check.compare_signs(model.con, cells_, planted), [
+        ("24 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code S3"),
+        ("24 hours, D AMS 2026-11-02 18:00 DL 9433 (", "): A0 none, the code S2 S4"),
+        ("12 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code none")])
 
 
 def splitting(model: Model, real):
@@ -395,42 +493,70 @@ def test_run_sql_refuses_an_a0_that_reads_no_model_path(check, model, tmp_path, 
 
 
 def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
-    expected = {name: sql_figure(r) for name, r in sql_figures(check, model).items()}
+    expected = {name: sql_figure(r) for name, r in sql_figures(check, model).items()} | {"A25": sql_a25(check, model)}
     monkeypatch.setattr(check, "EXPECTED", expected)
     assert check.main(["--model", str(model.dir)]) == 0
-    assert capsys.readouterr().out.splitlines() == [*(f"{name}: {check.show(v)} ok" for name, v in expected.items()),
-                                                    "flights: 0 differences", "cells: 0 differences"]
+    assert capsys.readouterr().out.splitlines() == [
+        *(f"{name}: {check.show(v)} ok" for name, v in expected.items() if name != "A25"),
+        *(f"A25 {sign} {h} hours: {check.show_signs(v)} ok" for (sign, h), v in expected["A25"].items()),
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
 
     cancelled, flights, *ends = expected["24 hours"]
-    monkeypatch.setattr(check, "EXPECTED", expected | {"24 hours": (cancelled, flights + 1, *ends)})
+    with_, flights_with, *rest = expected["A25"]["S3", 24]
+    monkeypatch.setattr(check, "EXPECTED", expected | {
+        "24 hours": (cancelled, flights + 1, *ends),
+        "A25": expected["A25"] | {("S3", 24): (with_, flights_with + 1, *rest)}})
     assert check.main(["--model", str(model.dir)]) == 1
     out = capsys.readouterr().out.splitlines()
     assert [line for line in out if not line.endswith(" ok")] == [
         f"24 hours: the code {check.show(expected['24 hours'])}, the figures file "
-        f"{check.show((cancelled, flights + 1, *ends))}", "flights: 0 differences", "cells: 0 differences"]
+        f"{check.show((cancelled, flights + 1, *ends))}",
+        f"A25 S3 24 hours: the code {check.show_signs(expected['A25']['S3', 24])}, the figures file "
+        f"{check.show_signs((with_, flights_with + 1, *rest))}",
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences"]
 
 
-@pytest.mark.parametrize("plant", ["flight", "cell"])
-def test_main_fails_on_a_flight_or_cell_difference(check, model, monkeypatch, capsys, plant):
+def dropping_s1(model: Model, real):
+    """record.flight_signs as it stands, but LH 686 not carrying S1 at 24 hours."""
+    def flight_signs(cells_h, number_signs_):
+        out = real(cells_h, number_signs_)
+        for c in cells_h:
+            if (c.h, model.named(c.flight.numbers)) == (24, {"LH 686"}):
+                out[c.flight.key] -= {"S1"}
+        return out
+    return flight_signs
+
+
+@pytest.mark.parametrize("plant", ["flight", "cell", "sign"])
+def test_main_fails_on_a_flight_cell_or_sign_difference(check, model, monkeypatch, capsys, plant):
     if plant == "flight":
         monkeypatch.setattr(counting, "flights", splitting(model, counting.flights))
-    else:
+    elif plant == "cell":
         monkeypatch.setattr(counting, "cells", dropping(model, counting.cells))
+    else:
+        monkeypatch.setattr(record, "flight_signs", dropping_s1(model, record.flight_signs))
     # every figure as the planted code gives it, so that only the planted difference can fail the run
     fig = counting.figures(model.table, model.obs, model.snaps)
+    cells_ = model.cells()
     monkeypatch.setattr(check, "EXPECTED", {"total": check.figure(fig.total)}
-                        | {f"{h} hours": check.figure(r) for h, r in fig.rows})
+                        | {f"{h} hours": check.figure(r) for h, r in fig.rows}
+                        | {"A25": check.sign_counts(cells_, model.carried(check, cells_))})
     assert check.main(["--model", str(model.dir)]) == 1
     out = [line for line in capsys.readouterr().out.splitlines() if not line.endswith(" ok")]
+    summary = [line for line in out if not line.startswith("  ")]
     if plant == "flight":
         pair = (r"  D AUH 2026-11-02 09:30: A0 EY 607 \(\w{8}\) \+ LY 9614 \(\w{8}\), "
                 r"the code (EY 607|LY 9614) \(\w{8}\)")
         found = [re.fullmatch(pair, line) for line in out[:2]]
         assert None not in found and sorted(m.group(1) for m in found) == ["EY 607", "LY 9614"], out[:2]
-        # in each of the flight's four rows: A0's flight not in the code's row, and the code's two not in A0's
-        assert [out[2], out[-1]] == ["flights: 2 differences", "cells: 12 differences"]
-    else:
-        assert out[0] == "flights: 0 differences" and out[2] == "cells: 1 difference" and len(out) == 3
+        # in each of the flight's four rows: A0's flight not in the code's row, and the code's two not in A0's; in the
+        # two rows where LY 9614 shows S3, A0's flight carries it and the code's LY 9614 alone does
+        assert summary == ["flights: 2 differences", "cells: 12 differences", "signs: 4 differences"]
+    elif plant == "cell":
+        assert summary == ["flights: 0 differences", "cells: 1 difference", "signs: 0 differences"] and len(out) == 4
         assert one_each(out[1:2], [
             ("  70 hours, D ZRH 2026-11-02 14:00 LX 257 (",
              ": A0 in the row from 2026-10-30 16:00:00, not cancelled, the code not in the row")])
+    else:
+        assert summary == ["flights: 0 differences", "cells: 0 differences", "signs: 1 difference"] and len(out) == 4
+        assert one_each(out[2:3], [("  24 hours, D FRA 2026-11-02 02:00 LH 686 (", "): A0 S1 S3, the code S3")])

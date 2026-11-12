@@ -66,6 +66,7 @@ COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py", "tests/test_f
 RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
+RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -365,6 +366,17 @@ COLLECTOR_MUTATIONS = {
     "frozen: counting imports words": (FROZEN_GUARD, "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
     "frozen: model imports timeline": (("src/model/rules.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nimport timeline.words\n"),
     "frozen: rates imports words": (("src/timeline/rates.py", ["tests/test_frozen.py"]), "from __future__ import annotations\n", "from __future__ import annotations\n\nfrom . import words\n"),
+    # the signs S1 to S4, each read as of its number's checkpoint moment, and what a flight carries
+    "record: S1 for arrivals too": (RECORD, 'if r["direction"] == "D" and any(', "if any("),
+    "record: S1 window from the departure's final time": (RECORD, "_between(of_airline, sched - INBOUND[1], sched - INBOUND[0])", '_between(of_airline, r["sched_utc_final"] - INBOUND[1], r["sched_utc_final"] - INBOUND[0])'),
+    "record: whole ignores a tied number still listed": (RECORD, 'for y in by_slot.get((r["direction"], r["airport"], a.sched_utc), ()))', "for y in ())"),
+    "record: a number that left read as cancelled afterwards": (RECORD, "y.from_at <= t < y.to_ever", "y.from_at <= t < y.to_at"),
+    "record: S2 the earliest before": (RECORD, "whole(max(before, key=lambda a: a.sched_utc)", "whole(min(before, key=lambda a: a.sched_utc)"),
+    "record: S3 includes its own slot": (RECORD, '               and (by_id[b.flight_id]["direction"], by_id[b.flight_id]["airport"], b.sched_utc)\n               != (r["direction"], r["airport"], sched)\n', ""),
+    "record: S4 late when first seen at the first list": (RECORD, "resumed = {first_fetch, *(end for _, end in holes_)}", "resumed = {*(end for _, end in holes_)}"),
+    "record: S4 carried when one number shows it": (RECORD, 'EVERY = frozenset({"S4"})', "EVERY = frozenset()"),
+    "record: S1 carried only when all show it": (RECORD, 'EVERY = frozenset({"S4"})', 'EVERY = frozenset({"S4", "S1"})'),
+    "record: a number first seen after the moment read": (RECORD, "y.from_at <= t < y.to_ever", "t < y.to_ever"),
     # rule C8: the range, the floor and the rounding
     "rates: a range from one airline-and-week group": (RATES, "        if len({(i.airline, week(i.day)) for i in items}) >= 2:", "        if True:"),
     "rates: a range from one day group": (RATES, "        if len({i.day for i in items}) >= 2:", "        if True:"),

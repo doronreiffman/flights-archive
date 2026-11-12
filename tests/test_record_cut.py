@@ -19,6 +19,7 @@ from model import build as model_build
 from model_helpers import cut_archive, row, write_receipt, write_snapshot
 from timeline import counting
 from timeline.load import load
+from timeline.record import flight_signs, number_signs
 
 SECOND = timedelta(seconds=1)
 
@@ -148,6 +149,26 @@ def hole_in_progress(a: Archive) -> None:
             a.store(t, [STEADY, ly700])
 
 
+def signs_at_the_moment(a: Archive) -> None:
+    """The four signs at moments inside the archive. LY 800 leaves at 12:00 on 31 October (its 24-hour moment is 12:00
+    on the 30th) and is listed as cancelled from 13:30. LY 801 lands 4 hours before it, listed as cancelled from 11:45
+    (S1, S3); LY 800 of 12:00 on the 30th, listed as cancelled throughout, is its number's latest flight before (S2,
+    S3). LY 5801, tied to LY 801 by airline, is first listed at 13:15, after every moment read. IZ 900, first listed
+    at 10:30 for 11:30 on the 31st, is late (S4; its 24-hour moment is 11:30). STEADY's 12-hour moment, 12:45, shows
+    S3."""
+    def cancelled(r: dict) -> dict:
+        return r | {"CHRMINE": "CANCELED", "CHRMINH": "מבוטל"}
+
+    ly800, before = listing("LY", "800", utc(12)), cancelled(listing("LY", "800", z(12)))
+    inbound = listing("LY", "801", utc(8), direction="A", counters="", status="NOT FINAL", status_he="לא סופי")
+    tied = listing("LY", "5801", utc(8), direction="A", counters="", status="NOT FINAL", status_he="לא סופי")
+    late = listing("IZ", "900", utc(11, 30))
+    for t in GRID:
+        a.store(t, [STEADY, ly800 if t < z(13, 30) else cancelled(ly800), before,
+                    inbound if t < z(11, 45) else cancelled(inbound)]
+                + ([late] if t >= z(10, 30) else []) + ([tied] if t >= z(13, 15) else []))
+
+
 CASES = {
     "leave-and-return": (leave_and_return, (z(11, 7), z(11, 30), z(12, 30), z(12, 37))),
     "return-after-a-same-number-key": (return_after_a_same_number_key, (z(11, 15), z(11, 22), z(11, 30), z(12, 30))),
@@ -160,6 +181,7 @@ CASES = {
     "superseded": (superseded, (z(11, 15), z(11, 16), z(11, 17))),
     "unchanged-downloads": (unchanged_downloads, (z(11, 17), z(11, 18), z(11, 21), z(11, 25))),
     "hole-in-progress": (hole_in_progress, (z(11, 45),)),
+    "signs-at-the-moment": (signs_at_the_moment, (z(12, 7), z(13, 22))),
 }
 MOMENTS = [pytest.param(name, moment, id=f"{name}-{moment:%H%M}") for name, (_, moments) in CASES.items()
            for moment in moments]
@@ -257,6 +279,39 @@ def inputs(m: Model, last: datetime) -> dict:
             for f in m.table if f["first_seen_at"] <= last}
 
 
+def flights_of(m: Model, last: datetime) -> dict:
+    """Rule C1's flights (counting.flights, read at the model's end) among the numbers first seen at or before
+    `last`: each such number's flight, as the set of its numbers first seen by then."""
+    seen = {f["flight_id"] for f in m.table if f["first_seen_at"] <= last}
+    return {("flight", fid): frozenset(n for n in f.numbers if n in seen)
+            for f in counting.flights(m.table, counting.last_sighting(m.snaps)) for fid in f.numbers if fid in seen}
+
+
+def sign_readings(m: Model, last: datetime) -> dict:
+    """The signs each number in a row shows at its passings at or before `last` (record.number_signs), and what its
+    flight carries in that row (record.flight_signs). Every flight with a number in the row is read, closed or not:
+    these archives close none."""
+    st = counting.stretches(m.table, m.obs)
+    holes_ = counting.holes(m.snaps)
+    passings_ = counting.passings(st, holes_)
+    flights_ = counting.flights(m.table, counting.last_sighting(m.snaps))
+    out = {}
+    for h in counting.CHECKPOINTS:
+        shown = {fid: s for fid, s in number_signs(h, m.table, st, holes_, m.snaps[0]["fetched_at"],
+                                                   passings_).items() if passings_[fid, h][0] <= last}
+        in_row = [f for f in flights_ if shown.keys() & set(f.numbers)]
+        carried = flight_signs(
+            [counting.Cell(h, f, min(passings_[fid, h][0] for fid in f.numbers if fid in shown), 0) for f in in_row],
+            shown)
+        for fid, s in shown.items():
+            out["signs", fid, h] = s
+        for f in in_row:
+            for fid in f.numbers:
+                if fid in shown:
+                    out["carry", fid, h] = carried[f.key]
+    return out
+
+
 def explain(found: dict, expected: dict, *models: Model) -> str:
     """The differences that are not as accepted, each number and key named by airline, number, direction, airport
     and first scheduled time (Israel time); for a failure message only."""
@@ -268,6 +323,8 @@ def explain(found: dict, expected: dict, *models: Model) -> str:
             return "never" if v == datetime.max else f"{v:%Y-%m-%d %H:%M:%S}"
         if isinstance(v, (tuple, list)):
             return tuple(show(x) for x in v)
+        if isinstance(v, frozenset):
+            return tuple(sorted(show(x) for x in v))
         return names.get(v, v) if isinstance(v, str) else v
     lines = [f"not accepted: {show(k)}: full {show(a)}, cut {show(b)}" for k, (a, b) in found.items() if expected.get(k) != (a, b)]
     lines += [f"accepted but not found: {show(k)}: full {show(a)}, cut {show(b)}"
@@ -302,6 +359,8 @@ def resolve(v, models: tuple[Model, ...]):
         return v.id(*models)
     if isinstance(v, tuple):
         return tuple(resolve(x, models) for x in v)
+    if isinstance(v, frozenset):
+        return frozenset(resolve(x, models) for x in v)
     return v
 
 
@@ -312,7 +371,7 @@ def piece(from_at: datetime, to_at: datetime, sched: datetime) -> tuple:
 
 AWAY = N("LY", "100", utc(11, 30))  # leave-and-return
 FIRST, LATER = N("LY", "100", utc(10, 30)), N("LY", "100", utc(13, 30))  # the same-number key
-LY200, LY9614 = N("LY", "200", utc(11, 10)), N("LY", "9614", utc(0))
+LY200, EY607, LY9614 = N("LY", "200", utc(11, 10)), N("EY", "607", utc(0)), N("LY", "9614", utc(0))
 
 
 def same_number_key(end: datetime) -> dict[str, dict]:
@@ -328,6 +387,7 @@ def same_number_key(end: datetime) -> dict[str, dict]:
                    ("chain", FIRST): ((FIRST,), (FIRST, LATER))},
         "inputs": {("C1 inputs", LATER): ((utc(13, 30), 3, "1-5"), ABSENT),
                    ("C1 inputs", FIRST): ((utc(10, 30), 3, "1-5"), (utc(13, 30), 3, "1-5"))},
+        "flights": {("flight", LATER): (frozenset({LATER}), ABSENT)},
     }
 
 
@@ -338,12 +398,21 @@ ACCEPTED: dict[tuple[str, str], dict] = {
     ("record", "leave-and-return-1130"): {
         ("passing", AWAY, 24): ((z(11, 30), "ON TIME"), ABSENT),
         ("stretches", AWAY): ((piece(z(10), z(11, 30, 1), utc(11, 30)),), (piece(z(10), z(11, 0, 1), utc(11, 30)),))},
+    # the same passing in the sign readings: the full model's row holds AWAY there, showing no sign; the cut's does not
+    ("signs", "leave-and-return-1130"): {("signs", AWAY, 24): (frozenset(), ABSENT),
+                                         ("carry", AWAY, 24): (frozenset(), ABSENT)},
     # Kind 3, C1's inputs read at the end: "C1's inputs read at the end are compared in the plan's Task 6."
     ("inputs", "retime-at-the-cut-1100"): {("C1 inputs", LY200): ((utc(13, 10), 3, "1-5"), (utc(11, 10), 3, "1-5"))},
     ("inputs", "retime-at-the-cut-1107"): {("C1 inputs", LY200): ((utc(13, 10), 3, "1-5"), (utc(11, 10), 3, "1-5"))},
     ("inputs", "flight-changes-after-1200"): {("C1 inputs", LY9614): ((utc(0), 3, "30-35"), (utc(0), 3, "12-21"))},
     ("inputs", "flight-changes-after-1207"): {("C1 inputs", LY9614): ((utc(0), 3, "30-35"), (utc(0), 3, "12-21"))},
-} | {(test, f"return-after-a-same-number-key-{moment}"): diffs  # kind 2 (and its C1 inputs, kind 3)
+} | {  # and so the flight, kind 3 (condition 3's third bullet): by C1's inputs at the end, LY 9614's desks part it
+    # from EY 607; at the cut they tie
+    ("flights", f"flight-changes-after-{moment}"): {
+        ("flight", EY607): (frozenset({EY607}), frozenset({EY607, LY9614})),
+        ("flight", LY9614): (frozenset({LY9614}), frozenset({EY607, LY9614}))}
+    for moment in ("1200", "1207")
+} | {(test, f"return-after-a-same-number-key-{moment}"): diffs  # kind 2 (and its C1 inputs and flight, kind 3)
      for moment, end in (("1115", z(11, 15, 1)), ("1122", z(11, 15, 1)), ("1130", z(11, 30, 1)))
      for test, diffs in same_number_key(end).items()}
 
@@ -356,7 +425,8 @@ def check(test: str, name: str, moment: datetime, full: Model, cut: Model, found
 
 def test_every_accepted_difference_names_a_case_and_moment():
     ids = {p.id for p in MOMENTS}
-    assert {key for key in ACCEPTED if key[0] not in {"record", "chains", "inputs"} or key[1] not in ids} == set()
+    assert {key for key in ACCEPTED
+            if key[0] not in {"record", "chains", "inputs", "flights", "signs"} or key[1] not in ids} == set()
 
 
 # --- the comparison ------------------------------------------------------------------------------------
@@ -384,8 +454,36 @@ def test_retime_chains_match(models, name, moment):
 @pytest.mark.parametrize("name, moment", MOMENTS)
 def test_flight_inputs_match(models, name, moment):
     """The design lists this as a known case (condition 3, third bullet), and the ruling keeps it as a stated limit.
-    The outcome is left out: rule C2 reads it at the end by design. Flight membership is compared in Task 6, once
-    rule C1 exists."""
+    The outcome is left out: rule C2 reads it at the end by design. Flight membership is compared in
+    test_flights_match."""
     full, cut = models(name, moment)
     last = counting.last_sighting(cut.snaps)
     check("inputs", name, moment, full, cut, differences(inputs(full, last), inputs(cut, last)))
+
+
+@pytest.mark.parametrize("name, moment", MOMENTS)
+def test_flights_match(models, name, moment):
+    """Rule C1's flights among the numbers first seen by the cut's last sighting. The design's third known case
+    (condition 3): C1 reads its inputs at the end, so `flight-changes-after` splits by construction."""
+    full, cut = models(name, moment)
+    last = counting.last_sighting(cut.snaps)
+    check("flights", name, moment, full, cut, differences(flights_of(full, last), flights_of(cut, last)))
+
+
+@pytest.mark.parametrize("name, moment", MOMENTS)
+def test_sign_readings_match(models, name, moment):
+    full, cut = models(name, moment)
+    last = counting.last_sighting(cut.snaps)
+    check("signs", name, moment, full, cut, differences(sign_readings(full, last), sign_readings(cut, last)))
+
+
+def test_the_signs_case_shows_every_sign(models):
+    """The sign readings above compare something: as of 13:22 in `signs-at-the-moment`, the numbers in the rows show
+    each sign, and LY 800 carries the three it shows."""
+    _, cut = models("signs-at-the-moment", z(13, 22))
+    readings = sign_readings(cut, counting.last_sighting(cut.snaps))
+    names = {f["flight_id"]: f"{f['airline']} {f['flight_no']}" for f in cut.table}
+    shown = {(kind, names[fid], h): s for (kind, fid, h), s in readings.items() if s}
+    assert shown == {(kind, name, h): s for kind in ("signs", "carry") for name, h, s in (
+        ("LY 800", 24, frozenset({"S1", "S2", "S3"})), ("IZ 900", 24, frozenset({"S4"})),
+        ("LY 001", 12, frozenset({"S3"})))}
