@@ -385,6 +385,9 @@ COLLECTOR_MUTATIONS = {
     "figures: SQL from the wrong section": (FIGURES, "search(doc, heading.end(), stop)", "search(doc, 0, stop)"),
     "figures: a flight difference not reported": (FIGURES, "if a0.get(fid) != code.get(fid)}", "if (fid in a0) != (fid in code)}"),
     "figures: a figure off by one passes": (FIGURES, "        if value == expected:\n", "        if all(abs(a - b) <= 1 for a, b in zip(value, expected)):\n"),
+    "figures: a cell difference not reported": (FIGURES, "if a0.get((h, ids)) != code.get((h, ids))]", "if False]"),
+    "figures: cells compared on one side only": (FIGURES, "for h, ids in a0.keys() | code.keys()", "for h, ids in a0.keys() & code.keys()"),
+    "figures: a found difference does not fail": (FIGURES, "failed = failed or bool(found)", "failed = failed"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

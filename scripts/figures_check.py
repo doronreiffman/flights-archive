@@ -6,13 +6,14 @@ model is not in the repository. Run from the repository root:
 
 It prints each figure the code gives with "ok" when it matches the figures file's printed value (EXPECTED), or with
 both values; then each number rule C1 groups differently from A0's `num`, and each flight whose place in a row of the
-table (its moment, and whether it ended cancelled) differs from A0's `cell`, with the count of each. Exit 1 on any
-difference. EXPECTED holds the figures file's results, which come from the model saved as data/model-2026-11-12:
+table (its moment, and whether it ended cancelled) differs from A0's `cell`, and anything the code holds twice, with
+the count of each. Exit 1 on any difference. EXPECTED holds the figures file's results, which come from the model saved as data/model-2026-11-12:
 `data/model` is rebuilt after every sync, so its figures move, while its flights and cells must still match A0.
 """
 import argparse
 import re
 import sys
+from collections import Counter
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -55,11 +56,14 @@ def sql_blocks(doc: str, *names: str) -> dict[str, str]:
 
 def run_sql(model_dir: Path, names: tuple[str, ...]) -> duckdb.DuckDBPyConnection:
     """The figures file's blocks `names`, run in order on one connection, reading the model in `model_dir` where
-    they read data/model."""
+    they read data/model. ValueError when A0 reads no 'data/model/ path: it would then read some other model."""
+    blocks = sql_blocks(DOC.read_text(encoding="utf-8"), *names)
+    if "A0" in blocks and "'data/model/" not in blocks["A0"]:
+        raise ValueError(f"A0 in {DOC} reads no 'data/model/ path, so the check would not read {model_dir}")
     folder = str(model_dir).replace("'", "''")
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
-    for sql in sql_blocks(DOC.read_text(encoding="utf-8"), *names).values():
+    for sql in blocks.values():
         con.execute(sql.replace("'data/model/", f"'{folder}/"))
     return con
 
@@ -84,13 +88,17 @@ def _a0_flights(con) -> dict[str, frozenset[str]]:
 
 def compare_flights(con, flights_: list[counting.Flight]) -> list[str]:
     """Each number whose flight (as the set of its numbers) differs between A0's `num` and `flights_`, once for each
-    pair of differing flights: how A0 and the code group its slot's numbers."""
+    pair of differing flights: how A0 and the code group its slot's numbers. And each number the code puts in more
+    than one flight."""
     a0 = {fid: ids for ids in _a0_flights(con).values() for fid in ids}
     code = {fid: frozenset(f.numbers) for f in flights_ for fid in f.numbers}
     labels = _labels(con)
     pairs = {(a0.get(fid), code.get(fid)) for fid in a0.keys() | code.keys() if a0.get(fid) != code.get(fid)}
-    return sorted(f"{labels[min(a or b)][1]}: A0 {_show_numbers(a, labels)}, the code {_show_numbers(b, labels)}"
-                  for a, b in pairs)
+    times = Counter(fid for f in flights_ for fid in f.numbers)
+    return sorted([f"{labels[min(a or b)][1]}: A0 {_show_numbers(a, labels)}, the code {_show_numbers(b, labels)}"
+                   for a, b in pairs]
+                  + [f"{labels[fid][1]}: the code puts {labels[fid][0]} in {n} flights"
+                     for fid, n in times.items() if n > 1])
 
 
 def _show_cell(cell) -> str:
@@ -102,14 +110,17 @@ def _show_cell(cell) -> str:
 
 def compare_cells(con, cells_: list[counting.Cell]) -> list[str]:
     """Each row and flight (as the set of its numbers) that is in the row in A0's `cell` or in `cells_` but not both,
-    or with another moment t or result k."""
+    or with another moment t or result k. And each row and flight the code has in the row more than once."""
     flight = _a0_flights(con)
     a0 = {(h, flight[key]): (t, k) for h, key, t, k in con.execute("SELECT h, flight_key, t, k FROM cell").fetchall()}
     code = {(c.h, frozenset(c.flight.numbers)): (c.t, c.k) for c in cells_}
     labels = _labels(con)
-    return sorted(f"{h} hours, {labels[min(ids)][1]} {_show_numbers(ids, labels)}: "
-                  f"A0 {_show_cell(a0.get((h, ids)))}, the code {_show_cell(code.get((h, ids)))}"
-                  for h, ids in a0.keys() | code.keys() if a0.get((h, ids)) != code.get((h, ids)))
+    times = Counter((c.h, frozenset(c.flight.numbers)) for c in cells_)
+    return sorted([f"{h} hours, {labels[min(ids)][1]} {_show_numbers(ids, labels)}: "
+                   f"A0 {_show_cell(a0.get((h, ids)))}, the code {_show_cell(code.get((h, ids)))}"
+                   for h, ids in a0.keys() | code.keys() if a0.get((h, ids)) != code.get((h, ids))]
+                  + [f"{h} hours, {labels[min(ids)][1]} {_show_numbers(ids, labels)}: the code has it in the row "
+                     f"{n} times" for (h, ids), n in times.items() if n > 1])
 
 
 def one_decimal(x: float | None) -> float | None:

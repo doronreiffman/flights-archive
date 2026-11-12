@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -322,11 +323,9 @@ def test_the_rates_match_a0s_rng(check, model):
         assert None not in check.figure(r) and 0 < r.cancelled < r.flights, name  # every end is compared
 
 
-def test_a_planted_difference_is_named(check, model, monkeypatch):
-    real = counting.flights
-
-    def split(table, last):
-        """Rule C1 as it stands, but EY 607 and LY 9614 apart."""
+def splitting(model: Model, real):
+    """counting.flights as it stands, but EY 607 and LY 9614 apart."""
+    def flights(table, last):
         out = []
         for f in real(table, last):
             if model.named(f.numbers) == {"EY 607", "LY 9614"}:
@@ -334,10 +333,65 @@ def test_a_planted_difference_is_named(check, model, monkeypatch):
             else:
                 out.append(f)
         return out
+    return flights
 
-    monkeypatch.setattr(counting, "flights", split)
+
+def dropping(model: Model, real):
+    """counting.cells as it stands, but LX 257 left out of the 70-hour row."""
+    def cells(flights_, passings_):
+        return [c for c in real(flights_, passings_) if (c.h, model.named(c.flight.numbers)) != (70, {"LX 257"})]
+    return cells
+
+
+def test_a_planted_difference_is_named(check, model, monkeypatch):
+    monkeypatch.setattr(counting, "flights", splitting(model, counting.flights))
     found = check.compare_flights(model.con, counting.flights(model.table, counting.last_sighting(model.snaps)))
     assert len(found) == 2 and all("EY 607" in line and "LY 9614" in line for line in found), found
+
+
+def one_each(found: list[str], expected: list[tuple[str, str]]) -> bool:
+    """As many lines in `found` as pairs, and each (start, end) pair matches exactly one line. A number is shown
+    with the start of its flight_id, so a line is matched by what comes before and after it."""
+    return len(found) == len(expected) and all(
+        sum(line.startswith(a) and line.endswith(b) for line in found) == 1 for a, b in expected)
+
+
+def test_planted_cell_differences_are_named(check, model):
+    cells_ = model.cells()
+    at = {(c.h, model.named(c.flight.numbers)): c for c in cells_}
+    ro152 = next(f for f in model.flights() if model.named(f.numbers) == {"RO 152"})  # cancelled when first seen
+    moved, flipped = at[24, frozenset({"LO 152"})], at[12, frozenset({"FB 472"})]
+    planted = [c for c in cells_ if c not in (at[70, frozenset({"LX 257"})], moved, flipped)] + [
+        replace(moved, t=moved.t + timedelta(minutes=1)), replace(flipped, k=0), counting.Cell(3, ro152, nov(2, 23), 1)]
+    assert one_each(check.compare_cells(model.con, planted), [
+        ("70 hours, D ZRH 2026-11-02 14:00 LX 257 (",
+         ": A0 in the row from 2026-10-30 16:00:00, not cancelled, the code not in the row"),
+        ("24 hours, D KRK 2026-11-02 13:00 LO 152 (", ": A0 in the row from 2026-11-01 13:00:00, cancelled, "
+                                                     "the code in the row from 2026-11-01 13:01:00, cancelled"),
+        ("12 hours, D SOF 2026-11-02 23:00 FB 472 (", ": A0 in the row from 2026-11-02 11:00:00, cancelled, "
+                                                     "the code in the row from 2026-11-02 11:00:00, not cancelled"),
+        ("3 hours, D OTP 2026-11-03 02:00 RO 152 (",
+         ": A0 not in the row, the code in the row from 2026-11-02 23:00:00, cancelled")])
+
+
+def test_a_duplicate_is_named(check, model):
+    flights_, cells_ = model.flights(), model.cells()
+    twice = next(f for f in flights_ if model.named(f.numbers) == {"EY 607", "LY 9614"})
+    assert one_each(check.compare_flights(model.con, [*flights_, twice]), [
+        ("D AUH 2026-11-02 09:30: the code puts EY 607 (", ") in 2 flights"),
+        ("D AUH 2026-11-02 09:30: the code puts LY 9614 (", ") in 2 flights")])
+    cell = next(c for c in cells_ if (c.h, model.named(c.flight.numbers)) == (70, {"LX 257"}))
+    assert one_each(check.compare_cells(model.con, [*cells_, cell]), [
+        ("70 hours, D ZRH 2026-11-02 14:00 LX 257 (", "): the code has it in the row 2 times")])
+
+
+def test_run_sql_refuses_an_a0_that_reads_no_model_path(check, model, tmp_path, monkeypatch):
+    doc = tmp_path / "figures.md"
+    doc.write_text("## A0. Setup\n\n```sql\nCREATE VIEW flights AS SELECT * FROM 'data/model2/flights.parquet';\n"
+                   "```\n")
+    monkeypatch.setattr(check, "DOC", doc)
+    with pytest.raises(ValueError, match="A0 .* reads no 'data/model/ path"):
+        check.run_sql(model.dir, ("A0",))
 
 
 def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
@@ -354,3 +408,29 @@ def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
     assert [line for line in out if not line.endswith(" ok")] == [
         f"24 hours: the code {check.show(expected['24 hours'])}, the figures file "
         f"{check.show((cancelled, flights + 1, *ends))}", "flights: 0 differences", "cells: 0 differences"]
+
+
+@pytest.mark.parametrize("plant", ["flight", "cell"])
+def test_main_fails_on_a_flight_or_cell_difference(check, model, monkeypatch, capsys, plant):
+    if plant == "flight":
+        monkeypatch.setattr(counting, "flights", splitting(model, counting.flights))
+    else:
+        monkeypatch.setattr(counting, "cells", dropping(model, counting.cells))
+    # every figure as the planted code gives it, so that only the planted difference can fail the run
+    fig = counting.figures(model.table, model.obs, model.snaps)
+    monkeypatch.setattr(check, "EXPECTED", {"total": check.figure(fig.total)}
+                        | {f"{h} hours": check.figure(r) for h, r in fig.rows})
+    assert check.main(["--model", str(model.dir)]) == 1
+    out = [line for line in capsys.readouterr().out.splitlines() if not line.endswith(" ok")]
+    if plant == "flight":
+        pair = (r"  D AUH 2026-11-02 09:30: A0 EY 607 \(\w{8}\) \+ LY 9614 \(\w{8}\), "
+                r"the code (EY 607|LY 9614) \(\w{8}\)")
+        found = [re.fullmatch(pair, line) for line in out[:2]]
+        assert None not in found and sorted(m.group(1) for m in found) == ["EY 607", "LY 9614"], out[:2]
+        # in each of the flight's four rows: A0's flight not in the code's row, and the code's two not in A0's
+        assert [out[2], out[-1]] == ["flights: 2 differences", "cells: 12 differences"]
+    else:
+        assert out[0] == "flights: 0 differences" and out[2] == "cells: 1 difference" and len(out) == 3
+        assert one_each(out[1:2], [
+            ("  70 hours, D ZRH 2026-11-02 14:00 LX 257 (",
+             ": A0 in the row from 2026-10-30 16:00:00, not cancelled, the code not in the row")])
