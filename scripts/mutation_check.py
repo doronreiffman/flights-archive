@@ -456,7 +456,7 @@ COLLECTOR_MUTATIONS = {
     # the figures check: the code against the figures file's SQL
     "figures: SQL from the wrong section": (FIGURES, "search(doc, heading.end(), stop)", "search(doc, 0, stop)"),
     "figures: a flight difference not reported": (FIGURES, "if a0.get(fid) != code.get(fid)}", "if (fid in a0) != (fid in code)}"),
-    "figures: a figure off by one passes": (FIGURES, "        if value == expected:\n", "        if all(abs(a - b) <= 1 for a, b in zip(value, expected)):\n"),
+    "figures: a figure off by one passes": (FIGURES, '        if value == expected:\n            print(f"{name}: {show(value)} ok")\n', '        if all(abs(a - b) <= 1 for a, b in zip(value, expected)):\n            print(f"{name}: {show(value)} ok")\n'),
     "figures: a cell difference not reported": (FIGURES, "if a0.get((h, ids)) != code.get((h, ids))]", "if False]"),
     "figures: cells compared on one side only": (FIGURES, "for h, ids in a0.keys() | code.keys()", "for h, ids in a0.keys() & code.keys()"),
     "figures: a found difference does not fail": (FIGURES, "failed = failed or bool(found)", "failed = failed"),
