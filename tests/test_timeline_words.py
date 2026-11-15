@@ -310,15 +310,31 @@ def test_one_in_range_carries_thousands_separators():
     assert words.one_in_range(rate(10, 11000, 1100.0, 800.0, 1500.0)) == "1 in 1,100 (between 1 in 800 and 1 in 1,500)"
 
 
-def test_pair():
-    assert words.pair(24, A35_ROWS[24][0]) == (
-        "This flight has between 12 and 24 hours to go. So far, of all flights at the airport still listed normally "
-        "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
-    assert words.pair(3, A35_ROWS[3][0]).startswith("This flight has under 3 hours to go. ")
-    # Each pair names its own checkpoint (docs/flight-lookup.md, C5 and "Words"; A35's 70-hour line).
-    assert words.pair(70, A35_ROWS[70][0]) == (
-        "This flight has between 2 and 3 days to go. So far, of all flights at the airport still listed normally "
-        "with 70 hours to go, about 1 in 65 (between 1 in 30 and 1 in 130) were later listed as cancelled.")
+# Every pair whole, by hand: the design's template and lead-ins (docs/flight-lookup.md, "Words") with A35's lines. Each
+# names its own checkpoint twice, in its lead-in and in its hours to go (C5).
+_SO_FAR = "So far, of all flights at the airport still listed normally with"
+PAIRS = {
+    70: f"This flight has between 2 and 3 days to go. {_SO_FAR} 70 hours to go, about 1 in 65 (between 1 in 30 and 1 in "
+        "130) were later listed as cancelled.",
+    48: f"This flight has between 1 and 2 days to go. {_SO_FAR} 48 hours to go, about 1 in 70 (between 1 in 35 and 1 in "
+        "140) were later listed as cancelled.",
+    24: f"This flight has between 12 and 24 hours to go. {_SO_FAR} 24 hours to go, about 1 in 100 (between 1 in 45 and 1 "
+        "in 200) were later listed as cancelled.",
+    12: f"This flight has between 6 and 12 hours to go. {_SO_FAR} 12 hours to go, about 1 in 150 (between 1 in 70 and 1 "
+        "in 300) were later listed as cancelled.",
+    6: f"This flight has between 3 and 6 hours to go. {_SO_FAR} 6 hours to go, about 1 in 190 (between 1 in 95 and 1 in "
+       "400) were later listed as cancelled.",
+    3: f"This flight has under 3 hours to go. {_SO_FAR} 3 hours to go, about 1 in 230 (between 1 in 110 and 1 in 460) "
+       "were later listed as cancelled.",
+}
+
+
+@pytest.mark.parametrize("h", sorted(PAIRS, reverse=True))
+def test_pair(h):
+    assert words.pair(h, A35_ROWS[h][0]) == PAIRS[h]
+
+
+def test_no_pair_below_the_floor():
     assert words.pair(24, rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
 
 

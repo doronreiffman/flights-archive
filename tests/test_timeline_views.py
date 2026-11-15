@@ -5,6 +5,7 @@ import html
 import json
 import re
 from datetime import date, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -488,11 +489,38 @@ def test_fromhere_js_only_on_pages_with_a_block():
 FROMHERE_JS = Path(views.__file__).parent / "static" / "fromhere.js"
 
 
+def children(fragment: str) -> list[tuple[str, dict, str]]:
+    """The direct children of the element `fragment` opens, as (tag, attributes, text inside, entities unescaped), in
+    page order."""
+    out: list[list] = []
+    depth = 0
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            nonlocal depth
+            depth += 1
+            if depth == 2:
+                out.append([tag, dict(attrs), ""])
+
+        def handle_endtag(self, tag):
+            nonlocal depth
+            depth -= 1
+
+        def handle_data(self, data):
+            if depth >= 2:
+                out[-1][2] += data
+
+    Parser().feed(fragment)
+    return [(tag, attrs, inner) for tag, attrs, inner in out]
+
+
 def test_the_block_holds_every_name_fromhere_js_reads(israeli_machine):
     """The names fromhere.js selects by, read out of the script itself, are the names the block is written with: the
-    block it selects with the two attributes it reads there, the list items with theirs, the class of the line among
-    the block's children that it shows above 72 hours, and the class of the line right after the block. The script's
-    own tests run it on a hand-made stand-in page, so this test is what ties the two together."""
+    block it selects with the two attributes it reads there, the list items with theirs, the class of the line it shows
+    above 72 hours, and the class of the line right after the block. Above 72 hours the script hides every direct child
+    of the block but that line ([...block.children]), so that line, the list of pairs, the condition line and the record
+    line are each a direct child. The script's own tests run it on a hand-made stand-in page, so this test is what ties
+    the two together."""
     script = FROMHERE_JS.read_text(encoding="utf-8")
     found = {"block": re.findall(r'document\.querySelectorAll\("([^"]+)"\)', script),
              "items": re.findall(r'block\.querySelectorAll\("([^"]+)"\)', script),
@@ -517,7 +545,11 @@ def test_the_block_holds_every_name_fromhere_js_reads(israeli_machine):
     items = re.findall(rf"<{item}\b[^>]*>", block)
     assert len(items) == 6
     assert [(i, name) for i in items for name in found["item attributes"] if f' {name}="' not in i] == []
-    assert [name for name in found["child classes"] if not re.search(rf'<\w+ class="{name}"[ >]', block)] == []
+    kids = children(block)
+    assert [name for name in found["child classes"] if not any(a.get("class") == name for _, a, _ in kids)] == [], kids
+    pairs = " ".join(t for _, t in pair_items(page))
+    kid_texts = [" ".join(inner.split()) for _, _, inner in kids]
+    assert [line for line in (pairs, CONDITION, words.PAST_ONLY) if line not in kid_texts] == [], kid_texts
     assert [name for name in found["next classes"] if not re.match(rf'\s*<\w+ class="{name}"[ >]', after)] == []
 
 

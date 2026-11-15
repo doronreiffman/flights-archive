@@ -362,7 +362,9 @@ def test_a_fresh_small_model_passes_the_upload_check(tmp_path):
 
 def test_a_number_listed_as_cancelled_in_a_flight_that_departed_names_the_number_that_did(tmp_path):
     """EY 607 was listed as cancelled; LY 9614, of the same flight (C1), departed. EY 607's page names LY 9614, linked
-    to its row; LY 9614's page has no such line, and the flight is in no cancellation list (D4, C10)."""
+    to its row; LY 9614's page has no such line. Neither that flight nor UA 090 with LY 8090 (UA 090 listed as
+    cancelled, LY 8090 still listed) is in either cancellation list, the front page's recent table or the page of all
+    cancellations; IZ 991, listed as cancelled alone, is in both (D4, C10)."""
     site = make_site(tmp_path, closing_model())
     page = read(site, "flight/EY607-D.html")
     assert ("Listed as cancelled. Another flight number with the same scheduled time and airport departed: LY 9614."
@@ -370,8 +372,10 @@ def test_a_number_listed_as_cancelled_in_a_flight_that_departed_names_the_number
     assert ('airport departed: <a href="../flight/LY9614-D.html#2026-10-26-1100-AUH"><span class="d">LY 9614</span></a>.'
             "</p>") in page
     assert "Another flight number" not in text(read(site, "flight/LY9614-D.html"))
-    cancellations = text(read(site, "cancellations.html"))
-    assert "IZ 991" in cancellations and "EY 607" not in cancellations
+    index = read(site, "index.html")
+    recent = text(index[index.index("<h2>Recent cancellations</h2>"):index.index('<a href="cancellations.html">')])
+    for listed in (recent, text(read(site, "cancellations.html"))):
+        assert "IZ 991" in listed and "EY 607" not in listed and "UA 090" not in listed, listed
 
 
 def test_how_it_works_names_the_frozen_tag_and_the_counting_start(tmp_path, israeli_machine):
