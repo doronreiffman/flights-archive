@@ -232,34 +232,6 @@ def test_warning_sentence(text, sentence):
     assert words.warning_sentence(text) == sentence
 
 
-# --- headline --------------------------------------------------------------------------------------
-
-ONE_IN_CASES = [
-    (20, 951, 50),
-    (1, 22, 20),
-    (2, 45, 25),   # 22.5: halves up to the next multiple of 5
-    (1, 19, 19),
-    (2, 25, 13),   # 12.5: halves up
-    (0, 10, None),
-]
-
-
-@pytest.mark.parametrize("cancelled_n, known, n", ONE_IN_CASES)
-def test_one_in(cancelled_n, known, n):
-    assert words.one_in(cancelled_n, known) == n
-
-
-def test_headline():
-    assert words.headline(20, 951) == ("So far, 20 of 951 flights with a known outcome were listed as cancelled. "
-                                       "That's about 1 in 50.")
-    assert words.headline(0, 951) is None
-
-
-def test_headline_counts_carry_thousands_separators():
-    assert words.headline(47, 2674) == ("So far, 47 of 2,674 flights with a known outcome were listed as cancelled. "
-                                        "That's about 1 in 55.")
-
-
 # --- rates -----------------------------------------------------------------------------------------
 
 def rate(cancelled, flights, one_in, lo, hi, floor=True):
@@ -549,7 +521,6 @@ def site_texts() -> list[str]:
     texts += [words.label_note({"outcome": o, "sched_utc_final": SCHED, "last_seen_at": seen})
               for o, seen, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
-    texts += [words.headline(c, known) for c, known, _ in ONE_IN_CASES]
     texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
               words.late_line(FakeSummary()), words.another_number("departed"), words.PAST_ONLY, words.A_FLIGHT,
               words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),

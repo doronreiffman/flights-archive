@@ -75,7 +75,7 @@ h1.wordmark { font-size: 2.25rem; line-height: 1.15; letter-spacing: -.02em; mar
 .band .lede { color: var(--band-muted); font-size: 1.125rem; line-height: 1.5; max-width: 40rem; margin-bottom: 16px; }
 .band .updated { color: var(--band-muted); font-size: .875rem; margin-bottom: 16px; }
 
-/* --- figures: the headline's numbers as tiles, the sentence under them ------------------------------ */
+/* --- figures: the total's numbers as tiles, the sentence under them --------------------------------- */
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; }
 h1 + .stats { margin-top: 16px; }
 .stat {
@@ -86,7 +86,9 @@ h1 + .stats { margin-top: 16px; }
 .stat dt::first-letter { text-transform: uppercase; }
 .stat dd { margin: 0; font-size: 2.25rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
 .stat.cancel dd { color: var(--cancel-fg); }
-.headline { margin-bottom: 32px; }
+/* "1 in 60", then its range right after it, in smaller type. */
+.stat dd small { font-size: .875rem; font-weight: 500; letter-spacing: 0; }
+.total { margin-bottom: 32px; }
 
 .lede, .who { color: var(--muted); }
 .summary { font-size: 1.0625rem; font-weight: 500; }
@@ -249,4 +251,14 @@ summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: 
   .cancellations td:nth-child(2) { order: -1; }
   .cancellations td:nth-child(3), .cancellations td:nth-child(4) { flex-basis: 100%; }
   .cancellations td:nth-child(4)::before { content: "Warning: "; color: var(--muted); }
+  /* Each point of the from-here table stacks too, every figure after its column's head. */
+  .fromhere, .fromhere tbody, .fromhere tr, .fromhere td { display: block; }
+  .fromhere thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .fromhere tr { padding: 12px 16px; border-top: 1px solid var(--line); }
+  .fromhere tbody tr:first-child { border-top: 0; }
+  .fromhere td { padding: 0; border: 0; }
+  .fromhere td:first-child { font-weight: 650; }
+  .fromhere td::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 400; }
 }

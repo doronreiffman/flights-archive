@@ -332,30 +332,6 @@ def test_day_counts_and_the_chart_count_c10_flights(israeli_machine):
         DayInfo(date(2026, 10, 29), total=3, cancelled=1, unknown=1, state="past", partial=False)]
 
 
-def test_headline_counts_flights_with_a_known_outcome():
-    fs = [flight("departed", local(29, 8, 0)), flight("landed", local(29, 9, 0), direction="A", outcome="landed"),
-          flight("c1", local(29, 10, 0), airline="EY", flight_no="607", group="g", **CLEAN),
-          flight("c2", local(29, 10, 0), airline="LY", flight_no="9614", group="g", **CLEAN),
-          flight("upcoming", local(30, 10, 0), outcome="open"),
-          flight("no final update", local(29, 23, 55), outcome="open"),
-          flight("unknown", local(29, 11, 0), outcome="gap")]
-    assert [r.label for r in rows(*fs)] == ["DEPARTED", "LANDED", "CANCELLED", "CANCELLED", "UPCOMING",
-                                            "NO FINAL UPDATE", "UNKNOWN"]
-    assert flights.headline_counts(lists(*fs), LAST_FETCH) == (1, 3)
-
-
-def test_headline_counts_only_flights_whose_scheduled_time_has_passed():
-    """A cancellation still ahead is left out of both counts, and so is a flight that left before its time; one
-    scheduled at the very time of the last record has passed. Decided on the model's UTC, as the labels are."""
-    fs = [flight("departed", local(29, 8, 0)),
-          flight("cancelled", local(29, 10, 0), **CLEAN),
-          flight("at the last record", LAST_FETCH + timedelta(hours=2), **CLEAN),  # sched_utc_final == LAST_FETCH
-          flight("cancelled ahead", local(31, 10, 0), **CLEAN),
-          flight("left early", local(30, 0, 30))]  # DEPARTED, scheduled 22:30 UTC on 29 October
-    assert [r.label for r in rows(*fs)] == ["DEPARTED", "CANCELLED", "CANCELLED", "CANCELLED", "DEPARTED"]
-    assert flights.headline_counts(lists(*fs), LAST_FETCH) == (2, 3)
-
-
 # --- the featured flight and recent cancellations --------------------------------------------------
 
 def test_featured_is_the_most_recent_cancellation_with_a_clean_warning():

@@ -14,7 +14,9 @@ from collections import Counter
 from datetime import date, datetime
 
 from . import flights, words
+from .display import Summary
 from .flights import DayInfo, ListFlight, Row
+from .rates import Rate
 
 HOME = "Cancelled flights at Tel Aviv airport"
 NONE_CANCELLED = "No flights listed as cancelled so far."
@@ -70,7 +72,13 @@ def _link(r: Row, root: str) -> str:
 
 
 def _numbers(fl: ListFlight, root: str) -> str:
-    return ", ".join(_link(r, root) for r in fl.rows)
+    """The flight's numbers, linked; a number listed as cancelled in a flight that is not (flights.others) comes after
+    the rest, in brackets, one each: "LH 695 (LH 0691A is listed as cancelled)" (docs/flight-lookup.md, "Words";
+    Question 4b). The bracket also keeps a place name from following "cancelled"."""
+    apart = flights.others([fl])
+    named = [_link(r, root) for r in fl.rows if r.flight_id not in apart]
+    return " ".join([", ".join(named), *(f"({_link(r, root)} {e(words.BRACKET)})" for r in fl.rows
+                                        if r.flight_id in apart)])
 
 
 def _place(r: Row) -> str:
@@ -114,10 +122,10 @@ def _count_parts(info: DayInfo) -> list[str]:
 
 
 def _tiles(tiles: list[tuple[str, str, bool]]) -> str:
-    """Figures already on the page as tiles, (label, figure, cancelled) each; the label sits above its figure, and a
-    cancelled count takes the cancelled color. The sentence or line that states them stays on the page."""
+    """Figures already on the page as tiles, (label, figure as HTML, cancelled) each; the label sits above its figure,
+    and a cancelled count takes the cancelled color. The sentence or line that states them stays on the page."""
     return "\n".join(['<dl class="stats">',
-                      *(f'<div class="stat{" cancel" * red}"><dt>{e(label)}</dt> <dd>{e(figure)}</dd></div>'
+                      *(f'<div class="stat{" cancel" * red}"><dt>{e(label)}</dt> <dd>{figure}</dd></div>'
                         for label, figure, red in tiles), "</dl>"])
 
 
@@ -125,7 +133,7 @@ def _day_tiles(info: DayInfo) -> str:
     """A day's count line as tiles, zeros left out as in the line: "418 flights", "7 cancelled", "190 unknown"."""
     parts = [("flight" if info.total == 1 else "flights", info.total, False), ("cancelled", info.cancelled, True),
              ("unknown", info.unknown, False)]
-    return _tiles([(label, f"{n:,}", red) for label, n, red in parts if n or label.startswith("flight")])
+    return _tiles([(label, e(f"{n:,}"), red) for label, n, red in parts if n or label.startswith("flight")])
 
 
 def _counts(info: DayInfo) -> str:
@@ -366,11 +374,40 @@ def chart_svg(days: list[DayInfo]) -> str:
                       f'aria-label="{e(label)}">', *out, "</svg>"])
 
 
-def _stats(cancelled: int, known: int) -> str:
-    """The headline's three figures as tiles, each label a phrase of the headline sentence, which stays under them:
-    the flights with a known outcome, those listed as cancelled, and the "about 1 in N"."""
-    return _tiles([("flights with a known outcome", f"{known:,}", False), ("listed as cancelled", f"{cancelled:,}", True),
-                   ("that's about", f"1 in {words.one_in(cancelled, known)}", False)])
+def from_here(summary: Summary) -> str:
+    """"From here to the scheduled time" (docs/flight-lookup.md, "Pages", Front page, item 3): the first line, the
+    table of six points, the record line, the three lines under the table, the count line and the late line (left
+    out at zero, Question 4h). A row below the floor shows its two counts and "too few so far to say" (C8). Plain HTML,
+    no script; on a phone each row stacks and each cell prints the head in its `data-label` (style.css)."""
+    heads = words.FROM_HERE_COLUMNS
+    rows = []
+    for h, rate in summary.figures.rows:
+        cells = (words.CHECKPOINT_NAMES[h], f"{rate.flights:,}", f"{rate.cancelled:,}",
+                 words.one_in_range(rate) or words.TOO_FEW)
+        rows.append("<tr>" + "".join(f'<td data-label="{e(head)}">{e(cell)}</td>' for head, cell in zip(heads, cells))
+                    + "</tr>")
+    table = ('<div class="table-card">\n<table class="fromhere">\n<thead><tr>'
+             + "".join(f"<th>{e(head)}</th>" for head in heads) + "</tr></thead>\n<tbody>\n" + "\n".join(rows)
+             + "\n</tbody>\n</table>\n</div>")
+    late = words.late_line(summary)
+    return "\n".join([f"<h2>{e(words.FROM_HERE_HEADING)}</h2>", f"<p>{e(words.FROM_HERE_FIRST)}</p>", table,
+                      f"<p>{e(words.PAST_ONLY)}</p>",
+                      *(f'<p class="note">{e(line)}</p>' for line in words.UNDER_TABLE),
+                      f'<p class="note">{e(words.count_line(summary))}</p>',
+                      *([f'<p class="note">{e(late)}</p>'] if late else [])])
+
+
+def _total(total: Rate) -> str:
+    """The total (item 4): its figures as tiles, each label a phrase of the sentence, which stays under them: the
+    flights with a known outcome, those listed as cancelled, and "1 in N" with its range right after it, in smaller
+    type. Below the floor that third tile is left out (Question 4f)."""
+    tiles = [("flights with a known outcome", e(f"{total.flights:,}"), False),
+             ("listed as cancelled", e(f"{total.cancelled:,}"), True)]
+    figure = words.one_in_range(total)
+    if figure is not None:
+        middle, sep, rng = figure.partition(" (")  # "1 in 60", " (", "between 1 in 35 and 1 in 95)"
+        tiles.append(("that's about", f"{e(middle)}<small>{e(sep + rng)}</small>", False))
+    return "\n".join([_tiles(tiles), f'<p class="total">{e(words.total(total))}</p>'])
 
 
 def _story(r: Row) -> str:
@@ -381,11 +418,12 @@ def _story(r: Row) -> str:
                       _changes(r), "</section>"])
 
 
-def front_page(cancelled: int, known: int, story: Row | None, recent: list[ListFlight],
-               chart_days: list[DayInfo], all_days: list[DayInfo], entries: list[dict], last_record: datetime) -> str:
-    """The front page, top to bottom as docs/site-redesign.md lists it. The caller chooses: the headline's counts,
-    the story (None for none), the recent cancellations newest first (at most RECENT shown), the chart's days and
-    every day for the list under it, the search entries, and the last record's time (the model's naive UTC)."""
+def front_page(summary: Summary, story: Row | None, recent: list[ListFlight], chart_days: list[DayInfo],
+               all_days: list[DayInfo], entries: list[dict], last_record: datetime) -> str:
+    """The front page, top to bottom as docs/flight-lookup.md ("Pages", Front page) lists it. The caller chooses: the
+    figures (display.summary), the story (None for none), the recent cancellations newest first (at most RECENT
+    shown), the chart's days and every day for the list under it, the search entries, and the last record's time
+    (the model's naive UTC)."""
     about = description()
     head = "\n".join([f'<meta name="description" content="{e(about)}">',
                       f'<meta property="og:title" content="{e(TITLE)}">',
@@ -395,18 +433,15 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[ListF
     updated = words.il_time(last_record)
     top = "\n".join([f'<h1 class="wordmark"><a href="index.html">{e(HOME)}</a></h1>', f'<p class="lede">{e(LEDE)}</p>',
                      f'<p class="updated">Last updated {updated.day} {updated:%b %Y, %H:%M}</p>'])
-    body = []
-    headline = words.headline(cancelled, known)
-    if headline:
-        body += [_stats(cancelled, known), f'<p class="headline">{e(headline)}</p>']
+    search = [f'<input id="search" type="search" hidden placeholder="{e(SEARCH_HINT)}" '
+              'aria-label="Find a flight by number or city">',
+              '<ul id="search-results" hidden></ul>',
+              f'<script type="application/json" id="flights-data">{search_json(entries)}</script>']
+    body = [*search, from_here(summary), _total(summary.figures.total)]
     if story is not None:
         body.append(_story(story))
     day_links = " · ".join(f'<a href="day/{x.day:%Y-%m-%d}.html">{_short_date(x.day)}</a>' for x in all_days)
-    body += [f'<input id="search" type="search" hidden placeholder="{e(SEARCH_HINT)}" '
-             'aria-label="Find a flight by number or city">',
-             '<ul id="search-results" hidden></ul>',
-             f'<script type="application/json" id="flights-data">{search_json(entries)}</script>',
-             "<h2>Recent cancellations</h2>",
+    body += ["<h2>Recent cancellations</h2>",
              _cancellations_table(recent[:RECENT], "") if recent else f"<p>{NONE_CANCELLED}</p>",
              '<p><a href="cancellations.html">All cancellations</a></p>',
              "<h2>Flights each day</h2>",

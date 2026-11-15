@@ -261,24 +261,6 @@ def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: fl
     return lines
 
 
-# --- headline --------------------------------------------------------------------------------------
-
-def one_in(cancelled: int, known: int) -> int | None:
-    """N in "about 1 in N": below 20 the nearest whole number, from 20 up the nearest multiple of 5; halves up."""
-    if cancelled == 0:
-        return None
-    r = known / cancelled
-    return math.floor(r + 0.5) if r < 20 else 5 * math.floor(r / 5 + 0.5)
-
-
-def headline(cancelled: int, known: int) -> str | None:
-    n = one_in(cancelled, known)
-    if n is None:
-        return None
-    return (f"So far, {cancelled:,} of {known:,} flights with a known outcome were listed as cancelled. "
-            f"That's about 1 in {n}.")
-
-
 # --- rates (docs/flight-lookup.md, "Words"; docs/flight-lookup-plan.md, Question 4 and Appendix A) ------
 
 PAST_ONLY = "This is what happened to past flights. It does not say what will happen to yours."

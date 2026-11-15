@@ -136,6 +136,21 @@ def test_a_long_codeshare_list_wraps_after_its_commas():
     assert cell and all(decls.get("white-space") != "nowrap" for decls in cell)
 
 
+PHONE = "@media (max-width: 600px)"
+
+
+def test_the_from_here_table_stacks_on_a_phone_as_the_cancellations_table_does():
+    """docs/flight-lookup.md, "Pages", Front page: on a narrow screen each row of the table stacks, as the
+    cancellations table's do. Its heads are hidden there, so each cell prints its column's head (views writes it as
+    `data-label`) before it."""
+    for part in ("", " tbody", " td"):
+        assert declared((PHONE,), f".cancellations{part}").get("display") == "block", part
+        assert declared((PHONE,), f".fromhere{part}").get("display") == "block", part
+    assert declared((PHONE,), ".fromhere tr").get("display") == "block"
+    assert declared((PHONE,), ".fromhere thead").get("clip-path") == "inset(50%)"
+    assert declared((PHONE,), ".fromhere td::before").get("content") == 'attr(data-label) ": "'
+
+
 def test_hebrew_city_is_isolated():
     assert declared((), '[dir="rtl"]').get("unicode-bidi") == "isolate"
 

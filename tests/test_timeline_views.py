@@ -8,9 +8,9 @@ from datetime import date, datetime
 import pytest
 
 from model.report import ATTRIBUTION
-from test_timeline_flights import CLEAN, LAST_FETCH, first, flight, local, then, utc
-from test_timeline_words import TO3459_OBS
-from timeline import check, flights, views, words
+from test_timeline_flights import CLEAN, LAST_FETCH, ey_ly, first, flight, lh, local, then, utc
+from test_timeline_words import A35_ROWS, TO3459_OBS, TOTAL, rate
+from timeline import check, counting, display, flights, views, words
 from timeline.flights import DayInfo
 
 SINCE = date(2026, 10, 27)
@@ -77,9 +77,8 @@ WORDMARK = '<header class="band">\n<p class="wordmark"><a href="{root}index.html
 
 
 def tiles(page: str) -> list[tuple[str, str]]:
-    """The stat tiles as (label, figure), in page order."""
-    return [(html.unescape(label), html.unescape(figure))
-            for label, figure in re.findall(r"<dt>(.*?)</dt> <dd>(.*?)</dd>", page)]
+    """The stat tiles as (label, figure) as a reader sees them, in page order."""
+    return [(html.unescape(label), text(figure)) for label, figure in re.findall(r"<dt>(.*?)</dt> <dd>(.*?)</dd>", page)]
 
 
 # --- layout ----------------------------------------------------------------------------------------
@@ -383,6 +382,34 @@ def test_day_page_has_no_change_lines():
     assert "Earliest record" not in page and "<details" not in page
 
 
+def bracket_day():
+    """One flight at 09:00 to Frankfurt (C1): LH 0691A and LH 0693A, listed as cancelled, beside LH 695 and LH 697,
+    which departed. In row order LH 0691A comes first, so it is the flight's first row; the flight is DEPARTED (C10)."""
+    fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh0693a", local(29, 9, 0), "0693A", "canceled"),
+          lh("lh695", local(29, 9, 0), "695"), lh("lh697", local(29, 9, 0), "697")]
+    return views.day_page(DayInfo(DAY, 1, 0, 0, "past", False), lists(*fs))
+
+
+def test_day_rows_name_every_number_with_the_bracket():
+    """docs/flight-lookup.md, "Words": a number whose own status differs is named in brackets with "is", one bracket
+    each, after the flight's other numbers and before the route; the row takes the flight's label, not its first
+    row's."""
+    page = bracket_day()
+    assert ("09:00 LH 695, LH 697 (LH 0691A is listed as cancelled) (LH 0693A is listed as cancelled) "
+            "to Frankfurt (FRA) DEPARTED") in text(page)
+    assert "CANCELLED" not in text(page)
+    for number in ("695", "697", "0691A", "0693A"):
+        assert f'<a href="../flight/LH{number}-D.html#2026-10-29-0900-FRA"><span class="d">LH {number}</span></a>' in page
+
+
+def test_a_flight_that_departed_shows_no_warning_in_a_list_row():
+    """The flight's first row, LH 0691A, has a warning of its own (at least 6 hours); the flight departed, so its row
+    shows none: a list row's warning is a cancelled flight's (C9)."""
+    row = re.search(r"<li>.*?</li>", bracket_day()).group(0)
+    assert "LH 0691A" in text(row)
+    assert "Warning" not in row and 'class="warn"' not in row
+
+
 # --- all cancellations -----------------------------------------------------------------------------
 
 def cells(page: str) -> list[list[str]]:
@@ -421,6 +448,16 @@ def test_cancellations_link_each_number_to_its_row():
 def test_no_cancellations_yet():
     page = views.cancellations_page(lists(flight("departed")))
     assert "<table" not in page and "No flights listed as cancelled so far." in text(page)
+
+
+def test_cancellations_show_c9s_warning():
+    """EY 607 and LY 9614, one cancelled flight (C1): LY 9614 was listed as cancelled first, so the lists show its
+    warning, at least 23 hours, not that of EY 607, the first row (at least 6 hours)."""
+    fl = lists(*ey_ly())
+    assert cells(views.cancellations_page(fl))[1] == [
+        "Thu 29 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave 09:00", "at least 23 hours"]
+    day = views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), fl)
+    assert "09:00 EY 607, LY 9614 to New York (JFK) CANCELLED Warning: at least 23 hours." in text(day)
 
 
 # --- how this works --------------------------------------------------------------------------------
@@ -520,10 +557,32 @@ def twelve_cancelled():
     return flights.recent_cancellations(lists(*fs), n=12)
 
 
-def front(cancelled=20, known=951, story="TO 3459", recent=None, chart_days=None, all_days=None, data=None,
-          last=LAST_FETCH):
+def figures(total=TOTAL, by_point=None, late_after=9):
+    """The front page's figures (display.Summary): by default the design's, its total (A2), its table (A6, the 3-hour
+    row as C8 rounds it), and A3's and A17's counts; `by_point` maps each checkpoint to its rate."""
+    by_point = {h: r for h, (r, _) in A35_ROWS.items()} if by_point is None else by_point
+    return display.Summary(
+        figures=counting.Figures(total=total, rows=tuple((h, by_point[h]) for h in counting.CHECKPOINTS)),
+        unknown=269, unknown_gap=240, unknown_no_final=29, late_after=late_after, late_holds=1, late_unplaced=19,
+        late_before=52, first_record=date(2026, 10, 27))
+
+
+SUMMARY = figures()
+FEW = rate(3, 120, 40.0, 10.0, 90.0, floor=False)  # 3 cancelled: below the floor
+BELOW = figures(FEW, {h: rate(2, 100 + h, 50.0 + h / 2, 10.0, 300.0, floor=False) for h in counting.CHECKPOINTS},
+                late_after=0)  # a fresh archive: no rate clears the floor
+NONE_YET = figures(rate(0, 900, None, None, None, floor=False),
+                   {h: rate(0, 800, None, None, None, floor=False) for h in counting.CHECKPOINTS}, late_after=0)
+COUNT_LINE = ("Counted: 4,658 flights with a known outcome, scheduled up to two days before the last update, in a "
+              "record kept since 27 October 2026. Not counted: 269 flights with no known outcome. 240 of them left "
+              "the list while nothing was recorded, and 29 left it with no final status.")
+LATE_LINE = "At least 9 of the 81 cancelled flights were listed as cancelled only after their scheduled time."
+HEADS = ["Time to go", "Flights still listed normally", "Later listed as cancelled", "That's about"]
+
+
+def front(summary=SUMMARY, story="TO 3459", recent=None, chart_days=None, all_days=None, data=None, last=LAST_FETCH):
     story_row = to3459_rows()[1] if story == "TO 3459" else story
-    return views.front_page(cancelled, known, story_row, recent_default() if recent is None else recent,
+    return views.front_page(summary, story_row, recent_default() if recent is None else recent,
                             CHART_DAYS if chart_days is None else chart_days,
                             ALL_DAYS if all_days is None else all_days, entries() if data is None else data, last)
 
@@ -533,7 +592,8 @@ def unknown_only_front():
     record), so it is the story by the fallback rule."""
     f = flight("asy", local(29, 13, 30), **ASY_UNKNOWN)
     obs = [first(f) | {"status": "CANCELED"}]
-    return front(1, 900, story=rows(f, obs=obs)[0], recent=lists(f, obs=obs))
+    return front(figures(rate(1, 900, 900.0, None, None, floor=False)), story=rows(f, obs=obs)[0],
+                 recent=lists(f, obs=obs))
 
 
 def delayed_story_front():
@@ -544,7 +604,8 @@ def delayed_story_front():
     late = then(start, utc(29, 13, 2, 45), status="DELAYED")
     gone = then(late, utc(29, 15, 2, 45), status="CANCELED")
     obs = [start, late, gone]
-    return front(1, 900, story=rows(f, obs=obs)[0], recent=lists(f, obs=obs))
+    return front(figures(rate(1, 900, 900.0, None, None, floor=False)), story=rows(f, obs=obs)[0],
+                 recent=lists(f, obs=obs))
 
 
 def meta(page: str, attribute: str) -> str:
@@ -594,33 +655,111 @@ def test_front_page_title_and_lede():
     assert page.count("<header") == 1 and page.count("<h1") == 1
 
 
-def test_front_page_headline():
-    page = front(20, 951)
-    assert ('<p class="headline">So far, 20 of 951 flights with a known outcome were listed as cancelled. '
-            "That's about 1 in 50.</p>") in html.unescape(page)
-    assert words.headline(20, 951) in text(page)
+def test_front_page_total():
+    """The total replaces the headline: the design's sentence, with the range in the same breath."""
+    page = front()
+    assert ('<p class="total">So far, 81 of 4,658 flights with a known outcome were listed as cancelled. '
+            "That's about 1 in 60 (between 1 in 35 and 1 in 95).</p>") in html.unescape(page)
 
 
-def test_front_page_tiles_show_the_headline_counts():
-    """The headline's figures as tiles, each labelled with the sentence's own words, and the sentence under them."""
-    page = front(20, 951)
-    assert tiles(page) == [("flights with a known outcome", "951"), ("listed as cancelled", "20"),
-                           ("that's about", "1 in 50")]
-    assert '<div class="stat cancel"><dt>listed as cancelled</dt> <dd>20</dd></div>' in page
-    assert page.index('<dl class="stats">') < page.index('class="headline"')
+def test_front_page_tiles_show_the_totals_counts():
+    """The total's figures as tiles, each labelled with the sentence's own words, and the sentence under them."""
+    page = front()
+    assert tiles(page) == [("flights with a known outcome", "4,658"), ("listed as cancelled", "81"),
+                           ("that's about", "1 in 60 (between 1 in 35 and 1 in 95)")]
+    assert '<div class="stat cancel"><dt>listed as cancelled</dt> <dd>81</dd></div>' in page
+    assert page.index('<dl class="stats">') < page.index('class="total"')
 
 
 def test_front_page_tiles_and_sentence_share_their_rounding_and_separators():
-    page = front(47, 2674)
-    assert tiles(page) == [("flights with a known outcome", "2,674"), ("listed as cancelled", "47"),
-                           ("that's about", "1 in 55")]
-    assert ("So far, 47 of 2,674 flights with a known outcome were listed as cancelled. That's about 1 in 55."
+    """1 in 1,120.8, its range 812.3 to 1,530.2: C8 rounds the middle to 1,100 and the ends outward, in the tile and
+    the sentence alike, every count and N with its thousands separator."""
+    page = front(figures(rate(12, 13450, 13450 / 12, 812.3, 1530.2)))
+    assert tiles(page) == [("flights with a known outcome", "13,450"), ("listed as cancelled", "12"),
+                           ("that's about", "1 in 1,100 (between 1 in 810 and 1 in 1,600)")]
+    assert ("So far, 12 of 13,450 flights with a known outcome were listed as cancelled. That's about 1 in 1,100 "
+            "(between 1 in 810 and 1 in 1,600)." in text(page))
+
+
+def test_the_tile_prints_its_range_right_after_it():
+    """docs/flight-lookup.md, "Pages", item 4: "1 in 60", then " (between 1 in 35 and 1 in 95)" right after it, in
+    smaller type."""
+    page = front()
+    assert "<dd>1 in 60<small> (between 1 in 35 and 1 in 95)</small></dd>" in page
+    assert "1 in 60 (between 1 in 35 and 1 in 95)" in text(section(page, '<dl class="stats">', "</dl>"))
+
+
+def test_below_the_floor_no_third_tile():
+    """Question 4f: below the floor the "that's about" tile is left out, and the sentence says so (Question 4d)."""
+    page = front(figures(FEW))
+    assert tiles(page) == [("flights with a known outcome", "120"), ("listed as cancelled", "3")]
+    assert ('<p class="total">So far, 3 of 120 flights with a known outcome were listed as cancelled. '
+            "Too few so far to say.</p>") in page
+
+
+def test_the_total_without_cancellations():
+    """Question 4d: with none cancelled the total still gives its two counts, then "Too few so far to say."."""
+    page = front(NONE_YET, story=None, recent=[])
+    assert tiles(page) == [("flights with a known outcome", "900"), ("listed as cancelled", "0")]
+    assert ("So far, 0 of 900 flights with a known outcome were listed as cancelled. Too few so far to say."
             in text(page))
 
 
-def test_no_headline_without_cancellations():
-    page = front(0, 900, story=None, recent=[])
-    assert 'class="headline"' not in page and "So far" not in page and 'class="stats"' not in page
+def block(page: str) -> str:
+    """The front page's "From here to the scheduled time", from its heading to the total's tiles."""
+    return section(page, "<h2>From here to the scheduled time</h2>", '<dl class="stats">')
+
+
+def table_cells(page: str) -> list[list[str]]:
+    """The from-here table's heads and rows, as a reader sees each cell."""
+    table = section(page, '<table class="fromhere">', "</table>")
+    return [[text(c) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr)] for tr in re.findall(r"<tr>(.*?)</tr>", table)]
+
+
+def test_the_block():
+    """docs/flight-lookup.md, "Pages", item 3, in order: the heading and the first line, the table of six points (A6,
+    shown as C8 rounds it), the record line, the three lines under the table, the count line and the late line.
+    Plain HTML: no script."""
+    part = block(front())
+    lines = [text(inner) for _, inner in re.findall(r"<(h2|p)[^>]*>(.*?)</\1>", part)]
+    assert lines == ["From here to the scheduled time", words.FROM_HERE_FIRST, words.PAST_ONLY, *words.UNDER_TABLE,
+                     COUNT_LINE, LATE_LINE]
+    assert part.index(words.FROM_HERE_FIRST) < part.index('<table class="fromhere">') < part.index(words.PAST_ONLY)
+    assert table_cells(part) == [
+        HEADS,
+        ["70 hours", "3,028", "48", "1 in 65 (between 1 in 30 and 1 in 130)"],
+        ["48 hours", "3,316", "47", "1 in 70 (between 1 in 35 and 1 in 140)"],
+        ["24 hours", "3,449", "35", "1 in 100 (between 1 in 45 and 1 in 200)"],
+        ["12 hours", "3,625", "25", "1 in 150 (between 1 in 70 and 1 in 300)"],
+        ["6 hours", "3,704", "19", "1 in 190 (between 1 in 95 and 1 in 400)"],
+        ["3 hours", "3,754", "16", "1 in 230 (between 1 in 110 and 1 in 460)"],
+    ]
+    assert "<script" not in part
+
+
+def test_every_cell_carries_its_columns_head():
+    """On a phone the table stacks and its heads are hidden (style.css): each cell names its column for the sheet to
+    print before it."""
+    body = section(front(), '<table class="fromhere">', "</table>").split("<tbody>")[1]
+    for tr in re.findall(r"<tr>(.*?)</tr>", body):
+        assert [html.unescape(h) for h in re.findall(r'<td data-label="([^"]*)">', tr)] == HEADS
+
+
+def test_a_row_below_the_floor_shows_its_counts_and_too_few_so_far_to_say():
+    by_point = {h: r for h, (r, _) in A35_ROWS.items()} | {3: rate(8, 3754, 469.25, 200.0, 1000.0, floor=False)}
+    got = table_cells(front(figures(by_point=by_point)))
+    assert got[6] == ["3 hours", "3,754", "8", "too few so far to say"]
+    assert got[3] == ["24 hours", "3,449", "35", "1 in 100 (between 1 in 45 and 1 in 200)"]
+
+
+def test_a_model_below_the_floor_everywhere():
+    """Review Focus 3: a fresh archive clears the floor nowhere. No range, and no "1 in N", anywhere on the page; each
+    row and the total say "too few so far to say", and the late line, at zero, is left out."""
+    page = front(BELOW)
+    assert "(between" not in page and not re.search(r"1 in \d", text(page))
+    assert [row[3] for row in table_cells(page)[1:]] == [words.TOO_FEW] * 6
+    assert "Too few so far to say." in text(page)
+    assert "At least" not in text(page) and "None" not in text(page)
 
 
 def test_the_story_box():
@@ -681,7 +820,7 @@ def test_recent_cancellations():
 
 def test_recent_cancellations_at_most_ten():
     page = front(recent=twelve_cancelled())
-    shown = [row[1] for row in cells(page)[1:]]
+    shown = [row[1] for row in cells(section(page, '<table class="cancellations">', "</table>"))[1:]]
     assert shown == [f"LY {n}" for n in range(111, 101, -1)]  # the first ten given, in their order
 
 
@@ -766,22 +905,27 @@ def test_built_by_line():
 
 
 def test_front_page_order():
+    """docs/flight-lookup.md, "Pages", Front page: the band, the search box (moved up), the block, the total's tiles
+    and sentence, the story, recent cancellations, the chart, the day list and the built-by line."""
     page = front()
-    order = ['<h1 class="wordmark">', 'class="lede"', 'class="updated"', "</header>", 'class="stats"',
-             'class="headline"', 'class="story"', '<input id="search"', 'id="search-results"', 'id="flights-data"',
-             "Recent cancellations", 'href="cancellations.html"', "Flights each day", '<svg class="chart"',
-             'class="days"', 'class="built"', "<footer>"]
+    order = ['<h1 class="wordmark">', 'class="lede"', 'class="updated"', "</header>", '<input id="search"',
+             'id="search-results"', 'id="flights-data"', "<h2>From here to the scheduled time</h2>",
+             '<table class="fromhere">', 'class="stats"', 'class="total"', 'class="story"', "Recent cancellations",
+             'href="cancellations.html"', "Flights each day", '<svg class="chart"', 'class="days"', 'class="built"',
+             "<footer>"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
 
 
 def test_front_page_without_cancellations():
-    """Review Focus 3: headline and story left out, everything else present."""
-    page = views.front_page(0, 900, None, [], CHART_DAYS, CHART_DAYS, entries(), LAST_FETCH)
-    assert 'class="headline"' not in page and 'class="story"' not in page and 'class="stats"' not in page
+    """Review Focus 3: the story left out; the block and the total with their counts and "too few so far to say";
+    everything else present."""
+    page = views.front_page(NONE_YET, None, [], CHART_DAYS, CHART_DAYS, entries(), LAST_FETCH)
+    assert 'class="story"' not in page
+    assert '<table class="fromhere">' in page and "So far, 0 of 900 flights" in text(page)
     assert '<input id="search"' in page and '<ul id="search-results" hidden></ul>' in page
     assert 'id="flights-data"' in page and '<svg class="chart"' in page and '<p class="days">' in page
     assert "<h2>Recent cancellations</h2>" in page and "No flights listed as cancelled so far." in text(page)
-    assert "<table" not in page
+    assert 'class="cancellations"' not in page
     assert "Last updated 30 Oct 2026, 00:02" in text(page)
     assert all(t in text(page) for t in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE))
 
@@ -792,7 +936,7 @@ def test_front_page_whose_only_cancellation_has_an_unknown_warning():
     assert "So far, 1 of 900 flights with a known outcome were listed as cancelled." in text(page)
     box = section(page, '<section class="story">', "</section>")
     assert "Earliest record (27 Oct 20:04) already cancelled, terminal 3" in text(box)
-    assert cells(page)[1][-1] == "unknown"
+    assert cells(section(page, '<table class="cancellations">', "</table>"))[1][-1] == "unknown"
 
 
 # --- the upload check's phrases on every page these tests build ------------------------------------
@@ -821,10 +965,15 @@ def every_page() -> dict[str, str]:
         "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), lists(to[1], obs=to_obs)),
         "front page": front(),
         "front page, ten cancellations": front(recent=twelve_cancelled()),
-        "front page, no cancellations": views.front_page(0, 900, None, [], CHART_DAYS, ALL_DAYS, entries(),
+        "front page, no cancellations": views.front_page(NONE_YET, None, [], CHART_DAYS, ALL_DAYS, entries(),
                                                          LAST_FETCH),
         "front page, a warning unknown": unknown_only_front(),
         "front page, a delayed story": delayed_story_front(),
+        "front page, below the floor everywhere": front(BELOW),
+        "front page, a row below the floor": front(figures(by_point={h: r for h, (r, _) in A35_ROWS.items()}
+                                                           | {3: rate(8, 3754, 469.25, 200.0, 1000.0, floor=False)})),
+        "day, numbers listed as cancelled in a flight that departed": bracket_day(),
+        "cancellations, a warning by C9": views.cancellations_page(lists(*ey_ly())),
     }
 
 

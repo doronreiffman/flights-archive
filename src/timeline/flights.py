@@ -16,9 +16,6 @@ from datetime import date, datetime
 
 from . import counting, display, words
 
-KNOWN = (words.DEPARTED, words.LANDED, words.CANCELLED)  # labels with a known outcome (the headline's Y)
-
-
 @dataclass(frozen=True)
 class Row:
     """One row of the model's flights table (a retime chain is one row), ready to show."""
@@ -207,13 +204,6 @@ def day_infos(flights_: list[ListFlight], last_fetch: datetime, partial_days: se
                     state="past" if day < today else "today" if day == today else "ahead",
                     partial=day in partial_days)
             for day, ls in sorted(labels.items())]
-
-
-def headline_counts(flights_: list[ListFlight], last_fetch: datetime) -> tuple[int, int]:
-    """(cancelled, known) over the flights whose scheduled time has passed (UTC, at or before the last sighting of the board):
-    those labelled CANCELLED, and those labelled DEPARTED, LANDED or CANCELLED (C10)."""
-    labels = [fl.label for fl in flights_ if fl.lead.sched_utc_final <= last_fetch]
-    return labels.count(words.CANCELLED), sum(label in KNOWN for label in labels)
 
 
 # --- the featured flight and recent cancellations --------------------------------------------------
