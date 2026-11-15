@@ -1,5 +1,6 @@
-"""Display rows, flights, counts, addresses and search entries (docs/site-redesign.md: "Who is a flight",
-"Labels", "Codeshares", "Names", "Pages", "How it is built"). Expected values by hand."""
+"""Display rows, flights, counts, addresses and search entries (docs/site-redesign.md: "Labels", "Names", "Pages",
+"How it is built"; docs/flight-lookup.md: "Who is a flight", "Labels", "Warning" and "Codeshares" in "What it changes",
+and "Day pages, the chart, the cancellation lists"). Expected values by hand."""
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -22,18 +23,27 @@ def utc(day, h, m, s=0):
     return datetime(2026, 10, day, h, m, s)
 
 
+FIRST_RECORD = utc(27, 18, 4, 46)  # the earliest record's time
+
+
 def flight(fid, sched=local(29, 16, 45), *, airline="LY", flight_no="001", direction="D", airport="JFK",
            city_en="NEW YORK", city_he="ניו יורק", outcome="departed", group=None, **kw):
-    """A row of the model's flights table with the columns flights and words read; `kw` sets any other."""
-    return {"flight_id": fid, "airline": airline, "flight_no": flight_no, "airline_name": EL_AL,
-            "direction": direction, "airport": airport, "city_en": city_en, "city_he": city_he,
-            "sched_local_first": sched, "sched_local_final": sched, "sched_utc_final": sched - timedelta(hours=2),
-            "est_local_final": sched, "outcome": outcome, "last_seen_at": sched - timedelta(hours=3),
-            "cancel_lead_min": None, "cancel_lead_max_min": None, "cancel_lead_censored": None,
-            "uncanceled": False, "codeshare_group_id": group or fid} | kw
+    """A row of the model's flights table with the columns flights, words and the counting rule read; `kw` sets any
+    other. At its last listing (rule C1's reading) it showed its last expected time at terminal 3 with no desks, and
+    it was first seen at the earliest record; one that ended listed as cancelled was first listed so there too."""
+    f = {"flight_id": fid, "airline": airline, "flight_no": flight_no, "airline_name": EL_AL,
+         "direction": direction, "airport": airport, "city_en": city_en, "city_he": city_he,
+         "sched_local_first": sched, "sched_local_final": sched, "sched_utc_final": sched - timedelta(hours=2),
+         "est_local_final": sched, "outcome": outcome, "last_seen_at": sched - timedelta(hours=3),
+         "cancel_lead_min": None, "cancel_lead_max_min": None, "cancel_lead_censored": None,
+         "uncanceled": False, "codeshare_group_id": group or fid} | kw
+    est = f["est_local_final"]
+    return {"est_utc_final": None if est is None else est - timedelta(hours=2), "terminal_final": 3,
+            "counters_final": "", "first_seen_at": FIRST_RECORD,
+            "canceled_first_seen_at": FIRST_RECORD if f["outcome"] == "canceled" else None} | f
 
 
-def first(f, observed_at=utc(27, 18, 4, 46)):
+def first(f, observed_at=FIRST_RECORD):
     """The flight's earliest record, as the model's observations table has it."""
     return {"flight_id": f["flight_id"], "snap_rn": 1, "observed_at": observed_at, "prev_observed_at": None,
             "change_kind": "first", "changed_fields": [], "sched_local": f["sched_local_first"],
@@ -52,8 +62,13 @@ def rows(*fs, obs=None, last_fetch=LAST_FETCH):
     return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, last_fetch, 1)
 
 
+def lists(*fs, obs=None, last_fetch=LAST_FETCH):
+    """The lists' flights (rule C1) of these numbers."""
+    return flights.group_flights(rows(*fs, obs=obs, last_fetch=last_fetch), list(fs), last_fetch)
+
+
 def ids(flights_):
-    return [[r.flight_id for r in fl] for fl in flights_]
+    return [[r.flight_id for r in fl.rows] for fl in flights_]
 
 
 CLEAN = dict(outcome="canceled", cancel_lead_min=400.0, cancel_lead_max_min=416.0, cancel_lead_censored=False)
@@ -62,6 +77,37 @@ CENSORED = dict(outcome="canceled", cancel_lead_min=75.95, cancel_lead_max_min=2
 
 def censored_map(fs):
     return {f["flight_id"]: f["cancel_lead_censored"] for f in fs}
+
+
+LH = dict(airline="LH", airport="FRA", city_en="FRANKFURT", city_he="פרנקפורט")
+OS = dict(airline="OS", direction="A", airport="VIE", city_en="VIENNA", city_he="וינה")
+
+
+def lh(fid, sched, flight_no, outcome="departed", **kw):
+    """An LH departure to Frankfurt: LH 0691A beside LH 695 (docs/flight-lookup.md, C2 and "Words")."""
+    state = CLEAN if outcome == "canceled" else {"outcome": outcome}
+    return flight(fid, sched, flight_no=flight_no, **LH, **state | kw)
+
+
+def os_pair():
+    """OS 083, which landed at 14:00 on 29 October (its last expected time ten minutes early), and OS 1083 of the
+    same airline, listed as cancelled with the scheduled time as its last expected one (docs/flight-lookup.md, C1)."""
+    sched = local(29, 14, 0)
+    return [flight("os083", sched, flight_no="083", outcome="landed", est_local_final=sched - timedelta(minutes=10),
+                   **OS),
+            flight("os1083", sched, flight_no="1083", **OS, **CLEAN)]
+
+
+def ey_ly():
+    """EY 607 and LY 9614, one cancelled flight at 09:00 on 29 October: EY 607 listed as cancelled 400 minutes before
+    its time (at least 6 hours), LY 9614 already 1,400 minutes before (at least 23 hours)."""
+    sched = local(29, 9, 0)
+    utc_ = sched - timedelta(hours=2)
+    return [flight("ey", sched, airline="EY", flight_no="607", **CLEAN,
+                   canceled_first_seen_at=utc_ - timedelta(minutes=400)),
+            flight("ly", sched, airline="LY", flight_no="9614",
+                   **CLEAN | {"cancel_lead_min": 1400.0, "cancel_lead_max_min": 1416.0},
+                   canceled_first_seen_at=utc_ - timedelta(minutes=1400))]
 
 
 # --- addresses and anchors -------------------------------------------------------------------------
@@ -165,41 +211,92 @@ def test_no_final_update_decided_in_utc(israeli_machine):
 
 # --- flights ---------------------------------------------------------------------------------------
 
+def test_lists_group_by_c1():
+    """A list's flights are rule C1's (counting.flights), in the order of each flight's first row, its numbers in row
+    order: OS 1083, listed as cancelled, joins OS 083 of its own airline though their codeshare groups differ; IZ 991,
+    listed as cancelled at other desks, stays apart from LY 003, DL 7426 and AM 7895, which departed (A11)."""
+    desks = dict(counters_final="78-99", group="g")
+    os083, os1083 = os_pair()
+    fs = [flight("ly003", local(29, 9, 0), flight_no="003", **desks),
+          flight("iz991", local(29, 9, 0), airline="IZ", flight_no="991", counters_final="34-41", **CLEAN),
+          os083,
+          flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", **desks),
+          os1083,
+          flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks)]
+    assert ids(lists(*fs)) == [["ly003", "dl", "am"], ["iz991"], ["os083", "os1083"]]
+    assert [fl.day for fl in lists(*fs)] == [date(2026, 10, 29)] * 3
+
+
 def test_codeshare_members_with_one_label_are_one_flight():
     a = flight("a", airline="EY", flight_no="607", group="g")
     b = flight("b", airline="LY", flight_no="9614", group="g")
-    assert ids(flights.group_flights(rows(a, b))) == [["a", "b"]]
-
-
-def test_members_with_different_labels_are_separate_flights():
-    a = flight("a", airline="EY", direction="A", outcome="landed", group="g")
-    b = flight("b", airline="LY", direction="A", outcome="gap", group="g")
-    assert ids(flights.group_flights(rows(a, b))) == [["a"], ["b"]]
-
-
-def test_a_member_shown_delayed_is_its_own_flight():
-    a, b = flight("a", airline="EY", group="g"), flight("b", airline="LY", group="g")
-    start = first(a)
-    assert ids(flights.group_flights(rows(a, b, obs=[start, then(start, utc(29, 13, 2, 45), status="DELAYED"),
-                                                     first(b)]))) == [["a"], ["b"]]
-
-
-def test_members_with_different_warnings_are_separate_flights():
-    a = flight("a", airline="EY", group="g", **CLEAN)  # at least 6 hours
-    b = flight("b", airline="LY", group="g", **CLEAN | {"cancel_lead_min": 45.0, "cancel_lead_max_min": 74.0})
-    assert ids(flights.group_flights(rows(a, b))) == [["a"], ["b"]]
+    assert ids(lists(a, b)) == [["a", "b"]]
 
 
 def test_one_group_id_on_two_days_is_two_flights():
     a, b = flight("a", local(29, 9, 0), group="g"), flight("b", local(30, 9, 0), group="g")  # both DEPARTED
-    assert ids(flights.group_flights(rows(a, b))) == [["a"], ["b"]]
+    assert ids(lists(a, b)) == [["a"], ["b"]]
 
 
-def test_partners_are_the_other_members_of_the_flight_after_the_split():
-    fs = [flight("a", airline="DL", flight_no="7426", group="g"), flight("b", airline="AM", flight_no="7895", group="g"),
-          flight("c", airline="LY", flight_no="001", group="g", outcome="gap"), flight("d", flight_no="002")]
-    got = {fid: [p.flight_id for p in ps] for fid, ps in flights.partners(rows(*fs)).items()}
-    assert got == {"a": ["b"], "b": ["a"], "c": [], "d": []}
+def test_a_list_labels_a_flight_by_c10():
+    """LH 0691A, listed as cancelled, with LH 695, which departed, is one flight labelled DEPARTED (C10, rule 1),
+    and DELAYED because LH 695 showed it; with LH 695 still listed it is UPCOMING (rule 2 before rule 3)."""
+    gone = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695")]
+    ahead = [lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open")]
+    start = first(gone[1])
+    obs = [first(gone[0]), start, then(start, utc(29, 6, 2, 45), status="DELAYED"), *(first(f) for f in ahead)]
+    assert [(r.label, r.delayed) for r in rows(*gone, *ahead, obs=obs)] == [
+        ("CANCELLED", False), ("DEPARTED", True), ("CANCELLED", False), ("UPCOMING", False)]
+    assert [(fl.label, fl.delayed) for fl in lists(*gone, *ahead, obs=obs)] == [("DEPARTED", True), ("UPCOMING", False)]
+
+
+def test_a_cancelled_flights_warning_is_c9s():
+    """A cancelled flight leads with its number listed as cancelled first (C9), whose warning the lists show: LY
+    9614, though EY 607 comes first in the row. Any other flight leads with its first row."""
+    got = lists(*ey_ly(), lh("lh0691a", local(29, 10, 0), "0691A", "canceled"), lh("lh695", local(29, 10, 0), "695"))
+    assert [(ids([fl])[0], fl.label, fl.lead.flight_id, fl.lead.warning) for fl in got] == [
+        (["ey", "ly"], "CANCELLED", "ly", "at least 23 hours"),
+        (["lh0691a", "lh695"], "DEPARTED", "lh0691a", "at least 6 hours")]
+    assert [r.warning for r in got[0].rows] == ["at least 6 hours", "at least 23 hours"]
+
+
+def test_partners_share_time_terminal_and_desks():
+    """Only the numbers of a flight that the list showed with the same last expected time, terminal and check-in
+    desks are "probably the same flight": OS 1083 joins OS 083's flight by airline (C1) but is not its partner."""
+    desks = dict(counters_final="78-99", group="g")
+    fs = [*os_pair(), flight("ly003", local(29, 9, 0), flight_no="003", **desks),
+          flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", **desks),
+          flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks)]
+    lists_ = lists(*fs)
+    assert ids(lists_) == [["os083", "os1083"], ["ly003", "dl", "am"]]
+    got = {fid: [p.flight_id for p in ps] for fid, ps in flights.partners(lists_, fs).items()}
+    assert got == {"os083": [], "os1083": [], "ly003": ["dl", "am"], "dl": ["ly003", "am"], "am": ["ly003", "dl"]}
+
+
+def test_partners_read_a_missing_terminal_and_empty_desks_as_equal():
+    """As rule C1 reads them (counting._shown): a missing terminal equals a missing one, and no desks equal empty
+    desks."""
+    fs = [flight("a", airline="EY", flight_no="607", terminal_final=None, counters_final=None),
+          flight("b", airline="LY", flight_no="9614", terminal_final=None, counters_final="")]
+    got = {fid: [p.flight_id for p in ps] for fid, ps in flights.partners(lists(*fs), fs).items()}
+    assert got == {"a": ["b"], "b": ["a"]}
+
+
+def test_others_name_who_departed_landed_or_is_still_listed():
+    """For each number listed as cancelled in a flight that is not (C2, C10): the numbers that departed, landed, or
+    are still listed (UPCOMING or NO FINAL UPDATE), and only those. LH 697, still listed beside LH 695, is not named
+    for the flight that departed. A cancelled flight's numbers, and numbers not listed as cancelled, get none."""
+    fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695"),
+          lh("lh697", local(29, 9, 0), "697", "open"),
+          *os_pair(),
+          lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open"),
+          lh("lh0691a-late", local(29, 23, 55), "0691A", "canceled"), lh("lh695-late", local(29, 23, 55), "695", "open"),
+          *ey_ly()]
+    assert [fl.label for fl in lists(*fs)] == ["DEPARTED", "LANDED", "UPCOMING", "NO FINAL UPDATE", "CANCELLED"]
+    got = {fid: (verb, [r.flight_id for r in named]) for fid, (verb, named) in flights.others(lists(*fs)).items()}
+    assert got == {"lh0691a": ("departed", ["lh695"]), "os1083": ("landed", ["os083"]),
+                   "lh0691a-31": ("is still listed", ["lh695-31"]),
+                   "lh0691a-late": ("is still listed", ["lh695-late"])}
 
 
 # --- counts ----------------------------------------------------------------------------------------
@@ -213,10 +310,20 @@ def test_days_count_flights_and_today_is_the_israel_date_of_the_last_record(isra
           flight("unknown", local(29, 11, 0), flight_no="002", outcome="gap"),
           flight("departed", local(29, 16, 45)),
           flight("today", local(30, 10, 0), outcome="open")]
-    got = flights.day_infos(flights.group_flights(rows(*fs, last_fetch=last)), last, {date(2026, 10, 29)})
+    got = flights.day_infos(lists(*fs, last_fetch=last), last, {date(2026, 10, 29)})
     assert got == [DayInfo(date(2026, 10, 29), total=3, cancelled=1, unknown=1, state="past", partial=True),
                    DayInfo(date(2026, 10, 30), total=1, cancelled=0, unknown=0, state="today", partial=False),
                    DayInfo(date(2026, 10, 31), total=1, cancelled=0, unknown=0, state="ahead", partial=False)]
+
+
+def test_day_counts_and_the_chart_count_c10_flights(israeli_machine):
+    """A day, and the chart that draws its counts, counts flights (C1) by their list label (C10): EY 607 and LY 9614,
+    listed as cancelled at one time, terminal and desks, are one cancelled flight, and LH 0691A, listed as cancelled
+    inside a flight that departed, adds no cancellation."""
+    fs = [*ey_ly(), lh("lh0691a", local(29, 10, 0), "0691A", "canceled"), lh("lh695", local(29, 10, 0), "695"),
+          flight("unknown", local(29, 14, 0), outcome="gap")]
+    assert flights.day_infos(lists(*fs), LAST_FETCH, set()) == [
+        DayInfo(date(2026, 10, 29), total=3, cancelled=1, unknown=1, state="past", partial=False)]
 
 
 def test_headline_counts_flights_with_a_known_outcome():
@@ -228,7 +335,7 @@ def test_headline_counts_flights_with_a_known_outcome():
           flight("unknown", local(29, 11, 0), outcome="gap")]
     assert [r.label for r in rows(*fs)] == ["DEPARTED", "LANDED", "CANCELLED", "CANCELLED", "UPCOMING",
                                             "NO FINAL UPDATE", "UNKNOWN"]
-    assert flights.headline_counts(flights.group_flights(rows(*fs)), LAST_FETCH) == (1, 3)
+    assert flights.headline_counts(lists(*fs), LAST_FETCH) == (1, 3)
 
 
 def test_headline_counts_only_flights_whose_scheduled_time_has_passed():
@@ -240,7 +347,7 @@ def test_headline_counts_only_flights_whose_scheduled_time_has_passed():
           flight("cancelled ahead", local(31, 10, 0), **CLEAN),
           flight("left early", local(30, 0, 30))]  # DEPARTED, scheduled 22:30 UTC on 29 October
     assert [r.label for r in rows(*fs)] == ["DEPARTED", "CANCELLED", "CANCELLED", "CANCELLED", "DEPARTED"]
-    assert flights.headline_counts(flights.group_flights(rows(*fs)), LAST_FETCH) == (2, 3)
+    assert flights.headline_counts(lists(*fs), LAST_FETCH) == (2, 3)
 
 
 # --- the featured flight and recent cancellations --------------------------------------------------
@@ -248,7 +355,7 @@ def test_headline_counts_only_flights_whose_scheduled_time_has_passed():
 def test_featured_is_the_most_recent_cancellation_with_a_clean_warning():
     fs = [flight("old", local(28, 9, 0), **CLEAN), flight("new", local(29, 9, 0), **CLEAN),
           flight("newer, censored", local(30, 9, 0), **CENSORED), flight("departed", local(31, 9, 0))]
-    assert flights.featured(rows(*fs), censored_map(fs)).flight_id == "new"
+    assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "new"
 
 
 def test_without_a_clean_warning_the_cancellation_with_the_most_lines():
@@ -256,30 +363,40 @@ def test_without_a_clean_warning_the_cancellation_with_the_most_lines():
     a0 = first(long_)
     a1 = then(a0, utc(27, 20, 2, 45), counters="345-348")
     a2 = then(a1, utc(28, 5, 2, 45), status="CANCELED")
-    got = flights.featured(rows(long_, short, obs=[a0, a1, a2, first(short)]), censored_map([long_, short]))
+    got = flights.featured(lists(long_, short, obs=[a0, a1, a2, first(short)]), censored_map([long_, short]))
     assert (got.flight_id, len(got.lines)) == ("long", 3)
 
 
 def test_featured_ties_by_scheduled_time_then_airline_and_number():
-    fs = [flight("LY 002", local(29, 9, 0), flight_no="002", **CLEAN),
-          flight("IZ 991", local(29, 9, 0), airline="IZ", flight_no="991", **CLEAN),
-          flight("LY 001", local(29, 9, 0), flight_no="001", **CLEAN)]
-    assert flights.featured(rows(*fs), censored_map(fs)).flight_id == "IZ 991"
+    """Flights at one time to different airports (one airport would make them one flight, C1)."""
+    fs = [flight("LY 002", local(29, 9, 0), flight_no="002", airport="ATH", **CLEAN),
+          flight("IZ 991", local(29, 9, 0), airline="IZ", flight_no="991", airport="BUS", **CLEAN),
+          flight("LY 001", local(29, 9, 0), flight_no="001", airport="CDG", **CLEAN)]
+    assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "IZ 991"
     gs = [flight("older", local(28, 9, 0), flight_no="001", **CENSORED),
-          flight("LY 009", local(29, 9, 0), flight_no="009", **CENSORED),
-          flight("LY 003", local(29, 9, 0), flight_no="003", **CENSORED)]
-    assert flights.featured(rows(*gs), censored_map(gs)).flight_id == "LY 003"  # same number of lines
+          flight("LY 009", local(29, 9, 0), flight_no="009", airport="ATH", **CENSORED),
+          flight("LY 003", local(29, 9, 0), flight_no="003", airport="BUS", **CENSORED)]
+    assert flights.featured(lists(*gs), censored_map(gs)).flight_id == "LY 003"  # same number of lines
 
 
 def test_no_cancellation_no_featured_flight():
-    assert flights.featured(rows(flight("departed")), {"departed": None}) is None
+    assert flights.featured(lists(flight("departed")), {"departed": None}) is None
+
+
+def test_the_story_picks_among_c10_cancellations_through_c9():
+    """A number listed as cancelled inside a flight that departed is never the story, however recent; a cancelled
+    flight's story is told through its number listed as cancelled first (C9), not its first row."""
+    inside = [lh("lh0691a", local(30, 9, 0), "0691A", "canceled"), lh("lh695", local(30, 9, 0), "695")]
+    assert flights.featured(lists(*inside), censored_map(inside)) is None
+    fs = [*ey_ly(), *inside]
+    assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "ly"
 
 
 def test_recent_cancellations_newest_first_at_most_n():
     fs = [flight(f"c{h}", local(29, h, 0), flight_no=f"{h:03}", **CLEAN) for h in range(8, 20)]  # 12, 08:00 to 19:00
-    fs += [flight("IZ 991", local(29, 19, 0), airline="IZ", flight_no="991", **CLEAN),  # ties with c19: IZ first
-           flight("departed", local(29, 21, 0))]
-    flights_ = flights.group_flights(rows(*fs))
+    fs += [flight("IZ 991", local(29, 19, 0), airline="IZ", flight_no="991", airport="ATH", **CLEAN),
+           flight("departed", local(29, 21, 0))]  # IZ 991 ties with c19 by time (another airport): IZ first
+    flights_ = lists(*fs)
     assert ids(flights.recent_cancellations(flights_)) == [["IZ 991"], ["c19"], ["c18"], ["c17"], ["c16"],
                                                            ["c15"], ["c14"], ["c13"], ["c12"], ["c11"]]
     assert ids(flights.recent_cancellations(flights_, n=2)) == [["IZ 991"], ["c19"]]

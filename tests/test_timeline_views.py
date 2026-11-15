@@ -32,9 +32,17 @@ def rows(*fs, obs=None):
     return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, LAST_FETCH, 1)
 
 
+def lists(*fs, obs=None):
+    """The lists' flights (rule C1) of these numbers."""
+    return flights.group_flights(rows(*fs, obs=obs), list(fs), LAST_FETCH)
+
+
+def partners(*fs, obs=None):
+    return flights.partners(lists(*fs, obs=obs), list(fs))
+
+
 def page_of(*fs, obs=None):
-    rs = rows(*fs, obs=obs)
-    return views.flight_page(rs, flights.partners(rs), SINCE)
+    return views.flight_page(rows(*fs, obs=obs), partners(*fs, obs=obs), SINCE)
 
 
 def row_block(page: str, anchor: str) -> str:
@@ -44,20 +52,25 @@ def row_block(page: str, anchor: str) -> str:
     return page[start:] if end == -1 else page[start:end]
 
 
-def to3459_rows():
+def to3459():
     """TO 3459: departed on 27 October (last expected 17:09), cancelled on 29 October with its real records,
-    upcoming on 1 November."""
+    upcoming on 1 November. Its flights rows, and its records."""
     gone = flight("to27", local(27, 16, 45), est_local_final=local(27, 17, 9), **TO)
     cancelled = flight("to29", local(29, 17, 10), est_local_final=local(29, 18, 45), **TO, **TO_CANCELLED)
     upcoming = flight("to01", datetime(2026, 11, 1, 18, 30), outcome="open", **TO)
     obs = [first(gone), *(o | {"flight_id": "to29", "snap_rn": n} for n, o in enumerate(TO3459_OBS, 1)),
            first(upcoming)]
-    return rows(gone, cancelled, upcoming, obs=obs)
+    return [gone, cancelled, upcoming], obs
+
+
+def to3459_rows():
+    fs, obs = to3459()
+    return rows(*fs, obs=obs)
 
 
 def to3459_page():
-    rs = to3459_rows()
-    return views.flight_page(rs, flights.partners(rs), SINCE)
+    fs, obs = to3459()
+    return page_of(*fs, obs=obs)
 
 
 WORDMARK = '<header class="band">\n<p class="wordmark"><a href="{root}index.html">Cancelled flights at Tel Aviv airport</a></p>'
@@ -173,8 +186,7 @@ def test_no_delay_sentence_without_a_last_expected_time():
 
 
 def test_a_row_without_records_has_no_details():
-    rs = rows(flight("bare"), obs=[])
-    row = row_block(views.flight_page(rs, flights.partners(rs), SINCE), "2026-10-29-1645-JFK")
+    row = row_block(page_of(flight("bare"), obs=[]), "2026-10-29-1645-JFK")
     assert "DEPARTED" in row and "<details" not in row
 
 
@@ -229,8 +241,7 @@ def test_one_city_through_two_airports_names_each_rows_airport():
 def codeshare_page(*numbers):
     """LY 001's page on a day it shares with these (airline, number) partners."""
     fs = [flight("ly", group="g")] + [flight(a + n, airline=a, flight_no=n, group="g") for a, n in numbers]
-    rs = rows(*fs)
-    return views.flight_page(rs[:1], flights.partners(rs), SINCE)
+    return views.flight_page(rows(*fs)[:1], partners(*fs), SINCE)
 
 
 def test_codeshare_line_links_each_partner_to_its_row():
@@ -294,7 +305,7 @@ def day_flights():
           flight("to", local(29, 17, 10), **TO, **TO_CANCELLED),
           flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", group="g"),
           flight("am", local(29, 9, 0), airline="AM", flight_no="7895", group="g")]
-    return flights.group_flights(rows(*fs))
+    return lists(*fs)
 
 
 def day_page(total=418, cancelled=7, unknown=190, partial=True):
@@ -384,7 +395,7 @@ def cancellations_page():
           flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", direction="A", **AT_LEAST_23),
           flight("ey", local(28, 9, 0), airline="EY", flight_no="607", group="g", **CLEAN),
           flight("ly", local(28, 9, 0), airline="LY", flight_no="9614", group="g", **CLEAN)]
-    return views.cancellations_page(flights.group_flights(rows(*fs)))
+    return views.cancellations_page(lists(*fs))
 
 
 def test_cancellations_newest_first():
@@ -408,7 +419,7 @@ def test_cancellations_link_each_number_to_its_row():
 
 
 def test_no_cancellations_yet():
-    page = views.cancellations_page(flights.group_flights(rows(flight("departed"))))
+    page = views.cancellations_page(lists(flight("departed")))
     assert "<table" not in page and "No flights listed as cancelled so far." in text(page)
 
 
@@ -498,15 +509,15 @@ def entries():
 
 def recent_default():
     """TO 3459 (no warning) and IZ 992 (at least 23 hours), newest first."""
-    rs = rows(flight("to", local(29, 17, 10), **TO, **TO_CANCELLED),
-              flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", direction="A", **AT_LEAST_23))
-    return flights.recent_cancellations(flights.group_flights(rs))
+    fs = [flight("to", local(29, 17, 10), **TO, **TO_CANCELLED),
+          flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", direction="A", **AT_LEAST_23)]
+    return flights.recent_cancellations(lists(*fs))
 
 
 def twelve_cancelled():
     """LY 100 to LY 111, cancelled departures on 28 October, an hour apart from 06:00; newest first."""
     fs = [flight(f"c{i}", local(28, 6 + i, 0), flight_no=str(100 + i), **CLEAN) for i in range(12)]
-    return flights.recent_cancellations(flights.group_flights(rows(*fs)), n=12)
+    return flights.recent_cancellations(lists(*fs), n=12)
 
 
 def front(cancelled=20, known=951, story="TO 3459", recent=None, chart_days=None, all_days=None, data=None,
@@ -521,8 +532,8 @@ def unknown_only_front():
     """Review Focus 3: the only cancellation's warning is unknown (ASY 991's shape, cancelled from its earliest
     record), so it is the story by the fallback rule."""
     f = flight("asy", local(29, 13, 30), **ASY_UNKNOWN)
-    r = rows(f, obs=[first(f) | {"status": "CANCELED"}])[0]
-    return front(1, 900, story=r, recent=[(r,)])
+    obs = [first(f) | {"status": "CANCELED"}]
+    return front(1, 900, story=rows(f, obs=obs)[0], recent=lists(f, obs=obs))
 
 
 def delayed_story_front():
@@ -532,8 +543,8 @@ def delayed_story_front():
     start = first(f)
     late = then(start, utc(29, 13, 2, 45), status="DELAYED")
     gone = then(late, utc(29, 15, 2, 45), status="CANCELED")
-    r = rows(f, obs=[start, late, gone])[0]
-    return front(1, 900, story=r, recent=[(r,)])
+    obs = [start, late, gone]
+    return front(1, 900, story=rows(f, obs=obs)[0], recent=lists(f, obs=obs))
 
 
 def meta(page: str, attribute: str) -> str:
@@ -787,7 +798,7 @@ def test_front_page_whose_only_cancellation_has_an_unknown_warning():
 # --- the upload check's phrases on every page these tests build ------------------------------------
 
 def every_page() -> dict[str, str]:
-    rs = to3459_rows()
+    to, to_obs = to3459()
     return {
         "layout": views.layout("t", "", ""),
         "TO 3459": to3459_page(),
@@ -804,10 +815,10 @@ def every_page() -> dict[str, str]:
         "day": day_page(),
         "day, a cancellation at least 23 hours ahead": views.day_page(
             DayInfo(date(2026, 10, 30), 1, 1, 0, "today", False),
-            flights.group_flights(rows(flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", **AT_LEAST_23)))),
+            lists(flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", **AT_LEAST_23))),
         "cancellations": cancellations_page(),
         "how it works": views.how_it_works_page(ATTRIBUTION, [GAP, LATER_GAP]),
-        "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), flights.group_flights(rs[1:2])),
+        "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), lists(to[1], obs=to_obs)),
         "front page": front(),
         "front page, ten cancellations": front(recent=twelve_cancelled()),
         "front page, no cancellations": views.front_page(0, 900, None, [], CHART_DAYS, ALL_DAYS, entries(),

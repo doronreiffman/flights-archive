@@ -49,27 +49,27 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     gaps = [(s["prev"], s["fetched_at"]) for s in snaps if (s["gap_before_s"] or 0) > GAP_HOURS * 3600]
     rows = flights.make_rows(table, obs, last_check, GAP_HOURS)
     flights.check_unique(rows)
-    flights_ = flights.group_flights(rows)
+    flights_ = flights.group_flights(rows, table, last_check)
     infos = flights.day_infos(flights_, last_check, _partial_days({r.day for r in rows}, first_check, last_check))
     shown = [i for i in infos if i.state != "ahead"][-CHART_DAYS:]
     chart_days = shown + [i for i in infos if i.state == "ahead"]
     censored = {f["flight_id"]: f["cancel_lead_censored"] for f in table}
     cancelled, known = flights.headline_counts(flights_, last_check)
 
-    files = {"index.html": views.front_page(cancelled, known, flights.featured(rows, censored),
+    files = {"index.html": views.front_page(cancelled, known, flights.featured(flights_, censored),
                                             flights.recent_cancellations(flights_), chart_days, infos,
                                             flights.search_entries(rows), last_check)}
     files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps)
     files["cancellations.html"] = views.cancellations_page(flights_)
-    by_day: dict[date, list[tuple[flights.Row, ...]]] = {}
+    by_day: dict[date, list[flights.ListFlight]] = {}
     for fl in flights_:
-        by_day.setdefault(fl[0].day, []).append(fl)
+        by_day.setdefault(fl.day, []).append(fl)
     for info in infos:
         files[f"day/{info.day:%Y-%m-%d}.html"] = views.day_page(info, by_day[info.day])
     by_page: dict[str, list[flights.Row]] = {}
     for r in rows:
         by_page.setdefault(r.page, []).append(r)
-    partners = flights.partners(rows)
+    partners = flights.partners(flights_, table)
     since = words.il_time(first_check).date()  # the Israel date of the first record
     for page, page_rows in sorted(by_page.items()):
         files[page] = views.flight_page(page_rows, partners, since)

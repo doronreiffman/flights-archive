@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import date, datetime
 
 from . import flights, words
-from .flights import DayInfo, Row
+from .flights import DayInfo, ListFlight, Row
 
 HOME = "Cancelled flights at Tel Aviv airport"
 NONE_CANCELLED = "No flights listed as cancelled so far."
@@ -69,8 +69,8 @@ def _link(r: Row, root: str) -> str:
     return f'<a href="{root}{e(r.page)}#{e(r.anchor)}">{d(f"{r.airline} {r.flight_no}")}</a>'
 
 
-def _numbers(fl: tuple[Row, ...], root: str) -> str:
-    return ", ".join(_link(r, root) for r in fl)
+def _numbers(fl: ListFlight, root: str) -> str:
+    return ", ".join(_link(r, root) for r in fl.rows)
 
 
 def _place(r: Row) -> str:
@@ -87,9 +87,9 @@ def _route(r: Row) -> str:
     return f"{way}, {e(words.scheduled(r.direction, r.sched_final, r.day))}"
 
 
-def _labels(r: Row) -> str:
+def _labels(label: str, delayed: bool) -> str:
     """The main label, and DELAYED beside it when the airport showed it: "LANDED · DELAYED"."""
-    pills = [r.label] + (["DELAYED"] if r.delayed else [])
+    pills = [label] + (["DELAYED"] if delayed else [])
     return " · ".join(f'<span class="label l-{label.lower().replace(" ", "-")}">{e(label)}</span>'
                       for label in pills)
 
@@ -166,7 +166,7 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool) -> str:
     head = [f'<span class="date">{_short_date(r.day)}</span>', f'<span class="sched">{e(when)}</span>']
     if many_places:
         head.append(f'<span class="place">{_to_or_from(r)}</span>')
-    head.append(_labels(r))
+    head.append(_labels(r.label, r.delayed))
     out = [f'<div class="row" id="{e(r.anchor)}">', f'<p class="head">{" ".join(head)}</p>']
     if r.label_note:
         out.append(f'<p class="note">{e(r.label_note)}</p>')
@@ -209,17 +209,18 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]], since: da
 
 # --- day page --------------------------------------------------------------------------------------
 
-def _day_row(fl: tuple[Row, ...]) -> str:
-    r = fl[0]
+def _day_row(fl: ListFlight) -> str:
+    """A flight's line: its numbers, labelled as one (C10); a cancelled one with C9's number's warning."""
+    r = fl.lead
     parts = [f'<span class="t">{words.clock(r.sched_final, r.day)}</span>',
              f'<span class="nums">{_numbers(fl, "../")}</span>', f'<span class="route">{_to_or_from(r)}</span>',
-             f'<span class="labels">{_labels(r)}</span>']
-    if r.warning:
+             f'<span class="labels">{_labels(fl.label, fl.delayed)}</span>']
+    if fl.label == words.CANCELLED:
         parts.append(f'<span class="warn">{e(words.warning_sentence(r.warning))}</span>')
     return f"<li>{' '.join(parts)}</li>"
 
 
-def day_page(info: DayInfo, flights_: list[tuple[Row, ...]]) -> str:
+def day_page(info: DayInfo, flights_: list[ListFlight]) -> str:
     """One day's flights: departures, then arrivals, in scheduled order; each number links to its row."""
     body = [f"<h1>{_long_date(info.day)}</h1>", _day_tiles(info), f'<p class="count">{_counts(info)}</p>']
     if info.partial:
@@ -227,9 +228,9 @@ def day_page(info: DayInfo, flights_: list[tuple[Row, ...]]) -> str:
     if info.unknown:  # every UNKNOWN flight; each flight page's label note gives its reason
         body.append(f'<p class="note">No known outcome for {info.unknown} of these flights.</p>')
     for direction, heading in (("D", "Departures"), ("A", "Arrivals")):
-        fls = sorted((fl for fl in flights_ if fl[0].direction == direction),
-                     key=lambda fl: (fl[0].sched_final, fl[0].airline, fl[0].flight_no, fl[0].airport,
-                                     fl[0].flight_id))
+        fls = sorted((fl for fl in flights_ if fl.rows[0].direction == direction),
+                     key=lambda fl: (fl.rows[0].sched_final, fl.rows[0].airline, fl.rows[0].flight_no,
+                                     fl.rows[0].airport, fl.rows[0].flight_id))
         body.append(f"<h2>{heading}</h2>")
         body.append('<ul class="flights">\n' + "\n".join(_day_row(fl) for fl in fls) + "\n</ul>" if fls
                     else "<p>None.</p>")
@@ -238,16 +239,16 @@ def day_page(info: DayInfo, flights_: list[tuple[Row, ...]]) -> str:
 
 # --- all cancellations -----------------------------------------------------------------------------
 
-def _cancellations_table(cancelled: list[tuple[Row, ...]], root: str) -> str:
-    """Date, flight, route with the scheduled time, and the bare warning text: the cell before it ends with a
-    time, so no label runs into it."""
-    rows = [f"<tr><td>{_short_date(fl[0].day)}</td><td>{_numbers(fl, root)}</td><td>{_route(fl[0])}</td>"
-            f"<td>{e(fl[0].warning)}</td></tr>" for fl in cancelled]
+def _cancellations_table(cancelled: list[ListFlight], root: str) -> str:
+    """Date, flight, route with the scheduled time, and the bare warning text, C9's number's: the cell before it
+    ends with a time, so no label runs into it."""
+    rows = [f"<tr><td>{_short_date(fl.day)}</td><td>{_numbers(fl, root)}</td><td>{_route(fl.lead)}</td>"
+            f"<td>{e(fl.lead.warning)}</td></tr>" for fl in cancelled]
     return ('<div class="table-card">\n<table class="cancellations">\n<thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Warning</th>'
             "</tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>\n</div>")
 
 
-def cancellations_page(flights_: list[tuple[Row, ...]]) -> str:
+def cancellations_page(flights_: list[ListFlight]) -> str:
     """Every cancelled flight among `flights_`, newest first."""
     cancelled = flights.recent_cancellations(flights_, n=len(flights_))
     table = _cancellations_table(cancelled, "") if cancelled else f"<p>{NONE_CANCELLED}</p>"
@@ -380,7 +381,7 @@ def _story(r: Row) -> str:
                       _changes(r), "</section>"])
 
 
-def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple[Row, ...]],
+def front_page(cancelled: int, known: int, story: Row | None, recent: list[ListFlight],
                chart_days: list[DayInfo], all_days: list[DayInfo], entries: list[dict], last_record: datetime) -> str:
     """The front page, top to bottom as docs/site-redesign.md lists it. The caller chooses: the headline's counts,
     the story (None for none), the recent cancellations newest first (at most RECENT shown), the chart's days and

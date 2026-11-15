@@ -1,8 +1,10 @@
 """The model's rows made ready to show: display rows, flights, counts, page addresses, anchors and search entries
-(docs/site-redesign.md: "Who is a flight", "Labels", "Codeshares", "Names", "Pages", "How it is built").
+(docs/site-redesign.md: "Labels", "Names", "Pages", "How it is built"; docs/flight-lookup.md, "What it changes" and
+"Day pages, the chart, the cancellation lists").
 
-Pure functions; every text comes from `words`. A "flight" is the members of one codeshare group on one day that
-share the main label, the DELAYED flag and the warning; every count here counts flights that way.
+Pure functions; every text comes from `words`. A "flight" in a list is rule C1's (counting.flights): its numbers,
+labelled as one by C10 and, when cancelled, warned by C9's number (display); every count here counts flights that
+way. A number's own page keeps that number's own label and warning.
 """
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from . import words
+from . import counting, display, words
 
 KNOWN = (words.DEPARTED, words.LANDED, words.CANCELLED)  # labels with a known outcome (the headline's Y)
 
@@ -43,6 +45,16 @@ class Row:
     anchor: str  # "2026-10-28-1630-KUT"
     group_id: str
     lines: tuple[tuple[str, str], ...]  # what changed, for its day
+
+
+@dataclass(frozen=True)
+class ListFlight:
+    """One flight under rule C1, as the lists show it."""
+    rows: tuple[Row, ...]  # its numbers, in row order
+    label: str  # C10
+    delayed: bool  # C10: any of its numbers showed DELAYED
+    lead: Row  # C9's number when the flight is cancelled (C2), else rows[0]
+    day: date
 
 
 @dataclass(frozen=True)
@@ -133,44 +145,74 @@ def page_title(rows: list[Row]) -> str:
 
 # --- flights ---------------------------------------------------------------------------------------
 
-def _flight_key(r: Row) -> tuple:
-    """What members of one codeshare group must share to be shown and counted as one flight."""
-    return r.day, r.group_id, r.label, r.delayed, r.warning
-
-
-def group_flights(rows: list[Row]) -> list[tuple[Row, ...]]:
-    """Rows as flights, in the order of each flight's first row; members in row order."""
+def group_flights(rows: list[Row], table: list[dict], last_fetch: datetime) -> list[ListFlight]:
+    """`rows` (make_rows of `table`) as rule C1's flights, in the order of each flight's first row, its numbers in
+    row order: each labelled by C10 at `last_fetch` (the last sighting), and a cancelled one led by C9's number."""
+    by_id = {r["flight_id"]: r for r in table}
+    of = counting.flight_of(counting.flights(table, last_fetch))
     out: dict[tuple, list[Row]] = {}
     for r in rows:
-        out.setdefault(_flight_key(r), []).append(r)
-    return [tuple(members) for members in out.values()]
+        out.setdefault(of[r.flight_id].key, []).append(r)
+    delayed_ids = {r.flight_id for r in rows if r.delayed}
+    lists = []
+    for members in out.values():
+        f = of[members[0].flight_id]
+        c9 = display.warning_number(f, by_id)  # a flight_id, or None when the flight is not cancelled (C2)
+        lists.append(ListFlight(rows=tuple(members), label=display.label(f, by_id, last_fetch),
+                                delayed=display.delayed(f, delayed_ids),
+                                lead=next(r for r in members if r.flight_id == c9) if c9 else members[0],
+                                day=f.day))
+    return lists
 
 
-def partners(rows: list[Row]) -> dict[str, tuple[Row, ...]]:
-    """flight_id -> the other members of its flight (after the split): only they are "probably the same flight"."""
-    return {r.flight_id: tuple(p for p in fl if p.flight_id != r.flight_id)
-            for fl in group_flights(rows) for r in fl}
+def partners(lists: list[ListFlight], table: list[dict]) -> dict[str, tuple[Row, ...]]:
+    """flight_id -> the other numbers of its flight that the list showed with the same last expected time, terminal
+    and check-in desks (counting._shown, the model's codeshare key R5): only they are "probably the same flight". A
+    number joined by its airline or desks alone (C1) is not."""
+    shown = {r["flight_id"]: counting._shown(r) for r in table}
+    return {r.flight_id: tuple(p for p in fl.rows if p.flight_id != r.flight_id
+                               and shown[p.flight_id] == shown[r.flight_id])
+            for fl in lists for r in fl.rows}
+
+
+_OTHERS = {words.DEPARTED: "departed", words.LANDED: "landed", words.UPCOMING: "is still listed",
+           words.NO_FINAL_UPDATE: "is still listed"}
+
+
+def others(lists: list[ListFlight]) -> dict[str, tuple[str, tuple[Row, ...]]]:
+    """flight_id of each number labelled CANCELLED in a flight that is not -> what the flight's other numbers did, as
+    the flight's label says ("departed", "landed" or "is still listed"), and the numbers that did it. A flight
+    labelled UNKNOWN holds no number listed as cancelled (C10, rule 3 comes before rule 4)."""
+    out = {}
+    for fl in lists:
+        cancelled = [r for r in fl.rows if r.label == words.CANCELLED]
+        if fl.label == words.CANCELLED or not cancelled:
+            continue
+        verb = _OTHERS[fl.label]
+        named = tuple(r for r in fl.rows if _OTHERS.get(r.label) == verb)
+        out |= {r.flight_id: (verb, named) for r in cancelled}
+    return out
 
 
 # --- counts ----------------------------------------------------------------------------------------
 
-def day_infos(flights_: list[tuple[Row, ...]], last_fetch: datetime, partial_days: set[date]) -> list[DayInfo]:
-    """Per day with flights: counts, and past, today or ahead. Today is the Israel date of the last sighting of the board: at
-    22:30 UTC on 29 October it is already 30 October in Israel."""
+def day_infos(flights_: list[ListFlight], last_fetch: datetime, partial_days: set[date]) -> list[DayInfo]:
+    """Per day with flights: counts by each flight's list label (C10), and past, today or ahead. Today is the Israel
+    date of the last sighting of the board: at 22:30 UTC on 29 October it is already 30 October in Israel."""
     today = words.il_time(last_fetch).date()
     labels: dict[date, list[str]] = {}
     for fl in flights_:
-        labels.setdefault(fl[0].day, []).append(fl[0].label)
+        labels.setdefault(fl.day, []).append(fl.label)
     return [DayInfo(day=day, total=len(ls), cancelled=ls.count(words.CANCELLED), unknown=ls.count(words.UNKNOWN),
                     state="past" if day < today else "today" if day == today else "ahead",
                     partial=day in partial_days)
             for day, ls in sorted(labels.items())]
 
 
-def headline_counts(flights_: list[tuple[Row, ...]], last_fetch: datetime) -> tuple[int, int]:
+def headline_counts(flights_: list[ListFlight], last_fetch: datetime) -> tuple[int, int]:
     """(cancelled, known) over the flights whose scheduled time has passed (UTC, at or before the last sighting of the board):
-    those labelled CANCELLED, and those labelled DEPARTED, LANDED or CANCELLED."""
-    labels = [fl[0].label for fl in flights_ if fl[0].sched_utc_final <= last_fetch]
+    those labelled CANCELLED, and those labelled DEPARTED, LANDED or CANCELLED (C10)."""
+    labels = [fl.label for fl in flights_ if fl.lead.sched_utc_final <= last_fetch]
     return labels.count(words.CANCELLED), sum(label in KNOWN for label in labels)
 
 
@@ -184,11 +226,11 @@ def _newest_first(items: list, row: Callable[[object], Row] = lambda r: r) -> li
     return sorted(by_name, key=lambda x: row(x).sched_final, reverse=True)  # stable: ties keep the name order
 
 
-def featured(rows: list[Row], censored: dict[str, bool]) -> Row | None:
-    """The front page's story: the most recent cancelled row whose warning is not censored (`censored` from the
-    model's cancel_lead_censored; a missing flag counts as censored); if none, the cancelled row with the most
-    change lines, the most recent first on a tie."""
-    cancelled = [r for r in rows if r.label == words.CANCELLED]
+def featured(flights_: list[ListFlight], censored: dict[str, bool]) -> Row | None:
+    """The front page's story, among the flights labelled CANCELLED (C10), each told through C9's number: the most
+    recent one whose warning is not censored (`censored` from the model's cancel_lead_censored; a missing flag counts
+    as censored); if none, the one with the most change lines, the most recent first on a tie."""
+    cancelled = [fl.lead for fl in flights_ if fl.label == words.CANCELLED]
     clean = [r for r in cancelled if censored[r.flight_id] is False]
     if clean:
         return _newest_first(clean)[0]
@@ -197,10 +239,10 @@ def featured(rows: list[Row], censored: dict[str, bool]) -> Row | None:
     return None
 
 
-def recent_cancellations(flights_: list[tuple[Row, ...]], n: int = 10) -> list[tuple[Row, ...]]:
-    """Cancelled flights, newest scheduled time first (upcoming ones included), at most n; a flight goes by its
-    first row."""
-    return _newest_first([fl for fl in flights_ if fl[0].label == words.CANCELLED], lambda fl: fl[0])[:n]
+def recent_cancellations(flights_: list[ListFlight], n: int = 10) -> list[ListFlight]:
+    """Flights labelled CANCELLED (C10), newest scheduled time first (upcoming ones included), at most n; a flight
+    goes by its first row."""
+    return _newest_first([fl for fl in flights_ if fl.label == words.CANCELLED], lambda fl: fl.rows[0])[:n]
 
 
 # --- search ----------------------------------------------------------------------------------------
