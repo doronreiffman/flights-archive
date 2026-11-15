@@ -23,7 +23,7 @@ import pytest
 
 from model import build as model_build
 from model_helpers import row, write_receipt, write_snapshot
-from timeline import counting, rates, record
+from timeline import counting, display, rates, record
 from timeline.load import load
 
 ROOT = Path(__file__).parent.parent
@@ -575,10 +575,40 @@ def a29_as_sql(check, model: Model, monkeypatch) -> dict[str, tuple]:
     return expected
 
 
+A3_A17 = ("A3", "A17")
+
+
+def sql_counts(check, model: Model) -> dict[tuple[str, str], int]:
+    """A3's and A17's own queries on the model, one entry per row, named as figures_check.summary_counts names them."""
+    return {(name, row): n for name in A3_A17
+            for row, n in model.con.execute(check.sql_blocks(DOC, name)[name]).fetchall()}
+
+
+def code_counts(check, model: Model) -> dict[tuple[str, str], int]:
+    """A3's and A17's rows as the code gives them on the model (figures_check.summary_counts)."""
+    return check.summary_counts(display.summary(model.table, model.obs, model.snaps), model.flights(), model.table)
+
+
+def test_the_counts_match_a3_and_a17(check, model):
+    code = code_counts(check, model)
+    assert list(code) == list(check.EXPECTED_COUNTS)  # every row of A3 and A17, in the figures file's order
+    assert code == sql_counts(check, model)
+    assert 0 not in code.values()  # the model holds each row's case, so every row is compared
+
+
+def counts_as_sql(check, model: Model, monkeypatch) -> dict[tuple[str, str], int]:
+    """A3's and A17's figures as their queries give them on this model, as figures_check's EXPECTED_COUNTS."""
+    sql = sql_counts(check, model)
+    expected = {key: sql[key] for key in check.EXPECTED_COUNTS}
+    monkeypatch.setattr(check, "EXPECTED_COUNTS", expected)
+    return expected
+
+
 def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
     expected = {name: sql_figure(r) for name, r in sql_figures(check, model).items()}
     expected_a25 = sql_a25(check, model)
     expected_a29 = a29_as_sql(check, model, monkeypatch)
+    expected_counts = counts_as_sql(check, model, monkeypatch)
     monkeypatch.setattr(check, "EXPECTED", expected)
     monkeypatch.setattr(check, "EXPECTED_A25", expected_a25)
     assert check.main(["--model", str(model.dir)]) == 0
@@ -586,6 +616,7 @@ def test_main_fails_on_a_figure_that_differs(check, model, monkeypatch, capsys):
         *(f"{name}: {check.show(v)} ok" for name, v in expected.items()),
         *(f"A25 {sign} {h} hours: {check.show_signs(v)} ok" for (sign, h), v in expected_a25.items()),
         *(f"A29 {name}: {check.show_a29(name, v)} ok" for name, v in expected_a29.items()),
+        *(f"{name} {row}: {n:,} ok" for (name, row), n in expected_counts.items()),
         "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
         "ratios: 0 differences"]
 
@@ -605,6 +636,7 @@ def test_main_fails_on_an_a25_row_that_differs(check, model, monkeypatch, capsys
     expected_a25 = sql_a25(check, model)
     with_, flights_with, *rest = expected_a25["S3", 24]
     a29_as_sql(check, model, monkeypatch)
+    counts_as_sql(check, model, monkeypatch)
     monkeypatch.setattr(check, "EXPECTED", {name: sql_figure(r) for name, r in sql_figures(check, model).items()})
     monkeypatch.setattr(check, "EXPECTED_A25", expected_a25 | {("S3", 24): (with_, flights_with + 1, *rest)})
     assert check.main(["--model", str(model.dir)]) == 1
@@ -620,6 +652,7 @@ def test_main_fails_on_an_a25_row_that_differs(check, model, monkeypatch, capsys
 def test_main_fails_on_an_a29_row_that_differs(check, model, monkeypatch, capsys, name):
     """An A29 row alone fails the run, every figure and comparison matching."""
     expected_a29 = a29_as_sql(check, model, monkeypatch)
+    counts_as_sql(check, model, monkeypatch)
     first, *rest = expected_a29[name]
     monkeypatch.setattr(check, "EXPECTED_A29", expected_a29 | {name: (first + 1, *rest)})
     monkeypatch.setattr(check, "EXPECTED", {name: sql_figure(r) for name, r in sql_figures(check, model).items()})
@@ -629,6 +662,23 @@ def test_main_fails_on_an_a29_row_that_differs(check, model, monkeypatch, capsys
     assert [line for line in out if not line.endswith(" ok")] == [
         f"A29 {name}: the code {check.show_a29(name, expected_a29[name])}, the figures file "
         f"{check.show_a29(name, (first + 1, *rest))}",
+        "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
+        "ratios: 0 differences"]
+
+
+@pytest.mark.parametrize(("figure", "row"), [("A3", 1), ("A17", 2)])
+def test_main_fails_on_an_a3_or_a17_row_that_differs(check, model, monkeypatch, capsys, figure, row):
+    """An A3 or A17 row alone fails the run, every other figure and comparison matching."""
+    a29_as_sql(check, model, monkeypatch)
+    monkeypatch.setattr(check, "EXPECTED", {name: sql_figure(r) for name, r in sql_figures(check, model).items()})
+    monkeypatch.setattr(check, "EXPECTED_A25", sql_a25(check, model))
+    expected = counts_as_sql(check, model, monkeypatch)
+    key = (figure, (check.A3_ROWS if figure == "A3" else check.A17_ROWS)[row])
+    monkeypatch.setattr(check, "EXPECTED_COUNTS", expected | {key: expected[key] + 1})
+    assert check.main(["--model", str(model.dir)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert [line for line in out if not line.endswith(" ok")] == [
+        f"{figure} {key[1]}: the code {expected[key]:,}, the figures file {expected[key] + 1:,}",
         "flights: 0 differences", "cells: 0 differences", "signs: 0 differences",
         "ratios: 0 differences"]
 
@@ -663,6 +713,7 @@ def test_main_fails_on_a_flight_cell_sign_or_ratio_difference(check, model, monk
     monkeypatch.setattr(check, "A29_START", A29_AT)
     monkeypatch.setattr(check, "EXPECTED_A29",
                         check.a29_counts(record.run(model.table, model.obs, model.snaps, A29_AT)))
+    monkeypatch.setattr(check, "EXPECTED_COUNTS", code_counts(check, model))
     assert check.main(["--model", str(model.dir)]) == 1
     out = [line for line in capsys.readouterr().out.splitlines() if not line.endswith(" ok")]
     summary = [line for line in out if not line.startswith("  ")]

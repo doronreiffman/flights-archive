@@ -67,6 +67,7 @@ RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
+DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -467,6 +468,15 @@ COLLECTOR_MUTATIONS = {
     "figures: signs compared on one side only": (FIGURES, "for h, numbers in a0.keys() | code.keys()", "for h, numbers in a0.keys() & code.keys()"),
     "figures: a ratio difference not reported": (FIGURES, "if a0b.get((sign, h)) != code.get((sign, h)))", "if False)"),
     "figures: an A29 difference does not fail": (FIGURES, '                  f"{show_a29(name, expected)}")\n            failed = True\n', '                  f"{show_a29(name, expected)}")\n'),
+    "figures: an A3 or A17 difference does not fail": (FIGURES, '                  + f", the figures file {expected:,}")\n            failed = True\n', '                  + f", the figures file {expected:,}")\n'),
+    # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
+    "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_FINAL_UPDATE  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_FINAL_UPDATE  # key[2]: the slot\'s scheduled time\n'),
+    "display: DELAYED from the first number only": (DISPLAY, 'return any(fid in delayed_ids for fid in f.numbers)', 'return f.numbers[0] in delayed_ids'),
+    "display: warning from the last cancellation": (DISPLAY, '    first = min((by_id[fid]', '    first = max((by_id[fid]'),
+    "display: late line from the last cancelled number": (DISPLAY, 'late = Counter(_late(by_id[warning_number(f, by_id)]) for f in flights_', 'late = Counter(_late(max((by_id[fid] for fid in f.numbers if by_id[fid]["outcome"] == "canceled"), key=lambda r: r["canceled_first_seen_at"])) for f in flights_'),
+    "display: censored brackets counted as after": (DISPLAY, '    if r["cancel_lead_censored"]:\n        return "unplaced"\n    if r["cancel_lead_max_min"] < 0:\n        return "after"\n', '    if r["cancel_lead_max_min"] < 0:\n        return "after"\n    if r["cancel_lead_censored"]:\n        return "unplaced"\n'),
+    "display: gap and no-final-status counts swapped": (DISPLAY, 'unknown_gap=gap, unknown_no_final=len(unknown) - gap,', 'unknown_gap=len(unknown) - gap, unknown_no_final=gap,'),
+    "display: first record from the UTC date": (DISPLAY, 'first_record=words.il_time(snaps[0]["fetched_at"]).date()', 'first_record=snaps[0]["fetched_at"].date()'),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

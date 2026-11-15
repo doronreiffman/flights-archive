@@ -6,12 +6,13 @@ repository root:
     PYTHONPATH=src .venv/bin/python scripts/figures_check.py --model data/model-2026-11-12
 
 It prints each figure the code gives with "ok" when it matches the figures file's printed value (EXPECTED), or with
-both values, A25's sign counts and sign test the same way (EXPECTED_A25), and A29's dry run of the sign test
-(EXPECTED_A29); then each number rule C1 groups differently from A0's `num`, each flight whose place in a row of the
-table (its moment, and whether it ended cancelled) differs from A0's `cell`, each flight whose signs in a row differ
-from A0b's, each A25 row whose sign test (`rates.lift`) differs from A0b's `ratio`, and anything the code holds
-twice, with the count of each. Exit 1 on any difference. EXPECTED, EXPECTED_A25 and
-EXPECTED_A29 hold the figures file's results, which come from the model saved as data/model-2026-11-12:
+both values, A25's sign counts and sign test the same way (EXPECTED_A25), A29's dry run of the sign test
+(EXPECTED_A29), and A3's and A17's rows, the counts beside the front page's rates (EXPECTED_COUNTS); then each number
+rule C1 groups differently from A0's `num`, each flight whose place in a row of the table (its moment, and whether it
+ended cancelled) differs from A0's `cell`, each flight whose signs in a row differ from A0b's, each A25 row whose sign
+test (`rates.lift`) differs from A0b's `ratio`, and anything the code holds twice, with the count of each. Exit 1 on
+any difference. EXPECTED, EXPECTED_A25, EXPECTED_A29 and EXPECTED_COUNTS hold the figures file's results, which come
+from the model saved as data/model-2026-11-12:
 `data/model` is rebuilt after every sync, so its figures move, while its flights, cells and signs must still match
 A0 and A0b.
 """
@@ -26,7 +27,7 @@ from pathlib import Path
 
 import duckdb
 
-from timeline import counting, rates, record
+from timeline import counting, display, rates, record
 from timeline.load import load
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,6 +78,18 @@ EXPECTED_A29: dict[str, tuple] = {
     "S4": (0, 7, 3, 517),
     "row": (3, 4.5, None),
 }
+# A3 and A17, one entry per row, named by the row: the closed flights with no known result by why (the count line's
+# 240 and 29, split 27 + 2 as A3 splits them), and the cancelled flights by where their first cancelled listing falls
+# (the late line)
+A3_ROWS = ("left the list during the hole in the record",
+           "left the list before the scheduled time, with no final status",
+           "left the list after the scheduled time, with no final status")
+A17_ROWS = ("a. wholly after the scheduled time", "b. the bracket holds the scheduled time",
+            "c. cannot be placed: already cancelled when first seen, or the bracket spans the hole",
+            "d. before the scheduled time")
+EXPECTED_COUNTS: dict[tuple[str, str], int] = (
+    {("A3", row): n for row, n in zip(A3_ROWS, (240, 27, 2), strict=True)}
+    | {("A17", row): n for row, n in zip(A17_ROWS, (9, 1, 19, 52), strict=True)})
 
 
 def sql_blocks(doc: str, *names: str) -> dict[str, str]:
@@ -272,6 +285,22 @@ def a29_counts(result: record.Result) -> dict[str, tuple]:
         "row": (result.row_cancelled, one_decimal(result.days), result.gate_at)}
 
 
+def summary_counts(s: display.Summary, flights_: list[counting.Flight],
+                   table: list[dict]) -> dict[tuple[str, str], int]:
+    """A3's and A17's rows as the code gives them, named as EXPECTED_COUNTS names them: display.summary's counts, with
+    its flights that left the list with no final status split as A3 splits them, by whether one of the flight's
+    numbers was last seen before its scheduled time (`flights_`, closed with no known result and no number that left
+    during a hole)."""
+    by_id = {r["flight_id"]: r for r in table}
+    before = sum(any(by_id[fid]["last_seen_at"] < by_id[fid]["sched_utc_final"] for fid in f.numbers)
+                 for f in flights_ if f.closed and f.result == "unknown"
+                 and not any(by_id[fid]["outcome"] == "gap" for fid in f.numbers))
+    a3 = (s.unknown_gap, before, s.unknown_no_final - before)
+    a17 = (s.late_after, s.late_holds, s.late_unplaced, s.late_before)
+    return ({("A3", row): n for row, n in zip(A3_ROWS, a3, strict=True)}
+            | {("A17", row): n for row, n in zip(A17_ROWS, a17, strict=True)})
+
+
 def duckdb_round(x: float | None, places: int) -> float | None:
     """As DuckDB's round(x, places) on a double: x * 10 ** places to the nearest whole number, halves away from zero,
     over 10 ** places."""
@@ -372,6 +401,15 @@ def main(argv: list[str]) -> int:
         else:
             print(f"A29 {name}: the code {show_a29(name, a29.get(name))}, the figures file "
                   f"{show_a29(name, expected)}")
+            failed = True
+    a3_a17 = summary_counts(display.summary(table, obs, snaps), flights_, table)
+    for (name, row), expected in EXPECTED_COUNTS.items():
+        value = a3_a17.get((name, row))
+        if value == expected:
+            print(f"{name} {row}: {expected:,} ok")
+        else:
+            print(f"{name} {row}: the code " + ("nothing" if value is None else f"{value:,}")
+                  + f", the figures file {expected:,}")
             failed = True
     for what, found in (("flights", compare_flights(con, flights_)), ("cells", compare_cells(con, cells_)),
                         ("signs", compare_signs(con, cells_, carried)),
