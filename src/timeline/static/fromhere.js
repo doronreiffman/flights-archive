@@ -36,9 +36,8 @@ function apply(block) {
   } else if (result === "none") {
     block.hidden = true; // the condition line speaks of the figure, which "none" does not show
   } else if (result === "more") {
-    pairs.forEach((li) => { li.hidden = true; });
-    const line = block.querySelector(".more");
-    if (line) line.hidden = false;
+    // Only .more shows: the loop hides everything else in the block, the pairs and both lines.
+    [...block.children].forEach((child) => { child.hidden = !child.classList.contains("more"); });
   } else {
     pairs.forEach((li, i) => { li.hidden = i !== result; });
   }

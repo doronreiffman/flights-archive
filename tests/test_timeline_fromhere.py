@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,8 @@ function element(tag, attrs, children) {
     get nextElementSibling() { return this.next; },
     set innerHTML(_) { throw new Error("innerHTML set"); },
     set textContent(_) { throw new Error("textContent set"); },
+    set innerText(_) { throw new Error("innerText set"); },
+    set outerHTML(_) { throw new Error("outerHTML set"); },
   };
   return el;
 }
@@ -104,6 +107,7 @@ function build(spec) {
 const pages = payload.pages.map(build);
 let ready = () => {};
 globalThis.document = {
+  querySelector: (sel) => { const p = pages[0]; return sel === ".more" ? p.more : sel === ".passed" ? p.passed : null; },
   querySelectorAll: (sel) => sel === "div.pairs" ? pages.map((p) => p.block) : [],
   addEventListener: (type, listener) => { if (type === "DOMContentLoaded") ready = listener; },
 };
@@ -131,6 +135,16 @@ def shown(spec: dict) -> list[dict]:
     return node(PAGE, {"pages": [spec], "now": now})
 
 
+def sched_in(hours: float) -> str:
+    """The instant `hours` after SCHED, written as the build writes it."""
+    return (datetime(2026, 11, 13, 8, tzinfo=timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def shown_together(*hours_left: float) -> list[dict]:
+    """One page holding a block for each of `hours_left`, all read at the instant SCHED."""
+    return node(PAGE, {"pages": [{k: v for k, v in page(0, sched=sched_in(h)).items() if k != "_hours"} for h in hours_left], "now": sched_ms()})
+
+
 ALL = {"pairs": [True] * 6, "more": False, "block": True, "condition": True, "record": True, "passed": False}
 
 
@@ -141,7 +155,8 @@ def test_one_pair_shows_and_the_rest_are_hidden():
 
 def test_more_than_three_days_shows_the_more_line_and_no_pair():
     (out,) = shown(page(100))
-    assert out == {**ALL, "pairs": [False] * 6, "more": True}
+    # Only the "more" line shows: not the pairs, the condition line or the record line, and not the passed line.
+    assert out == {**ALL, "pairs": [False] * 6, "more": True, "condition": False, "record": False}
 
 
 def test_a_passed_time_hides_the_block_and_shows_the_passed_line():
@@ -158,7 +173,8 @@ def test_none_hides_the_whole_block_and_not_the_passed_line():
 
 def test_a_missing_or_unreadable_attribute_leaves_the_list_showing():
     for bad in (page(30, sched=None), page(30, sched="2026-11-13T08:00:00"), page(30, sched="tomorrow"),
-                page(30, more_after=None), page(30, more_after="lots")):
+                page(30, sched=""), page(30, more_after=None), page(30, more_after="lots"),
+                page(30, more_after=""), page(30, more_after="  ")):
         (out,) = shown(bad)
         assert out == ALL, bad
 
@@ -172,3 +188,11 @@ def test_the_script_writes_no_text():
     # The stand-in throws on innerHTML or textContent being set; a run that completes proves neither was.
     (out,) = shown(page(30))
     assert out["pairs"].count(True) == 1
+
+
+def test_each_block_on_a_page_is_read_for_itself():
+    # A daily flight's page holds several upcoming rows: one with a pair to show, a passed one, one beyond three days.
+    near, passed, far = shown_together(30, -5, 100)
+    assert passed["block"] is False and passed["passed"] is True and passed["more"] is False
+    assert far == {**ALL, "pairs": [False] * 6, "more": True, "condition": False, "record": False}
+    assert near == {**ALL, "pairs": [False, True, False, False, False, False]}
