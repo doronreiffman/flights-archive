@@ -395,9 +395,10 @@ def test_a_whole_odds_word_inside_an_airlines_data_span_passes(tmp_path):
     assert check.scan(site) == []
 
 
-def test_a_percent_sign_inside_an_airlines_data_span_passes(tmp_path):
+def test_a_percent_sign_inside_an_airlines_data_span_is_a_hit(tmp_path):
+    """The plan (docs/flight-lookup-plan.md, "What this plan decided"): only the odds words skip the airport's data."""
     site = make(tmp_path, {"index.html": '<p><span class="d">100% AIR</span></p>'})
-    assert check.scan(site) == []
+    assert check.scan(site) == [("index.html", "%")]
 
 
 def test_a_range_must_follow_its_rate_after_one_space():

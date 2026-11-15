@@ -16,9 +16,9 @@ built before a footer change lacks the current wording and fails.
 
 Four rules for rates (docs/flight-lookup.md, "Tests and checks"): no odds word (chance, odds, probability, likely,
 risk, forecast, predict and their forms) outside how-it-works.html, no percent sign in a page's text, every "1 in N"
-followed at once by "(between 1 in A and 1 in B)", and the past-flights line on a page that holds a rate. The odds
-words and the percent sign skip the airport's data (DATA); the rate and record-line rules read the whole page, data
-spans and search JSON included.
+followed at once by "(between 1 in A and 1 in B)", and the past-flights line on a page that holds a rate. Only the
+odds words skip the airport's data (DATA); the rate, record-line and percent rules read the whole page, data spans
+and search JSON included.
 
 Exit 0 clean, 1 on a hit or a missing line, 2 when there are no pages to check.
 """
@@ -103,7 +103,7 @@ def _word_hits(name: str, raw: str) -> list[str]:
         hits += _found(COLLECTION, texts)
         hits += _found(ODDS_WORDS, texts)
     if name.endswith(".html"):
-        hits += ["%"] if "%" in text else []
+        hits += ["%"] if "%" in plain(strip_tags(raw)) else []
     return hits
 
 
