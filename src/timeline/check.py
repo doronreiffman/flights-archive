@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 from model.report import ATTRIBUTION
-from timeline.words import BUILT_BY, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
+from timeline.words import BUILT_BY, PAST_ONLY, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
 
 BANNED = ("cancelled at", "canceled at", "delayed by", "operated by", "took off", "minutes late", "hours late",
           "pause in our collection")
@@ -34,6 +34,14 @@ PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)  # every file
 I_WORD = re.compile(r"\bI\b")  # pages other than EXPLAINER, outside the built-by line
 # pages other than EXPLAINER, the built-by line included
 COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|receipt|receipts)\b", re.I)
+# pages other than EXPLAINER, after the DATA mask (docs/flight-lookup.md, "Words": a rate is never a chance)
+ODDS_WORDS = re.compile(r"\b(?:chances?|odds|probability|likely|unlikely|risk|forecasts?|predicts?|prediction)\b",
+                        re.I)
+_ONE_IN = r"1 in \d[\d,]*"
+_RANGE = rf"\(between {_ONE_IN} and {_ONE_IN}\)"
+RANGED_RATE = re.compile(rf"{_ONE_IN} ?{_RANGE}")
+BARE_RANGE = re.compile(_RANGE)
+ONE_IN = re.compile(_ONE_IN)
 # The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside), the front page's
 # search data (every "<" escaped) and each page's <title> (escaped; a flight page's title is the airline code, number
 # and city with a few fixed words). A span with markup inside, or any other element, is read like the site's text.
@@ -59,6 +67,14 @@ def strip_tags(text: str) -> str:
     return re.sub(r"<[^>]*>", " ", text)
 
 
+def rate_hits(text: str) -> list[str]:
+    """Every "1 in N" in the page text that lacks its "(between 1 in A and 1 in B)". Case kept: "1 in N" is matched as
+    written. The ranged rates go first, then any bare range, so what is left has no range."""
+    text = plain(strip_tags(text))
+    text = BARE_RANGE.sub(" ", RANGED_RATE.sub(" ", text))
+    return ONE_IN.findall(text)
+
+
 def _without_built_by(text: str) -> str:
     """The text with every copy of the built-by line's wording taken out ("I" is allowed there). The page escapes
     the wording and the text being read is unescaped, so only its whitespace is collapsed here."""
@@ -78,6 +94,9 @@ def _word_hits(name: str, raw: str) -> list[str]:
     if name.endswith(".html") and name != EXPLAINER:
         hits += ["I"] if I_WORD.search(_without_built_by(text)) else []
         hits += _found(COLLECTION, texts)
+        hits += _found(ODDS_WORDS, texts)
+    if name.endswith(".html"):
+        hits += ["%"] if "%" in text else []
     return hits
 
 
@@ -93,6 +112,8 @@ def scan(site: Path) -> list[tuple[str, str]]:
         if any(flatten(PLACEHOLDER) in v for v in versions):
             hits.append((name, "built-by placeholder"))
         hits += [(name, word) for word in _word_hits(name, raw)]
+        if name.endswith(".html"):
+            hits += [(name, rate) for rate in rate_hits(raw)]
     return hits
 
 
@@ -106,6 +127,8 @@ def missing_notices(site: Path) -> list[tuple[str, str]]:
         text = flatten(strip_tags(path.read_text(encoding="utf-8")))
         wanted = NOTICES | (EXPLAINER_NOTICES if name == EXPLAINER else {})
         missing += [(name, which) for which, notice in wanted.items() if flatten(notice) not in text]
+        if ONE_IN.search(text) and flatten(PAST_ONLY) not in text:
+            missing.append((name, "record line"))
     return missing
 
 
