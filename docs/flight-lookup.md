@@ -343,6 +343,8 @@ The first task of the plan is a test that cuts a synthetic archive at several mo
 
 What counts. The counting start is an Israel midnight written into the tagged commit, later than the moment the tag is pushed. Nothing about a counted flight was visible when the rule was fixed.
 
+When a later run differs. Each run reads the archive as it stands then, so a run after the gate can give a result other than the stored one: through the limits under condition 3, or through housekeeping under condition 2. The first stored result stands and is the one published. A later run that differs is shown beside it, with its cause, and never replaces it (my call, 2026-11-15). The code keeps the stored result as it is, prints both and fails (`main` in `src/timeline/record.py`).
+
 What makes the freeze checkable. The tag is public, in the repository this site links to. The archive is private, so a reader cannot recompute the record either way; a daily file in a private bucket would be no more checkable than a tag. What a reader can check is that the rule existed before the flights it was scored on. CI runs on every push with no filter (`.github/workflows/ci.yml`), so pushing the tag should start a public run that the hosting service dates itself. That it starts such a run for a tag push is UNVERIFIED; the owner confirms when pushing.
 
 What it does not replace. Telling a traveller which half of a split their flight is in needs a fresh build, because it depends on what the list shows now. That is the scheduled rebuild (q23), needed when a sign has passed and not before.
