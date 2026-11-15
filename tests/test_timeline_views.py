@@ -365,7 +365,7 @@ def test_the_scheduled_instant_is_the_models_utc(israeli_machine):
     assert BLOCK_TAG in page_of(upcoming())
 
 
-def test_without_javascript_all_pairs_show():
+def test_without_javascript_all_pairs_show(israeli_machine):
     """docs/flight-lookup.md, "Pages", Flight page: without JavaScript the block shows the table's six rows as a list,
     each the design's pair with its bounds; the "More than 3 days" line and the "has passed" line are hidden until
     fromhere.js shows one."""
@@ -412,7 +412,7 @@ def test_no_block_when_no_pair_clears_the_floor():
     assert "Since 27 October: one upcoming." in text(page)
 
 
-def test_the_passed_line_sits_outside_the_block():
+def test_the_passed_line_sits_outside_the_block(israeli_machine):
     """The "has passed" line comes right after the block, hidden, so that fromhere.js can hide the whole block and show
     the line (docs/flight-lookup.md, "Pages", Flight page); both sit above the row's change list."""
     page = page_of(upcoming())

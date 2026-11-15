@@ -190,6 +190,12 @@ def _pairs(summary: Summary) -> list[tuple[int, int, str]]:
     return out
 
 
+def _has_block(r: Row, pairs: list[tuple[int, int, str]]) -> bool:
+    """A row gets the block when it is labelled UPCOMING (still listed normally) and some pair clears the floor; a page
+    loads fromhere.js when one of its rows gets it, and only then (docs/flight-lookup-plan.md, Deviations, Task 14)."""
+    return r.label == words.UPCOMING and bool(pairs)
+
+
 def _block(r: Row, pairs: list[tuple[int, int, str]], updated: datetime) -> list[str]:
     """A row labelled UPCOMING: the block, holding every pair as a list, all shown without JavaScript, the "More than 3
     days" line (hidden), the condition line and the record line; then the "has passed" line, hidden, right after the
@@ -224,7 +230,7 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool, other: tup
     if partners:
         out.append(f'<p class="note">Probably the same flight as {_names([_link(p, "../") for p in partners])} '
                    "(same time, terminal and check-in desks).</p>")
-    if r.label == words.UPCOMING and pairs:
+    if _has_block(r, pairs):
         out += _block(r, pairs, updated)
     if r.lines:
         out.append("<details open>" if r.label == words.CANCELLED else "<details>")
@@ -259,8 +265,7 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
              *(_flight_row(r, partners.get(r.flight_id, ()), many_places, others.get(r.flight_id), pairs, updated)
                for r in newest),
              "</div>"]
-    blocks = bool(pairs) and any(r.label == words.UPCOMING for r in rows)
-    script = '<script src="../fromhere.js" defer></script>' if blocks else ""
+    script = '<script src="../fromhere.js" defer></script>' if any(_has_block(r, pairs) for r in rows) else ""
     return layout(title, "\n".join(body), "../", script)
 
 
