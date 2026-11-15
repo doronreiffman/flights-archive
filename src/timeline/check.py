@@ -39,7 +39,7 @@ I_WORD = re.compile(r"\bI\b")  # pages other than EXPLAINER, outside the built-b
 # pages other than EXPLAINER, the built-by line included
 COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|receipt|receipts)\b", re.I)
 # pages other than EXPLAINER, after the DATA mask (docs/flight-lookup.md, "Words": a rate is never a chance)
-ODDS_WORDS = re.compile(r"\b(?:chances?|odds|probability|likely|unlikely|risk|forecasts?|predicts?|prediction)\b",
+ODDS_WORDS = re.compile(r"\b(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky|forecasts?|forecasting|predicts?|predicted|prediction)\b",
                         re.I)
 _ONE_IN = r"(?<!\d)1 in \d+(?:,\d{3})*"
 _RANGE = rf"\(between {_ONE_IN} and {_ONE_IN}\)"

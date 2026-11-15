@@ -232,7 +232,7 @@ COLLECTOR_MUTATIONS = {
     "check: late phrases allowed": (CHECK, '"took off", "minutes late", "hours late",', '"took off",'),
     "check: placeholder allowed": (CHECK, "        if any(flatten(PLACEHOLDER) in v for v in versions):", "        if False:"),
     "check: odds words allowed": (CHECK, "        hits += _found(ODDS_WORDS, texts)\n", ""),
-    "check: odds words as substrings": (CHECK, 'ODDS_WORDS = re.compile(r"\\b(?:chances?|odds|probability|likely|unlikely|risk|forecasts?|predicts?|prediction)\\b",', 'ODDS_WORDS = re.compile(r"(?:chances?|odds|probability|likely|unlikely|risk|forecasts?|predicts?|prediction)",'),
+    "check: odds words as substrings": (CHECK, 'ODDS_WORDS = re.compile(r"\\b(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky|forecasts?|forecasting|predicts?|predicted|prediction)\\b",', 'ODDS_WORDS = re.compile(r"(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky|forecasts?|forecasting|predicts?|predicted|prediction)",'),
     "check: odds words on how-it-works": (CHECK, '        hits += _found(COLLECTION, texts)\n        hits += _found(ODDS_WORDS, texts)\n', '        hits += _found(COLLECTION, texts)\n    if name.endswith(".html"):\n        hits += _found(ODDS_WORDS, texts)\n    if name.endswith(".html") and name != EXPLAINER:\n        pass\n'),
     "check: a rate without its range passes": (CHECK, "    return ONE_IN.findall(text)", "    return []"),
     "check: the bare range removed first refuses a ranged rate": (CHECK, "BARE_RANGE.sub(\" \", RANGED_RATE.sub(\" \", text))", "RANGED_RATE.sub(\" \", BARE_RANGE.sub(\" \", text))"),

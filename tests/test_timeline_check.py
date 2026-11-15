@@ -319,7 +319,7 @@ def test_the_cli_fails_on_a_missing_notice_and_names_it(tmp_path, capsys):
 # --- odds words, rates, percent signs, the past-flights line (docs/flight-lookup.md, "Tests and checks") -----
 
 ODDS = ("chance", "chances", "odds", "probability", "likely", "unlikely", "risk", "forecast", "forecasts", "predict",
-        "predicts", "prediction")
+        "predicts", "prediction", "risks", "risky", "predicted", "probable", "forecasting")
 
 
 @pytest.mark.parametrize("word", ODDS)
