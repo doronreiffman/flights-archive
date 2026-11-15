@@ -12,7 +12,11 @@ cannot hide one either. Words ("we", "our", "us"; "I"; "board" and the like) are
 with tags stripped, after the airport's data and the page titles that carry it are blanked out (DATA): an airline
 named "US-BANGLA AIRLINES" must not stop an upload. Attributes hold the airport's codes in addresses and anchors,
 so they are not read for words; a script or a style sheet has no attributes and is also read as written. A page
-built before a footer change lacks the current wording and fails. Exit 0 clean, 1 on a hit or a missing line, 2
+built before a footer change lacks the current wording and fails. Four rules for rates (docs/flight-lookup.md, "Tests and checks"): no odds word (chance, odds, probability, likely,
+risk, forecast, predict and their forms) outside how-it-works.html, no percent sign in a page's text, every "1 in N"
+followed at once by "(between 1 in A and 1 in B)", and the past-flights line on a page that holds a rate. The odds
+words and the percent sign skip the airport's data (DATA); the rate and record-line rules read the whole page, data
+spans and search JSON included. Exit 0 clean, 1 on a hit or a missing line, 2
 when there are no pages to check.
 """
 import html
@@ -37,9 +41,9 @@ COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|r
 # pages other than EXPLAINER, after the DATA mask (docs/flight-lookup.md, "Words": a rate is never a chance)
 ODDS_WORDS = re.compile(r"\b(?:chances?|odds|probability|likely|unlikely|risk|forecasts?|predicts?|prediction)\b",
                         re.I)
-_ONE_IN = r"1 in \d[\d,]*"
+_ONE_IN = r"(?<!\d)1 in \d+(?:,\d{3})*"
 _RANGE = rf"\(between {_ONE_IN} and {_ONE_IN}\)"
-RANGED_RATE = re.compile(rf"{_ONE_IN} ?{_RANGE}")
+RANGED_RATE = re.compile(rf"{_ONE_IN} {_RANGE}")
 BARE_RANGE = re.compile(_RANGE)
 ONE_IN = re.compile(_ONE_IN)
 # The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside), the front page's

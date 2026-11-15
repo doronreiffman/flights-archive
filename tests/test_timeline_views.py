@@ -763,7 +763,7 @@ def test_a_model_below_the_floor_everywhere():
     assert [row[3] for row in table_cells(page)[1:]] == [words.TOO_FEW] * 6
     assert "Too few so far to say." in text(page)
     assert "At least" not in text(page) and "None" not in text(page)
-    assert check.rate_hits(text(page)) == []
+    assert check.rate_hits(page) == []
 
 
 def test_the_story_box():

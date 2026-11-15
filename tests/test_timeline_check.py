@@ -387,3 +387,22 @@ def test_a_page_with_a_rate_needs_the_record_line(tmp_path):
     site = make(tmp_path, {"index.html": rate + footer, "day/x.html": rate + f"<p>{words.PAST_ONLY}</p>" + footer,
                            "y.html": "<p>no rate</p>" + footer})
     assert check.missing_notices(site) == [("index.html", "record line")]
+
+
+def test_a_whole_odds_word_inside_an_airlines_data_span_passes(tmp_path):
+    site = make(tmp_path, {"index.html": '<p><span class="d">RISK AIR</span> <span class="d">CHANCE AIRLINES</span></p>'})
+    assert check.scan(site) == []
+
+
+def test_a_percent_sign_inside_an_airlines_data_span_passes(tmp_path):
+    site = make(tmp_path, {"index.html": '<p><span class="d">100% AIR</span></p>'})
+    assert check.scan(site) == []
+
+
+def test_a_range_must_follow_its_rate_after_one_space():
+    assert check.rate_hits("1 in 100(between 1 in 45 and 1 in 200)") == ["1 in 100"]
+
+
+@pytest.mark.parametrize("text, hits", [("11 in 20", []), ("1 in 100, then", ["1 in 100"])])
+def test_a_rate_is_read_whole_and_without_its_trailing_comma(text, hits):
+    assert check.rate_hits(text) == hits
