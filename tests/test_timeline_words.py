@@ -267,7 +267,7 @@ def rate(cancelled, flights, one_in, lo, hi, floor=True):
                 one_in_from=lo, one_in_to=hi, se_airline_week=None, se_day=None)
 
 
-TOTAL = rate(81, 4658, 4658 / 81, 35.2, 94.1)
+TOTAL = rate(81, 4658, 4658 / 81, 36.3, 91.6)
 A35_ROWS = {
     70: (rate(48, 3028, 63.1, 33.2, 120.6), "1 in 65 (between 1 in 30 and 1 in 130)"),
     48: (rate(47, 3316, 70.6, 38.1, 131.4), "1 in 70 (between 1 in 35 and 1 in 140)"),
@@ -372,8 +372,22 @@ def test_count_line():
 
 def test_count_line_carries_thousands_separators():
     s = FakeSummary()
-    s.unknown, s.unknown_gap, s.unknown_no_final = 2690, 2400, 290
-    assert "Not counted: 2,690 flights" in words.count_line(s) and "2,400 of them" in words.count_line(s)
+    s.unknown, s.unknown_gap, s.unknown_no_final = 2690, 2400, 1290
+    line = words.count_line(s)
+    assert "Not counted: 2,690 flights" in line and "2,400 of them" in line and "and 1,290 left it" in line
+
+
+def test_total_cancelled_count_carries_thousands_separators():
+    assert words.total(rate(1200, 90000, 75.0, 60.0, 90.0)).startswith(
+        "So far, 1,200 of 90,000 flights with a known outcome")
+
+
+def test_late_line_counts_carry_thousands_separators():
+    s = FakeSummary()
+    s.late_after = 1500
+    s.figures = type("F", (), {"total": rate(2500, 90000, 36.0, 30.0, 40.0)})()
+    assert words.late_line(s) == ("At least 1,500 of the 2,500 cancelled flights were listed as cancelled only "
+                                  "after their scheduled time.")
 
 
 def test_late_line():
@@ -538,7 +552,11 @@ def site_texts() -> list[str]:
     texts += [words.headline(c, known) for c, known, _ in ONE_IN_CASES]
     texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
               words.late_line(FakeSummary()), words.another_number("departed"), words.PAST_ONLY, words.A_FLIGHT,
-              words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values()]
+              words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),
+              words.condition(datetime(2026, 11, 12, 10, 16, 45)), words.has_passed(datetime(2026, 11, 12, 10, 16, 45)),
+              words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
+              words.BRACKET, words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
+              words.another_number("landed"), words.another_number("is still listed")]
     texts += [words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY)
               for est, sched, _ in LAST_EXPECTED_CASES]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
