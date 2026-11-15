@@ -55,6 +55,7 @@ FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
 VIEWS = ("src/timeline/views.py", ["tests/test_timeline_views.py"])
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
+FROMHERE = ("src/timeline/static/fromhere.js", ["tests/test_timeline_fromhere.py"])
 STYLE = ("src/timeline/static/style.css", ["tests/test_timeline_style.py"])
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
@@ -201,6 +202,22 @@ COLLECTOR_MUTATIONS = {
     "search: list never hidden": (SEARCH, "  list.hidden = items.length === 0;", "  list.hidden = false;"),
     "search: matches anywhere in a key": (SEARCH, "keys.some((key) => key.startsWith(q))", "keys.some((key) => key.includes(q))"),
     "search: query read as a pattern": (SEARCH, "keys.some((key) => key.startsWith(q))", 'keys.some((key) => new RegExp("^" + q).test(key))'),
+    "fromhere: a boundary belongs to the upper lead-in": (FROMHERE, "hours > after && hours <= upto", "hours >= after && hours < upto"),
+    "fromhere: a time without Z read as local": (FROMHERE, '!schedIso.endsWith("Z")', "false"),
+    "fromhere: passed a minute early": (FROMHERE, "if (hours <= 0) return", "if (hours <= 1 / 60) return"),
+    "fromhere: passed hides only the list": (FROMHERE, "    block.hidden = true;\n    const line = block.nextElementSibling;", "    pairs.forEach((li) => { li.hidden = true; });\n    const line = block.nextElementSibling;"),
+    "fromhere: passed shows no line": (FROMHERE, "if (line && line.classList.contains(\"passed\")) line.hidden = false;", ""),
+    "fromhere: hides the list on a bad attribute": (FROMHERE, "  if (result === null) return;", "  if (result === null) { pairs.forEach((li) => { li.hidden = true; }); return; }"),
+    "fromhere: never shows more than 3 days": (FROMHERE, 'if (hours > moreAfter) return "more";', ""),
+    "fromhere: more from the top pair, not the block's bound": (FROMHERE, "if (hours > moreAfter) return", "if (hours > Math.max(...bounds.map((b) => b[1]))) return"),
+    "fromhere: a missing top bound read as zero": (FROMHERE, "  return text === null || text.trim() === \"\" ? NaN : Number(text);", "  return text === null ? 0 : Number(text);"),
+    "fromhere: none hides only the pairs": (FROMHERE, "    block.hidden = true; // the condition", "    pairs.forEach((li) => { li.hidden = true; }); // the condition"),
+    "fromhere: none shows the passed line": (FROMHERE, "    block.hidden = true; // the condition", "    block.hidden = true; block.nextElementSibling.hidden = false; // the condition"),
+    "fromhere: more leaves the pairs showing": (FROMHERE, '    pairs.forEach((li) => { li.hidden = true; });\n    const line = block.querySelector(".more");', '    const line = block.querySelector(".more");'),
+    "fromhere: more line never shown": (FROMHERE, "    if (line) line.hidden = false;", ""),
+    "fromhere: every pair hidden": (FROMHERE, "li.hidden = i !== result;", "li.hidden = true;"),
+    "fromhere: an unreadable pair bound ignored": (FROMHERE, "  if (bounds.some((pair) => !Number.isFinite(pair[0]) || !Number.isFinite(pair[1]))) return;\n", ""),
+    "fromhere: block selected by the table's class": (FROMHERE, 'querySelectorAll("div.pairs")', 'querySelectorAll(".fromhere")'),
     "search: keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
     "search: box shown before the data is read": (SEARCH, "    const entries = JSON.parse(data.textContent);", "    box.hidden = false;\n    const entries = JSON.parse(data.textContent);"),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
