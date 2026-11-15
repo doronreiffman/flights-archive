@@ -12,8 +12,8 @@ What it changes in `docs/site-redesign.md`. Everything not listed there stands.
 - "Who is a flight": replaced by rules C1 to C4.
 - "Labels": a flight in a list gets its label by C10. A number's own label on its own page is unchanged.
 - "Warning": in a list, a cancelled flight shows the warning of its number that was listed as cancelled first (C9).
-- "Codeshares": the sentence stays. Its partners are the other numbers of the flight under C1 (`partners()` in `src/timeline/flights.py`), with the reason words in "Words".
-- Front page: the headline counts closed flights and carries a range; the search box moves up; the new block follows it. The story box picks among flights labelled CANCELLED by C10 and shows the number of C9. Today `featured` in `flights.py` picks by a number's own label, which could feature a number listed as cancelled inside a flight that departed.
+- "Codeshares": the sentence stays. Its partners are the other numbers of the flight under C1 that the list showed with the same expected time, terminal and check-in desks (`partners()` in `src/timeline/flights.py`), with the reason words in "Words".
+- Front page: the headline counts closed flights and carries a range; the search box moves up; the new block follows it. The story box picks among flights labelled CANCELLED by C10 and shows the number of C9. Until this design was built, `featured` in `flights.py` picked by a number's own label, which could feature a number listed as cancelled inside a flight that departed.
 - The "1 in N" rounding gains steps above 100 (C8).
 - "Look": two scripts, `search.js` and `fromhere.js`.
 - Tests: the codeshare-split test is retired with the split it tested; the headline tests are rewritten.
