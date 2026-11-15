@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from timeline import check, words
+from timeline.rates import Rate
 
 DAY = date(2026, 10, 29)
 
@@ -259,6 +260,136 @@ def test_headline_counts_carry_thousands_separators():
                                         "That's about 1 in 55.")
 
 
+# --- rates -----------------------------------------------------------------------------------------
+
+def rate(cancelled, flights, one_in, lo, hi, floor=True):
+    return Rate(cancelled=cancelled, flights=flights, airlines=9, days=9, clears_floor=floor, one_in=one_in,
+                one_in_from=lo, one_in_to=hi, se_airline_week=None, se_day=None)
+
+
+TOTAL = rate(81, 4658, 4658 / 81, 35.2, 94.1)
+A35_ROWS = {
+    70: (rate(48, 3028, 63.1, 33.2, 120.6), "1 in 65 (between 1 in 30 and 1 in 130)"),
+    48: (rate(47, 3316, 70.6, 38.1, 131.4), "1 in 70 (between 1 in 35 and 1 in 140)"),
+    24: (rate(35, 3449, 98.5, 49.3, 197.9), "1 in 100 (between 1 in 45 and 1 in 200)"),
+    12: (rate(25, 3625, 145.0, 71.4, 295.6), "1 in 150 (between 1 in 70 and 1 in 300)"),
+    6: (rate(19, 3704, 194.9, 96.6, 394.4), "1 in 190 (between 1 in 95 and 1 in 400)"),
+    3: (rate(16, 3754, 234.6, 119.99, 459.7), "1 in 230 (between 1 in 110 and 1 in 460)"),
+}
+
+
+def test_constants_are_the_approved_words():
+    assert words.PAST_ONLY == "This is what happened to past flights. It does not say what will happen to yours."
+    assert words.FROM_HERE_HEADING == "From here to the scheduled time"
+    assert words.FROM_HERE_FIRST == ("So far, of all flights at the airport that the list still showed normally at "
+                                     "each point, this is how many were later listed as cancelled.")
+    assert words.FROM_HERE_COLUMNS == ("Time to go", "Flights still listed normally", "Later listed as cancelled",
+                                      "That's about")
+    assert words.CHECKPOINT_NAMES == {70: "70 hours", 48: "48 hours", 24: "24 hours", 12: "12 hours",
+                                      6: "6 hours", 3: "3 hours"}
+    assert words.UNDER_TABLE == (
+        "Each row is a point in time: the 24-hour row counts flights listed normally 24 hours before their "
+        "scheduled time, and how many of them were later listed as cancelled, however late.",
+        "Listed normally means any status but cancelled, delayed included.",
+        "More than 3 days to go: the airport's list does not show the flight yet. A flight already listed as "
+        "cancelled when it reaches the list is not in this table.")
+    assert words.TOO_FEW == "too few so far to say"
+    assert words.MORE_THAN_3_DAYS == "More than 3 days to go: the airport's list does not show the flight yet."
+    assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
+                              12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
+    assert words.BRACKET == "is listed as cancelled"
+    assert words.A_FLIGHT == (
+        "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
+        "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
+        "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when "
+        "any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
+
+
+def test_total():
+    assert words.total(TOTAL) == ("So far, 81 of 4,658 flights with a known outcome were listed as cancelled. "
+                                  "That's about 1 in 60 (between 1 in 35 and 1 in 95).")
+
+
+def test_total_below_the_floor():
+    assert words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)) == (
+        "So far, 3 of 120 flights with a known outcome were listed as cancelled. Too few so far to say.")
+    assert words.total(rate(0, 900, None, None, None, floor=False)) == (
+        "So far, 0 of 900 flights with a known outcome were listed as cancelled. Too few so far to say.")
+
+
+def test_a_rate_without_a_range_is_shown_like_one_below_the_floor():
+    r = rate(12, 12, 1.0, None, None)
+    assert words.one_in_range(r) is None
+    assert words.total(r) == "So far, 12 of 12 flights with a known outcome were listed as cancelled. Too few so far to say."
+
+
+@pytest.mark.parametrize("h", sorted(A35_ROWS))
+def test_one_in_range_is_a35s_line(h):
+    r, line = A35_ROWS[h]
+    assert words.one_in_range(r) == line
+
+
+def test_one_in_range_total_and_floor():
+    assert words.one_in_range(TOTAL) == "1 in 60 (between 1 in 35 and 1 in 95)"
+    assert words.one_in_range(rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
+
+
+def test_one_in_range_carries_thousands_separators():
+    assert words.one_in_range(rate(10, 11000, 1100.0, 800.0, 1500.0)) == "1 in 1,100 (between 1 in 800 and 1 in 1,500)"
+
+
+def test_pair():
+    assert words.pair(24, A35_ROWS[24][0]) == (
+        "This flight has between 12 and 24 hours to go. So far, of all flights at the airport still listed normally "
+        "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
+    assert words.pair(3, A35_ROWS[3][0]).startswith("This flight has under 3 hours to go. ")
+    assert words.pair(70, A35_ROWS[70][0]).startswith("This flight has between 2 and 3 days to go. ")
+    assert words.pair(24, rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
+
+
+def test_condition_and_has_passed_read_the_update_in_israel_time(israeli_machine):
+    updated = datetime(2026, 11, 12, 10, 16, 45)
+    assert words.condition(updated) == (
+        "The figure is for flights the airport's list showed normally. This page was last updated 12 Nov 2026, "
+        "12:16 and cannot say what the list shows now. Check the airport's own list.")
+    assert words.has_passed(updated) == (
+        "This flight's scheduled time has passed. The row below shows the list as it was on 12 Nov 2026, 12:16.")
+
+
+class FakeSummary:
+    figures = type("F", (), {"total": TOTAL})()
+    unknown, unknown_gap, unknown_no_final = 269, 240, 29
+    late_after, late_holds, late_unplaced, late_before = 9, 1, 19, 52
+    first_record = date(2026, 10, 27)
+
+
+def test_count_line():
+    assert words.count_line(FakeSummary()) == (
+        "Counted: 4,658 flights with a known outcome, scheduled up to two days before the last update, in a record "
+        "kept since 27 October 2026. Not counted: 269 flights with no known outcome. 240 of them left the list "
+        "while nothing was recorded, and 29 left it with no final status.")
+
+
+def test_count_line_carries_thousands_separators():
+    s = FakeSummary()
+    s.unknown, s.unknown_gap, s.unknown_no_final = 2690, 2400, 290
+    assert "Not counted: 2,690 flights" in words.count_line(s) and "2,400 of them" in words.count_line(s)
+
+
+def test_late_line():
+    assert words.late_line(FakeSummary()) == (
+        "At least 9 of the 81 cancelled flights were listed as cancelled only after their scheduled time.")
+    s = FakeSummary()
+    s.late_after = 0
+    assert words.late_line(s) is None
+
+
+def test_another_number():
+    for verb in ("departed", "landed", "is still listed"):
+        assert words.another_number(verb) == (
+            f"Listed as cancelled. Another flight number with the same scheduled time and airport {verb}:")
+
+
 # --- what changed ----------------------------------------------------------------------------------
 
 def utc(day, h, m, s=0):
@@ -405,6 +536,9 @@ def site_texts() -> list[str]:
               for o, seen, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.headline(c, known) for c, known, _ in ONE_IN_CASES]
+    texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
+              words.late_line(FakeSummary()), words.another_number("departed"), words.PAST_ONLY, words.A_FLIGHT,
+              words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values()]
     texts += [words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY)
               for est, sched, _ in LAST_EXPECTED_CASES]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]

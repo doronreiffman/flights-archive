@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+from timeline.rates import Rate, round_middle, round_range
+
+if TYPE_CHECKING:  # display imports this module's label names, so the type is for hints only
+    from timeline.display import Summary
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 
@@ -271,3 +277,92 @@ def headline(cancelled: int, known: int) -> str | None:
         return None
     return (f"So far, {cancelled:,} of {known:,} flights with a known outcome were listed as cancelled. "
             f"That's about 1 in {n}.")
+
+
+# --- rates (docs/flight-lookup.md, "Words"; docs/flight-lookup-plan.md, Question 4 and Appendix A) ------
+
+PAST_ONLY = "This is what happened to past flights. It does not say what will happen to yours."
+FROM_HERE_HEADING = "From here to the scheduled time"
+FROM_HERE_FIRST = ("So far, of all flights at the airport that the list still showed normally at each point, "
+                   "this is how many were later listed as cancelled.")
+FROM_HERE_COLUMNS = ("Time to go", "Flights still listed normally", "Later listed as cancelled", "That's about")
+CHECKPOINT_NAMES = {70: "70 hours", 48: "48 hours", 24: "24 hours", 12: "12 hours", 6: "6 hours", 3: "3 hours"}
+UNDER_TABLE = (
+    "Each row is a point in time: the 24-hour row counts flights listed normally 24 hours before their "
+    "scheduled time, and how many of them were later listed as cancelled, however late.",
+    "Listed normally means any status but cancelled, delayed included.",
+    "More than 3 days to go: the airport's list does not show the flight yet. A flight already listed as "
+    "cancelled when it reaches the list is not in this table.",
+)
+TOO_FEW = "too few so far to say"
+MORE_THAN_3_DAYS = "More than 3 days to go: the airport's list does not show the flight yet."
+LEAD_INS = {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
+            12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
+A_FLIGHT = (
+    "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
+    "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
+    "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when any "
+    "of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
+BRACKET = "is listed as cancelled"
+
+
+def _n(x: int) -> str:
+    return f"{x:,}"
+
+
+def one_in_range(rate: Rate) -> str | None:
+    """"1 in 100 (between 1 in 45 and 1 in 200)" (C8's rounding); None below the floor, and for a rate with no
+    range (every flight in it cancelled)."""
+    if not rate.clears_floor or rate.one_in is None or rate.one_in_from is None or rate.one_in_to is None:
+        return None
+    lo, hi = round_range(rate.one_in_from, rate.one_in_to)
+    return f"1 in {_n(round_middle(rate.one_in))} (between 1 in {_n(lo)} and 1 in {_n(hi)})"
+
+
+def total(rate: Rate) -> str:
+    first = f"So far, {_n(rate.cancelled)} of {_n(rate.flights)} flights with a known outcome were listed as cancelled."
+    figure = one_in_range(rate)
+    return f"{first} That's about {figure}." if figure else f"{first} Too few so far to say."
+
+
+def count_line(s: Summary) -> str:
+    since = f"{s.first_record.day} {s.first_record:%B %Y}"
+    return (f"Counted: {_n(s.figures.total.flights)} flights with a known outcome, scheduled up to two days before "
+            f"the last update, in a record kept since {since}. Not counted: {_n(s.unknown)} flights with no known "
+            f"outcome. {_n(s.unknown_gap)} of them left the list while nothing was recorded, and "
+            f"{_n(s.unknown_no_final)} left it with no final status.")
+
+
+def late_line(s: Summary) -> str | None:
+    if s.late_after == 0:
+        return None
+    return (f"At least {_n(s.late_after)} of the {_n(s.figures.total.cancelled)} cancelled flights were listed as "
+            f"cancelled only after their scheduled time.")
+
+
+def pair(h: int, rate: Rate) -> str | None:
+    figure = one_in_range(rate)
+    if figure is None:
+        return None
+    return (f"This flight has {LEAD_INS[h]} to go. So far, of all flights at the airport still listed normally "
+            f"with {h} hours to go, about {figure} were later listed as cancelled.")
+
+
+def _updated(updated: datetime) -> str:
+    local = il_time(updated)
+    return f"{local.day} {local:%b %Y, %H:%M}"
+
+
+def condition(updated: datetime) -> str:
+    return (f"The figure is for flights the airport's list showed normally. This page was last updated "
+            f"{_updated(updated)} and cannot say what the list shows now. Check the airport's own list.")
+
+
+def has_passed(updated: datetime) -> str:
+    return (f"This flight's scheduled time has passed. The row below shows the list as it was on "
+            f"{_updated(updated)}.")
+
+
+def another_number(verb: str) -> str:
+    """The sentence up to the colon; the view adds the linked names and the full stop."""
+    return f"Listed as cancelled. Another flight number with the same scheduled time and airport {verb}:"
