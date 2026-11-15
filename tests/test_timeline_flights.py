@@ -384,6 +384,22 @@ def test_recent_cancellations_newest_first_at_most_n():
     assert ids(flights.recent_cancellations(flights_, n=2)) == [["IZ 991"], ["c19"]]
 
 
+def test_cancellation_lists_leave_out_a_flight_with_a_number_listed_as_cancelled():
+    """docs/flight-lookup.md, D4: a number listed as cancelled inside a flight that departed, landed or is still listed
+    leaves the cancellation lists, which hold flights labelled CANCELLED (C10). LH 0691A beside LH 695, which departed,
+    and the same pair two days later with LH 695 still listed, are both newer than EY 607 with LY 9614, the one
+    cancelled flight; neither is listed, however many the list may hold."""
+    fs = [*ey_ly(), lh("lh0691a", local(29, 20, 0), "0691A", "canceled"), lh("lh695", local(29, 20, 0), "695"),
+          lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open")]
+    flights_ = lists(*fs)
+    assert [(ids([fl])[0], fl.label, [r.label for r in fl.rows]) for fl in flights_] == [
+        (["ey", "ly"], "CANCELLED", ["CANCELLED", "CANCELLED"]),
+        (["lh0691a", "lh695"], "DEPARTED", ["CANCELLED", "DEPARTED"]),
+        (["lh0691a-31", "lh695-31"], "UPCOMING", ["CANCELLED", "UPCOMING"])]
+    assert ids(flights.recent_cancellations(flights_)) == [["ey", "ly"]]
+    assert ids(flights.recent_cancellations(flights_, n=len(flights_))) == [["ey", "ly"]]
+
+
 # --- search ----------------------------------------------------------------------------------------
 
 def test_number_keys():

@@ -1,9 +1,11 @@
 """The redesigned site's pages (docs/site-redesign.md: "Pages", "Words", "Codeshares", "Names"), from display rows
 made with flights.make_rows. Expected values by hand; the how-it-works copy is the plan's Appendix A, verbatim."""
+import dataclasses
 import html
 import json
 import re
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 
@@ -225,6 +227,13 @@ def summary_rows(kinds):
 ])
 def test_summary_counts_each_label_in_order(kinds, summary):
     assert f"Since 27 October: {summary}." in text(page_of(*summary_rows(kinds)))
+
+
+def test_the_summary_line_starts_at_the_summarys_first_record():
+    """The line starts at the front page's first record (display.Summary.first_record, the Israel date of the first
+    list), whatever it is: with records from 3 November it says so. Every other test's first record is 27 October."""
+    page = page_of(flight("ly"), summary=dataclasses.replace(SUMMARY, first_record=date(2026, 11, 3)))
+    assert "Since 3 November: departed once." in text(page)
 
 
 def test_a_number_with_two_cities():
@@ -476,6 +485,42 @@ def test_fromhere_js_only_on_pages_with_a_block():
         assert "<script" not in other
 
 
+FROMHERE_JS = Path(views.__file__).parent / "static" / "fromhere.js"
+
+
+def test_the_block_holds_every_name_fromhere_js_reads(israeli_machine):
+    """The names fromhere.js selects by, read out of the script itself, are the names the block is written with: the
+    block it selects with the two attributes it reads there, the list items with theirs, the class of the line among
+    the block's children that it shows above 72 hours, and the class of the line right after the block. The script's
+    own tests run it on a hand-made stand-in page, so this test is what ties the two together."""
+    script = FROMHERE_JS.read_text(encoding="utf-8")
+    found = {"block": re.findall(r'document\.querySelectorAll\("([^"]+)"\)', script),
+             "items": re.findall(r'block\.querySelectorAll\("([^"]+)"\)', script),
+             "block attributes": re.findall(r'block\.getAttribute\("([^"]+)"\)', script),
+             "item attributes": re.findall(r'li\.getAttribute\("([^"]+)"\)', script),
+             "child classes": re.findall(r'child\.classList\.contains\("([^"]+)"\)', script),
+             "next classes": re.findall(r'line\.classList\.contains\("([^"]+)"\)', script)}
+    assert all(found.values()), found
+    # Every name the script selects by is one of these: a new one fails here until this test places it.
+    assert sum(map(len, found.values())) == len(re.findall(r'(?:querySelectorAll|getAttribute|classList\.contains)\(',
+                                                           script))
+    page = page_of(upcoming())
+    (selector,) = found["block"]
+    tag, cls = selector.split(".")
+    assert f'<{tag} class="{cls}"' in page
+    start = page.index(f'<{tag} class="{cls}"')
+    end = page.index(f"</{tag}>", start) + len(f"</{tag}>")
+    block, after = page[start:end], page[end:]
+    opening = block[:block.index(">") + 1]
+    assert [name for name in found["block attributes"] if f' {name}="' not in opening] == [], opening
+    (item,) = found["items"]
+    items = re.findall(rf"<{item}\b[^>]*>", block)
+    assert len(items) == 6
+    assert [(i, name) for i in items for name in found["item attributes"] if f' {name}="' not in i] == []
+    assert [name for name in found["child classes"] if not re.search(rf'<\w+ class="{name}"[ >]', block)] == []
+    assert [name for name in found["next classes"] if not re.match(rf'\s*<\w+ class="{name}"[ >]', after)] == []
+
+
 # --- day page --------------------------------------------------------------------------------------
 
 DAY = date(2026, 10, 29)
@@ -603,15 +648,20 @@ def cells(page: str) -> list[list[str]]:
 
 
 def cancellations_page():
+    """Three cancelled flights among others. LH 0691A, listed as cancelled beside LH 695, which departed, and the same
+    pair on 31 October with LH 695 still listed, are not cancelled flights (docs/flight-lookup.md, D4 and C10)."""
     fs = [flight("to", local(29, 17, 10), **TO, **TO_CANCELLED),
           flight("departed", local(29, 18, 0)),
           flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", direction="A", **AT_LEAST_23),
           flight("ey", local(28, 9, 0), airline="EY", flight_no="607", group="g", **CLEAN),
-          flight("ly", local(28, 9, 0), airline="LY", flight_no="9614", group="g", **CLEAN)]
+          flight("ly", local(28, 9, 0), airline="LY", flight_no="9614", group="g", **CLEAN),
+          lh("lh0691a", local(29, 20, 0), "0691A", "canceled"), lh("lh695", local(29, 20, 0), "695"),
+          lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open")]
     return views.cancellations_page(lists(*fs))
 
 
 def test_cancellations_newest_first():
+    """Only the flights labelled CANCELLED: neither LH flight, though each is newer than TO 3459."""
     page = cancellations_page()
     assert "<title>All cancellations</title>" in page and "<h1>All cancellations</h1>" in page
     assert cells(page) == [
@@ -621,6 +671,7 @@ def test_cancellations_newest_first():
          "none: listed as cancelled about 2 hours after it was scheduled to leave"],
         ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave 09:00", "at least 6 hours"],
     ]
+    assert "LH 0691A" not in text(page) and "LH 695" not in text(page)
 
 
 def test_cancellations_link_each_number_to_its_row():

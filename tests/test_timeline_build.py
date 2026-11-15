@@ -1,5 +1,6 @@
 """The whole site, built from small synthetic models through the real model build (docs/site-redesign.md: "Pages",
 "How it is built", "Tests and checks")."""
+import dataclasses
 import html
 import json
 import os
@@ -16,26 +17,29 @@ from model import build as model_build
 from model.report import ATTRIBUTION
 from model_helpers import at, row, write_receipt, write_snapshot
 from test_timeline_flights import flight
+from test_timeline_words import A35_ROWS, TOTAL
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import build, check, counting, flights, words
+from timeline import build, check, counting, display, flights, words
 from timeline.check import BANNED
 
 
-def upload_check(site) -> None:
+def upload_check(site, ranges: bool = False) -> None:
     """Every site the tests build passes the upload check (docs/flight-lookup.md, "Tests and checks") and prints no
-    range: no test model clears the floor anywhere (Review Focus 3)."""
+    range: no test model clears the floor anywhere (Review Focus 3). `ranges` lets the one test whose figures are
+    replaced by figures above the floor print them."""
     assert check.scan(site) == []
     assert check.missing_notices(site) == []
-    assert [p.name for p in site.rglob("*.html") if "(between" in text(p.read_text(encoding="utf-8"))] == []
+    if not ranges:
+        assert [p.name for p in site.rglob("*.html") if "(between" in text(p.read_text(encoding="utf-8"))] == []
 
 
-def make_site(tmp_path, snapshots) -> Path:
+def make_site(tmp_path, snapshots, ranges: bool = False) -> Path:
     raw, model, site = tmp_path / "raw", tmp_path / "model", tmp_path / "site"
     for when, rows in snapshots:
         write_snapshot(raw, when, rows)
     model_build.build(raw, model)
     build.build(model, site)
-    upload_check(site)
+    upload_check(site, ranges)
     return site
 
 
@@ -352,6 +356,56 @@ def test_a_fresh_small_model_passes_the_upload_check(tmp_path):
     pages = all_pages(site)
     assert [name for name, page in pages.items() if "(between" in text(page)] == []
     assert "Too few so far to say." in text(pages["index.html"])
+
+
+# --- what the build hands to the pages (each page's own words are pinned in tests/test_timeline_views.py) ------------
+
+def test_a_number_listed_as_cancelled_in_a_flight_that_departed_names_the_number_that_did(tmp_path):
+    """EY 607 was listed as cancelled; LY 9614, of the same flight (C1), departed. EY 607's page names LY 9614, linked
+    to its row; LY 9614's page has no such line, and the flight is in no cancellation list (D4, C10)."""
+    site = make_site(tmp_path, closing_model())
+    page = read(site, "flight/EY607-D.html")
+    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport departed: LY 9614."
+            in text(page))
+    assert ('airport departed: <a href="../flight/LY9614-D.html#2026-10-26-1100-AUH"><span class="d">LY 9614</span></a>.'
+            "</p>") in page
+    assert "Another flight number" not in text(read(site, "flight/LY9614-D.html"))
+    cancellations = text(read(site, "cancellations.html"))
+    assert "IZ 991" in cancellations and "EY 607" not in cancellations
+
+
+def test_how_it_works_names_the_frozen_tag_and_the_counting_start(tmp_path, israeli_machine):
+    """The tag of the frozen code, linked to that code, and the counting start as its Israel date (record.TAG and
+    record.COUNTING_START, 22:00 UTC on 15 November: 00:00 on 16 November in Israel), not the records' first day."""
+    page = read(make_site(tmp_path, [(at(6), [LY1]), (at(6, 15), [LY1])]), "how-it-works.html")
+    assert '<a href="https://github.com/doronreiffman/flights-archive/tree/record-v1">record-v1</a>' in page
+    assert "The rules were fixed beforehand, in the code tagged record-v1." in text(page)
+    assert "The counted flights are those first listed from 16 November 2026, the counting start;" in text(page)
+
+
+def test_above_the_floor_an_upcoming_row_gets_the_block_as_of_the_last_sighting(tmp_path, monkeypatch, israeli_machine):
+    """With the front page's figures replaced by the design's (A35, above the floor) and the rest of display.summary
+    left as it is, the build gives LY 001, still listed and due at 10:00 on 28 October in Israel, the block: its
+    scheduled time as the UTC instant it is, and the condition and "has passed" lines at the last sighting (08:15 on 27
+    October in Israel), not the first record (08:00). The site passes the upload check, ranges and all."""
+    real = display.summary
+    above = counting.Figures(total=TOTAL, rows=tuple((h, A35_ROWS[h][0]) for h in counting.CHECKPOINTS))
+    monkeypatch.setattr(display, "summary", lambda *model: dataclasses.replace(real(*model), figures=above))
+    site = make_site(tmp_path, [(at(6), [LY1]), (at(6, 15), [LY1])], ranges=True)
+    table, _, snaps = build.load(tmp_path / "model")
+    (ly1,) = table
+    sched = f"{ly1['sched_utc_final']:%Y-%m-%dT%H:%M:%SZ}"
+    assert sched == "2026-10-28T08:00:00Z"
+    page = read(site, "flight/LY001-D.html")
+    assert f'<div class="pairs" data-sched="{sched}" data-more-after="72">' in page
+    assert '<script src="../fromhere.js" defer></script>' in page
+    last = words.il_time(counting.last_sighting(snaps))
+    assert f"{last.day} {last:%b %Y, %H:%M}" == "27 Oct 2026, 08:15"
+    assert ("The figure is for flights the airport's list showed normally. This page was last updated 27 Oct 2026, "
+            "08:15 and cannot say what the list shows now.") in text(page)
+    assert "The row below shows the list as it was on 27 Oct 2026, 08:15." in text(page)
+    assert "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200)" in text(page)
+    assert check.scan(site) == [] and check.missing_notices(site) == []
 
 
 def test_the_story_is_the_latest_cancellation_with_a_known_warning(tmp_path):

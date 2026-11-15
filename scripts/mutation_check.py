@@ -69,6 +69,10 @@ FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
+# The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
+NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
+VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
+FROMHERE_NAMES = ("src/timeline/static/fromhere.js", [NAMES])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -200,6 +204,10 @@ COLLECTOR_MUTATIONS = {
     "site: chart counted from numbers": (SITE, '    shown = [i for i in infos if i.state != "ahead"][-CHART_DAYS:]\n    chart_days = shown + [i for i in infos if i.state == "ahead"]', '    by_number = flights.day_infos([flights.ListFlight((r,), r.label, r.delayed, r, r.day) for r in rows], last_check, {i.day for i in infos if i.partial})\n    shown = [i for i in by_number if i.state != "ahead"][-CHART_DAYS:]\n    chart_days = shown + [i for i in by_number if i.state == "ahead"]'),
     "site: day counts from numbers": (SITE, "    infos = flights.day_infos(flights_, last_check,", "    infos = flights.day_infos([flights.ListFlight((r,), r.label, r.delayed, r, r.day) for r in rows], last_check,"),
     "site: chart cancelled from the counting result": (SITE, '    chart_days = shown + [i for i in infos if i.state == "ahead"]', '    chart_days = [flights.DayInfo(i.day, i.total, sum(f.day == i.day and f.result == "cancelled" for f in counting.flights(table, last_check)), i.unknown, i.state, i.partial) for i in shown + [i for i in infos if i.state == "ahead"]]'),
+    "site: flight pages updated at the first record": (SITE, "views.flight_page(page_rows, partners, others, summary, last_check)", "views.flight_page(page_rows, partners, others, summary, first_check)"),
+    "site: another-number lines not passed": (SITE, "partners, others = flights.partners(flights_, table), flights.others(flights_)", "partners, others = flights.partners(flights_, table), {}"),
+    "site: counting start from the first record": (SITE, "gaps, record.TAG, record.COUNTING_START)", "gaps, record.TAG, first_check)"),
+    "site: another tag on how-it-works": (SITE, "gaps, record.TAG, record.COUNTING_START)", 'gaps, "record-v2", record.COUNTING_START)'),
     "search: places ranked before numbers": (SEARCH, "[...exact, ...numbers, ...places]", "[...exact, ...places, ...numbers]"),
     "search: no exact tier": (SEARCH, "    if (entry.n.includes(q)) exact.push(entry);\n    else if", "    if"),
     "search: no cap": (SEARCH, "found.slice(0, LIMIT)", "found"),
@@ -231,6 +239,7 @@ COLLECTOR_MUTATIONS = {
     "fromhere: an unreadable top bound not refused": (FROMHERE, " || !Number.isFinite(moreAfter)) return null;", ") return null;"),
     "fromhere: more line taken from the page, not the block": (FROMHERE, '!child.classList.contains("more"); });', 'child !== document.querySelector(".more"); });'),
     "fromhere: passed line taken from the page, not the block": (FROMHERE, "const line = block.nextElementSibling;", 'const line = document.querySelector(".passed");'),
+    "fromhere: reads a class the block does not carry": (FROMHERE_NAMES, 'line.classList.contains("passed")', 'line.classList.contains("gone")'),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
     "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
     "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
@@ -259,7 +268,7 @@ COLLECTOR_MUTATIONS = {
     "check: late phrases allowed": (CHECK, '"took off", "minutes late", "hours late",', '"took off",'),
     "check: placeholder allowed": (CHECK, "        if any(flatten(PLACEHOLDER) in v for v in versions):", "        if False:"),
     "check: odds words allowed": (CHECK, "        hits += _found(ODDS_WORDS, texts)\n", ""),
-    "check: odds words as substrings": (CHECK, 'ODDS_WORDS = re.compile(r"\\b(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky|forecasts?|forecasting|predicts?|predicted|prediction)\\b",', 'ODDS_WORDS = re.compile(r"(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky|forecasts?|forecasting|predicts?|predicted|prediction)",'),
+    "check: odds words as substrings": (CHECK, 'ODDS_WORDS = re.compile(r"\\b(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky"\n                        r"|forecasts?|forecasting|predicts?|predicted|prediction)\\b", re.I)', 'ODDS_WORDS = re.compile(r"(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky"\n                        r"|forecasts?|forecasting|predicts?|predicted|prediction)", re.I)'),
     "check: odds words on how-it-works": (CHECK, '        hits += _found(COLLECTION, texts)\n        hits += _found(ODDS_WORDS, texts)\n', '        hits += _found(COLLECTION, texts)\n    if name.endswith(".html"):\n        hits += _found(ODDS_WORDS, texts)\n    if name.endswith(".html") and name != EXPLAINER:\n        pass\n'),
     "check: a rate without its range passes": (CHECK, "    return ONE_IN.findall(text)", "    return []"),
     "check: the bare range removed first refuses a ranged rate": (CHECK, "BARE_RANGE.sub(\" \", RANGED_RATE.sub(\" \", text))", "RANGED_RATE.sub(\" \", BARE_RANGE.sub(\" \", text))"),
@@ -304,6 +313,7 @@ COLLECTOR_MUTATIONS = {
     "words: a range shown below the floor": (WORDS, "    if not rate.clears_floor or rate.one_in is None", "    if rate.one_in is None"),
     "words: a range-less rate shown": (WORDS, " or rate.one_in_from is None or rate.one_in_to is None:", ":"),
     "words: lead-in of the wrong checkpoint": (WORDS, "This flight has {LEAD_INS[h]} to go.", "This flight has {LEAD_INS[min(LEAD_INS, key=lambda k: abs(k - h) + (k == h) * 99)]} to go."),
+    "words: every pair says 24 hours": (WORDS, '"with {h} hours to go, about {figure}', '"with 24 hours to go, about {figure}'),
     "words: condition in UTC": (WORDS, "    local = il_time(updated)\n    return f\"{local.day}", "    local = updated\n    return f\"{local.day}"),
     "words: count line without separators": (WORDS, "Counted: {_n(s.figures.total.flights)} flights", "Counted: {s.figures.total.flights} flights"),
     "words: 1 in N without separators": (WORDS, 'return f"1 in {_n(round_middle(rate.one_in))} (between', 'return f"1 in {round_middle(rate.one_in)} (between'),
@@ -348,6 +358,7 @@ COLLECTOR_MUTATIONS = {
     "flights: a list's DELAYED from its first number": (FLIGHTS, "delayed=display.delayed(f, delayed_ids),", "delayed=members[0].delayed,"),
     "flights: others name every other number": (FLIGHTS, "        named = tuple(r for r in fl.rows if _OTHERS.get(r.label) == verb)", "        named = tuple(r for r in fl.rows if r.label != words.CANCELLED)"),
     "flights: day counts from numbers": (FLIGHTS, "        labels.setdefault(fl.day, []).append(fl.label)", "        labels.setdefault(fl.day, []).extend(r.label for r in fl.rows)"),
+    "flights: cancellation lists hold a flight with any number listed as cancelled": (FLIGHTS, "    return _newest_first([fl for fl in flights_ if fl.label == words.CANCELLED], lambda fl: fl.rows[0])[:n]", "    return _newest_first([fl for fl in flights_ if any(r.label == words.CANCELLED for r in fl.rows)], lambda fl: fl.rows[0])[:n]"),
     "views: data not escaped": (VIEWS, """f'<span class="d">{html.escape(str(value))}</span>'""", """f'<span class="d">{value}</span>'"""),
     "views: cancelled row closed": (VIEWS, 'out.append("<details open>" if r.label == words.CANCELLED else "<details>")', 'out.append("<details>")'),
     "views: delay sentence on every row": (VIEWS, """f'<p class="head">{" ".join(head)}</p>']""", """f'<p class="head">{" ".join(head)}</p>', f'<p class="note">{e(words.DELAY_SENTENCE)}</p>']"""),
@@ -398,6 +409,9 @@ COLLECTOR_MUTATIONS = {
     "views: more line shown without JavaScript": (VIEWS, """f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>'""", """f'<p class="more">{e(words.MORE_THAN_3_DAYS)}</p>'"""),
     "views: the 70-hour pair up to 70": (VIEWS, "(lower, MORE_AFTER if i == 0 else h)", "(lower, h)"),
     "views: record line left out of the flight page's block": (VIEWS, """f"<p>{e(words.PAST_ONLY)}</p>", "</div>",""", """"</div>","""),
+    "views: cancellations page holds a flight with any number listed as cancelled": (VIEWS, "    cancelled = flights.recent_cancellations(flights_, n=len(flights_))", "    cancelled = flights._newest_first([fl for fl in flights_ if any(r.label == words.CANCELLED for r in fl.rows)], lambda fl: fl.rows[0])"),
+    "views: summary line from a fixed first record": (VIEWS, "_summary(rows, summary.first_record)", "_summary(rows, date(2026, 10, 27))"),
+    "views: the block's top bound renamed away from fromhere.js": (VIEWS_NAMES, 'data-more-after="{e(MORE_AFTER)}"', 'data-more="{e(MORE_AFTER)}"'),
     "style: pale cancel text": (STYLE, "--cancel-fg: #b3261e;", "--cancel-fg: #e8827a;"),
     "style: dim muted text in the dark": (STYLE, "--muted: #9aa3b2;", "--muted: #5c5c61;"),
     "style: dim band text": (STYLE, "--band-muted: #c5d1ea;", "--band-muted: #5f6f93;"),

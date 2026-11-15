@@ -315,7 +315,10 @@ def test_pair():
         "This flight has between 12 and 24 hours to go. So far, of all flights at the airport still listed normally "
         "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
     assert words.pair(3, A35_ROWS[3][0]).startswith("This flight has under 3 hours to go. ")
-    assert words.pair(70, A35_ROWS[70][0]).startswith("This flight has between 2 and 3 days to go. ")
+    # Each pair names its own checkpoint (docs/flight-lookup.md, C5 and "Words"; A35's 70-hour line).
+    assert words.pair(70, A35_ROWS[70][0]) == (
+        "This flight has between 2 and 3 days to go. So far, of all flights at the airport still listed normally "
+        "with 70 hours to go, about 1 in 65 (between 1 in 30 and 1 in 130) were later listed as cancelled.")
     assert words.pair(24, rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
 
 
