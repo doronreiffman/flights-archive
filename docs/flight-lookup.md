@@ -4,7 +4,7 @@ Grade: production-lean, the site's grade (`docs/site-redesign.md`): deterministi
 
 Cost: nothing new on AWS, so $0 a month added. Version 1 is built by the existing local build and published by the existing hand upload, which costs about half a cent an upload (`docs/publishing.md`, "Cost (monthly)": $0.0055 per 1,000 PUT requests, AWS Price List API, il-central-1, read 2026-10-29; not re-read for this design). Nothing here needs a schedule, a function or a bucket.
 
-Status: design v3, 2026-11-12. Written by a Fable agent after a blind-spot pass on the same data, then revised after two reviews ("Review" at the end). The owner skipped the design questions, so every call that is the owner's is listed first, each with a recommendation. Calls the design made on its own are marked "(designer's call)". Approved by me, 2026-11-12, with D1 to D9 as recommended. No code and no plan yet.
+Status: design v3, 2026-11-12. Written by a Fable agent after a blind-spot pass on the same data, then revised after two reviews ("Review" at the end). The owner skipped the design questions, so every call that is the owner's is listed first, each with a recommendation. Calls the design made on its own are marked "(designer's call)". Approved by me, 2026-11-12, with D1 to D9 as recommended. Built to [flight-lookup-plan.md](flight-lookup-plan.md): the build is done, its final checks and review are pending.
 
 Figures: every figure comes from a query run for this document on the model built 2026-11-12 from lists up to 2026-11-12 10:16:45Z. The queries and their results are in [flight-lookup-figures.md](flight-lookup-figures.md), cited as (A1), (A2) and so on.
 
@@ -345,7 +345,7 @@ What counts. The counting start is an Israel midnight written into the tagged co
 
 When a later run differs. Each run reads the archive as it stands then, so a run after the gate can give a result other than the stored one: through the limits under condition 3, or through housekeeping under condition 2. The first stored result stands and is the one published. A later run that differs is shown beside it, with its cause, and never replaces it (my call, 2026-11-15). The code keeps the stored result as it is, prints both and fails (`main` in `src/timeline/record.py`).
 
-What makes the freeze checkable. The tag is public, in the repository this site links to. The archive is private, so a reader cannot recompute the record either way; a daily file in a private bucket would be no more checkable than a tag. What a reader can check is that the rule existed before the flights it was scored on. CI runs on every push with no filter (`.github/workflows/ci.yml`), so pushing the tag should start a public run that the hosting service dates itself. That it starts such a run for a tag push is UNVERIFIED; the owner confirms when pushing.
+What makes the freeze checkable. The tag is public, in the repository this site links to. The archive is private, so a reader cannot recompute the record either way; a daily file in a private bucket would be no more checkable than a tag. What a reader can check is that the rule existed before the flights it was scored on. CI runs on every push with no filter (`.github/workflows/ci.yml`), so pushing the tag starts a public run that the hosting service dates itself. The tag `record-v1` was pushed on 2026-11-15 at 06:31:08 UTC, and GitHub started CI run 43685805035 for it (created 06:31:09 UTC, conclusion success).
 
 What it does not replace. Telling a traveller which half of a split their flight is in needs a fresh build, because it depends on what the list shows now. That is the scheduled rebuild (q23), needed when a sign has passed and not before.
 
@@ -410,7 +410,7 @@ Words and pages:
 - the same result under three time zones.
 
 The upload check (`src/timeline/check.py`) newly enforces, on the real site before every upload:
-- The whole words chance, chances, odds, probability, likely, unlikely, risk, forecast, forecasts, predict, predicts and prediction are refused on every page except `how-it-works.html`, case-insensitive. The airport's own strings are skipped as today.
+- The whole words chance, chances, odds, probability, probable, likely, unlikely, risk, risks, risky, forecast, forecasts, forecasting, predict, predicts, predicted and prediction are refused on every page except `how-it-works.html`, case-insensitive. The airport's own strings are skipped as today.
 - Every "1 in N" in a page's text is either followed at once by " (between 1 in A and 1 in B)" or sits inside such a range. Anything else is refused.
 - A percent sign in the text of an HTML page is refused.
 - A page whose text holds "1 in N" must hold the record line, `PAST_ONLY`.
@@ -467,7 +467,6 @@ Markup and CSS within the look rules of `docs/site-redesign.md`; how the table s
 ## Unverified
 
 - The size of the differences between the record and cut builds, apart from the table, and what cut builds would cost: measured once by the build ("The record", condition 3, "Measured and ruled").
-- That the hosting service starts a public run when a tag is pushed.
 - The upload price, the free invalidations and "every build rewrites every file" come from `docs/publishing.md`; the 1,040 files are the local build of 2026-11-04. None was re-read from AWS. The price of an invalidation beyond the free ones is not in the repository.
 - How much memory the full model build needs.
 - Whether a number listed as cancelled inside a flight that departed or landed is a second listing or a second aircraft, whether ASY 991 and UN WZ932 are mis-keyed listings, and whether the 23 pairs with different expected times are separate aircraft (C1). The list does not say.

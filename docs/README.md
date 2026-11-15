@@ -10,3 +10,6 @@ Written while building the project: each note says what was decided and why, the
 - [timeline.md](timeline.md): the site's first version (v1), the partial-day rule and the decision to publish.
 - [terms.md](terms.md): the data.gov.il terms, quoted, and what they ask of the project.
 - [publishing.md](publishing.md): hosting the site on S3 and CloudFront, the upload checks, and the cost.
+- [flight-lookup.md](flight-lookup.md): the design that put a traveller's own flight first: the counting rules, the "from here" table, the signs and the gate that keep forecasts off the site until the evidence is in.
+- [flight-lookup-figures.md](flight-lookup-figures.md): the queries and results behind that design's figures, cited in it as (A1), (A2) and so on.
+- [flight-lookup-plan.md](flight-lookup-plan.md): the plan that built it, task by task, with the deviations found along the way.
