@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import json
 from collections import Counter
+from collections.abc import Sequence
 from datetime import date, datetime
 
 from . import flights, words
@@ -326,7 +327,7 @@ def _gap(start: datetime, end: datetime) -> str:
     return f"There are no records from {a.day} {a:%B %H:%M} to {b.day} {b:%B %H:%M}."
 
 
-def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]], tag: str,
+def how_it_works_page(attribution: str, gaps: Sequence[tuple[datetime, datetime]], tag: str,
                       counting_start: datetime) -> str:
     """Appendix A of docs/site-redesign-plan.md, with Appendix A of docs/flight-lookup-plan.md placed after "Probably
     the same flight", verbatim; the only page that may say "I" and name how the data is collected. `gaps` are (start,
