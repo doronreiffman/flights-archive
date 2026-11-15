@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from model.report import ATTRIBUTION
-from timeline import check, views, words
+from timeline import check, record, views, words
 from timeline.words import PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
 
 SRC = Path(__file__).parent.parent / "src"
@@ -90,7 +90,8 @@ def real_pages(tmp_path, monkeypatch, built_by):
     for module in (words, check):
         monkeypatch.setattr(module, "BUILT_BY", built_by)
     return make(tmp_path, {"index.html": views.layout("Flights", "<p>ok</p>", ""),
-                           "how-it-works.html": views.how_it_works_page(ATTRIBUTION, [])})
+                           "how-it-works.html": views.how_it_works_page(ATTRIBUTION, [], record.TAG,
+                                                                        record.COUNTING_START)})
 
 
 def test_pages_from_the_real_layout_trip_only_the_placeholder(tmp_path, monkeypatch):

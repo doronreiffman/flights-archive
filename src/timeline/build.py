@@ -10,7 +10,7 @@ from pathlib import Path
 from model.report import ATTRIBUTION
 from model.rules import GAP_HOURS
 
-from . import display, flights, views, words
+from . import display, flights, record, views, words
 from .load import load
 
 STATIC = Path(__file__).parent / "static"
@@ -55,10 +55,11 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     chart_days = shown + [i for i in infos if i.state == "ahead"]
     censored = {f["flight_id"]: f["cancel_lead_censored"] for f in table}
 
-    files = {"index.html": views.front_page(display.summary(table, obs, snaps), flights.featured(flights_, censored),
+    summary = display.summary(table, obs, snaps)
+    files = {"index.html": views.front_page(summary, flights.featured(flights_, censored),
                                             flights.recent_cancellations(flights_), chart_days, infos,
                                             flights.search_entries(rows), last_check)}
-    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps)
+    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps, record.TAG, record.COUNTING_START)
     files["cancellations.html"] = views.cancellations_page(flights_)
     by_day: dict[date, list[flights.ListFlight]] = {}
     for fl in flights_:
@@ -68,10 +69,9 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     by_page: dict[str, list[flights.Row]] = {}
     for r in rows:
         by_page.setdefault(r.page, []).append(r)
-    partners = flights.partners(flights_, table)
-    since = words.il_time(first_check).date()  # the Israel date of the first record
+    partners, others = flights.partners(flights_, table), flights.others(flights_)
     for page, page_rows in sorted(by_page.items()):
-        files[page] = views.flight_page(page_rows, partners, since)
+        files[page] = views.flight_page(page_rows, partners, others, summary, last_check)
     for name in ("search.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
     return files

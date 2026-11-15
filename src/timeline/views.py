@@ -169,7 +169,42 @@ def _summary(rows: list[Row], since: date) -> str:
     return f"Since {since.day} {since:%B}: {', '.join(parts)}."
 
 
-def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool) -> str:
+# The from-here block (docs/flight-lookup.md, "Pages", Flight page). Each checkpoint's pair covers the hours to go after
+# the next lower checkpoint, up to its own, and the highest's up to MORE_AFTER; above it the block shows the "More than
+# 3 days" line (docs/flight-lookup-plan.md, "What this plan decided", Lead-in boundaries). fromhere.js reads them all
+# from the page and holds none of its own.
+MORE_AFTER = 72  # hours to go
+
+
+def _pairs(summary: Summary) -> list[tuple[int, int, str]]:
+    """The block's prepared pairs, (after, upto, sentence), in the table's order: one per checkpoint whose rate clears
+    the floor; a pair below it is left out (Question 4c). The bounds come from every checkpoint of the table, so a pair
+    left out leaves its neighbours' bounds as they are."""
+    hs = sorted((h for h, _ in summary.figures.rows), reverse=True)
+    bounds = {h: (lower, MORE_AFTER if i == 0 else h) for i, (h, lower) in enumerate(zip(hs, [*hs[1:], 0]))}
+    out = []
+    for h, rate in summary.figures.rows:
+        sentence = words.pair(h, rate)
+        if sentence is not None:
+            out.append((*bounds[h], sentence))
+    return out
+
+
+def _block(r: Row, pairs: list[tuple[int, int, str]], updated: datetime) -> list[str]:
+    """A row labelled UPCOMING: the block, holding every pair as a list, all shown without JavaScript, the "More than 3
+    days" line (hidden), the condition line and the record line; then the "has passed" line, hidden, right after the
+    block. The scheduled time is written as the UTC instant it is, and the block carries its own top bound."""
+    sched = f"{r.sched_utc_final:%Y-%m-%dT%H:%M:%SZ}"  # the model's naive UTC, as the instant it is
+    return [f'<div class="pairs" data-sched="{e(sched)}" data-more-after="{e(MORE_AFTER)}">', "<ul>",
+            *(f'<li data-after="{e(after)}" data-upto="{e(upto)}">{e(sentence)}</li>'
+              for after, upto, sentence in pairs),
+            "</ul>", f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>',
+            f"<p>{e(words.condition(updated))}</p>", f"<p>{e(words.PAST_ONLY)}</p>", "</div>",
+            f'<p class="passed" hidden>{e(words.has_passed(updated))}</p>']
+
+
+def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool, other: tuple[str, tuple[Row, ...]] | None,
+                pairs: list[tuple[int, int, str]], updated: datetime) -> str:
     when = " · ".join(t for t in (words.scheduled(r.direction, r.sched_final, r.day), r.last_expected) if t)
     head = [f'<span class="date">{_short_date(r.day)}</span>', f'<span class="sched">{e(when)}</span>']
     if many_places:
@@ -183,9 +218,14 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool) -> str:
         out.append(f'<p class="warn">{e(sentence)}</p>')
     if r.changed_back:
         out.append(f'<p class="note">{e(r.changed_back)}</p>')
+    if other:
+        verb, named = other
+        out.append(f'<p class="note">{e(words.another_number(verb))} {_names([_link(p, "../") for p in named])}.</p>')
     if partners:
         out.append(f'<p class="note">Probably the same flight as {_names([_link(p, "../") for p in partners])} '
                    "(same time, terminal and check-in desks).</p>")
+    if r.label == words.UPCOMING and pairs:
+        out += _block(r, pairs, updated)
     if r.lines:
         out.append("<details open>" if r.label == words.CANCELLED else "<details>")
         out += ["<summary>What changed</summary>", _changes(r), "</details>"]
@@ -193,26 +233,35 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool) -> str:
     return "\n".join(out)
 
 
-def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]], since: date) -> str:
-    """One flight number and direction: every row of it, newest first. `since` is the day records start.
-    The header names the place when the page has one (the Hebrew city when it has one city); otherwise each
-    row names its own."""
+def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
+                others: dict[str, tuple[str, tuple[Row, ...]]], summary: Summary, updated: datetime) -> str:
+    """One flight number and direction: every row of it, newest first. `partners` and `others` are flights.partners
+    and flights.others of the lists; `summary` is the front page's figures (display.summary): its first record starts
+    the summary line, and its table gives the from-here block's pairs; `updated` is the last sighting (the model's
+    naive UTC), which the block's condition line and the "has passed" line state. The header names the place when the
+    page has one (the Hebrew city when it has one city); otherwise each row names its own. A page with a block loads
+    fromhere.js; no other page does."""
     newest = _newest_first(rows)
     top = newest[0]
     title = flights.page_title(rows)
     many_places = len({(r.city, r.airport) for r in rows}) > 1
+    pairs = _pairs(summary)
     who = [f"{d(top.airline_name)} (as the airport lists it)"]
     if not many_places:
         who.append(f"{'lands at' if top.direction == 'D' else 'leaves from'} {_place(top)}")
     if len({r.city for r in rows}) == 1 and top.city_he:
         who.append(f'<span lang="he" dir="rtl">{d(top.city_he)}</span>')
     body = [f"<h1>{d(title)}</h1>", f'<p class="who">{" · ".join(who)}</p>',
-            f'<p class="summary">{e(_summary(rows, since))}</p>']
+            f'<p class="summary">{e(_summary(rows, summary.first_record))}</p>']
     if any(r.last_expected for r in rows):
         body.append(f'<p class="note">{e(words.DELAY_SENTENCE)}</p>')
-    body += ['<div class="history">', *(_flight_row(r, partners.get(r.flight_id, ()), many_places) for r in newest),
+    body += ['<div class="history">',
+             *(_flight_row(r, partners.get(r.flight_id, ()), many_places, others.get(r.flight_id), pairs, updated)
+               for r in newest),
              "</div>"]
-    return layout(title, "\n".join(body), "../")
+    blocks = bool(pairs) and any(r.label == words.UPCOMING for r in rows)
+    script = '<script src="../fromhere.js" defer></script>' if blocks else ""
+    return layout(title, "\n".join(body), "../", script)
 
 
 # --- day page --------------------------------------------------------------------------------------
@@ -272,10 +321,15 @@ def _gap(start: datetime, end: datetime) -> str:
     return f"There are no records from {a.day} {a:%B %H:%M} to {b.day} {b:%B %H:%M}."
 
 
-def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -> str:
-    """The plan's Appendix A, verbatim; the only page that may say "I" and name how the data is collected.
-    `gaps` are (start, end) in the model's naive UTC."""
+def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]], tag: str,
+                      counting_start: datetime) -> str:
+    """Appendix A of docs/site-redesign-plan.md, with Appendix A of docs/flight-lookup-plan.md placed after "Probably
+    the same flight", verbatim; the only page that may say "I" and name how the data is collected. `gaps` are (start,
+    end) in the model's naive UTC. `tag` is the frozen code's tag (record.TAG), linked to its code; `counting_start`
+    (record.COUNTING_START, the model's naive UTC) is written as its Israel date, as the lede writes a date."""
     gap_sentences = "".join(f" {_gap(a, b)}" for a, b in gaps)
+    start = words.il_time(counting_start)
+    tagged = f'<a href="{e(f"{words.CODE_URL}/tree/{tag}")}">{e(tag)}</a>'
     body = f"""<h1>How this works</h1>
 <h2>Where the data comes from</h2>
 <p>The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.</p>
@@ -297,6 +351,24 @@ def how_it_works_page(attribution: str, gaps: list[tuple[datetime, datetime]]) -
 <p>The airport also uses the words "final" and "not final". It doesn't publish what they mean, so this site quotes them as they are.</p>
 <h2>Probably the same flight</h2>
 <p>Airlines often sell seats on one flight under several flight numbers. When numbers share the same time, terminal and check-in desks, this site lists them as probably the same flight. The list doesn't say so itself, and arrivals with no check-in desks can occasionally be grouped by mistake.</p>
+<h2>A flight</h2>
+<p>{e(words.A_FLIGHT)}</p>
+<h2>What is counted</h2>
+<p>A flight is counted two days after its scheduled time, so that all the flights of one hour are counted together, whatever happened to them. A flight that left the list with no final status, or while nothing was recorded, has no known outcome. It is left out of every figure, and how many there are is given beside the figures.</p>
+<h2>Why every figure is a range</h2>
+<p>Cancellations come in runs: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each figure comes with a range wide enough to allow for both. A figure is shown only when it rests on at least 10 cancelled flights, from at least 5 airlines and 5 days; below that, the page gives the counts and says there are too few so far to say.</p>
+<h2>Why three days</h2>
+<p>The airport's list shows a flight from about three days before its scheduled time, so the table starts at 70 hours to go. A flight that is already listed as cancelled when it first appears is almost never seen, so every figure is about flights that reached the list normally.</p>
+<h2>Why the later rows hold more flights</h2>
+<p>Flights whose first days on the list fell before the records began, or in the gap from 27 to 29 October, were seen only in their last hours. They are in the later rows of the table and not in the earlier ones.</p>
+<h2>Signs under test</h2>
+<p>No figure is given for one flight yet. I am testing four signs that might go with a later cancellation: a flight of the same airline from the same airport, scheduled to land 30 minutes to 12 hours before a departure, listed as cancelled; the same flight number's previous flight listed as cancelled; another flight of the same airline, scheduled within a day either side, listed as cancelled; and a flight number first listed less than two days before its scheduled time. The rules were fixed beforehand, in the code tagged {tagged}. The counted flights are those first listed from {start.day} {start:%B %Y}, the counting start; the 24-hour row is the table's row for 24 hours to go, and its checkpoint is that moment.</p>
+<p>A sign may change what this site shows only when both of these hold:</p>
+<ol>
+<li>The count. Take the counted flights of the 24-hour row in the order of the scheduled time they showed at the checkpoint. The gate is reached at the first such time that is at least 60 days after the counting start and by which 200 of those flights were later listed as cancelled. The days and the count are taken over every counted flight in the row.</li>
+<li>The sign has passed its test, read on the counted flights scheduled up to that time.</li>
+</ol>
+<p>The lift is the rate with the sign over the rate without it. Its range is 2.5 standard errors of its logarithm either side, grouped as the ranges above are. 2.5, not 2, because four signs are tested at once. A sign passes when it clears the floor (10 cancelled flights with the sign, from 5 airlines and 5 days) and the whole range lies above 1. A sign that fails stays failed for this version.</p>
 <h2>Gaps in the records</h2>
 <p>Records start on the evening of 27 October 2026.{gap_sentences} A flight that left the list during a gap is marked UNKNOWN.</p>
 <h2>How it's built</h2>

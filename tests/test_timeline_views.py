@@ -8,12 +8,12 @@ from datetime import date, datetime
 import pytest
 
 from model.report import ATTRIBUTION
-from test_timeline_flights import CLEAN, LAST_FETCH, ey_ly, first, flight, lh, local, then, utc
+from test_timeline_flights import CLEAN, LAST_FETCH, ey_ly, first, flight, lh, local, os_pair, then, utc
 from test_timeline_words import A35_ROWS, TO3459_OBS, TOTAL, rate
+from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
 from timeline import check, counting, display, flights, views, words
 from timeline.flights import DayInfo
 
-SINCE = date(2026, 10, 27)
 TO = dict(airline="TO", flight_no="3459", airline_name="TRANSAVIA FRANCE", airport="ORY", city_en="PARIS",
           city_he="פריז")
 TO_CANCELLED = dict(outcome="canceled", cancel_lead_min=-142.75, cancel_lead_max_min=-126.75,
@@ -41,8 +41,17 @@ def partners(*fs, obs=None):
     return flights.partners(lists(*fs, obs=obs), list(fs))
 
 
-def page_of(*fs, obs=None):
-    return views.flight_page(rows(*fs, obs=obs), partners(*fs, obs=obs), SINCE)
+def others(*fs, obs=None):
+    return flights.others(lists(*fs, obs=obs))
+
+
+def page_of(*fs, obs=None, only=None, summary=None, updated=LAST_FETCH):
+    """The flight page of these numbers' rows, or of the row with flight_id `only` among them; their flights (C1) are
+    made of all of them. `summary` is the front page's figures (SUMMARY, the design's, by default) and `updated` the
+    last sighting."""
+    shown = [r for r in rows(*fs, obs=obs) if only in (None, r.flight_id)]
+    return views.flight_page(shown, partners(*fs, obs=obs), others(*fs, obs=obs),
+                             SUMMARY if summary is None else summary, updated)
 
 
 def row_block(page: str, anchor: str) -> str:
@@ -240,7 +249,7 @@ def test_one_city_through_two_airports_names_each_rows_airport():
 def codeshare_page(*numbers):
     """LY 001's page on a day it shares with these (airline, number) partners."""
     fs = [flight("ly", group="g")] + [flight(a + n, airline=a, flight_no=n, group="g") for a, n in numbers]
-    return views.flight_page(rows(*fs)[:1], partners(*fs), SINCE)
+    return page_of(*fs, only="ly")
 
 
 def test_codeshare_line_links_each_partner_to_its_row():
@@ -291,6 +300,180 @@ def test_airport_data_is_escaped():
     assert '<span class="d">&lt;B&gt;&amp;CO</span>' in page
     assert '<span class="d">&lt;script&gt;</span>' in page  # string.capwords leaves "<script>" as it is
     assert '<span lang="he" dir="rtl"><span class="d">&lt;i&gt;</span></span>' in page
+
+
+# --- the flight page's from-here block (docs/flight-lookup.md, "Pages", Flight page) ---------------
+
+def upcoming(fid="up", sched=datetime(2026, 11, 13, 10, 0), **kw):
+    """LY 001, still listed normally, due to leave at 10:00 on 13 November in Israel: 08:00 UTC."""
+    return flight(fid, sched, outcome="open", **kw)
+
+
+UPCOMING_ROW = "2026-11-13-1000-JFK"
+BLOCK_TAG = '<div class="pairs" data-sched="2026-11-13T08:00:00Z" data-more-after="72">'
+SCRIPT = '<script src="../fromhere.js" defer></script>'
+# Each checkpoint's pair covers the hours to go after the next lower checkpoint, up to its own; the 70-hour pair up
+# to 72 (docs/flight-lookup-plan.md, "What this plan decided", Lead-in boundaries).
+BOUNDS = [(70, ' data-after="48" data-upto="72"'), (48, ' data-after="24" data-upto="48"'),
+          (24, ' data-after="12" data-upto="24"'), (12, ' data-after="6" data-upto="12"'),
+          (6, ' data-after="3" data-upto="6"'), (3, ' data-after="0" data-upto="3"')]
+PAIR_24 = ("This flight has between 12 and 24 hours to go. So far, of all flights at the airport still listed normally "
+           "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
+CONDITION = ("The figure is for flights the airport's list showed normally. This page was last updated 30 Oct 2026, "
+             "00:02 and cannot say what the list shows now. Check the airport's own list.")
+PASSED = ("This flight's scheduled time has passed. The row below shows the list as it was on 30 Oct 2026, 00:02.")
+
+
+def pairs_block(page: str) -> str:
+    """A flight page's from-here block, from its opening tag to its closing one (it holds no other div)."""
+    start = page.index('<div class="pairs"')
+    return page[start:page.index("</div>", start) + len("</div>")]
+
+
+def pair_items(page: str) -> list[tuple[str, str]]:
+    """The block's pairs as (the list item's attributes, its text), in page order."""
+    return [(attrs, text(inner)) for attrs, inner in re.findall(r"<li([^>]*)>(.*?)</li>", pairs_block(page))]
+
+
+def expected_pairs(*left_out: int) -> list[tuple[str, str]]:
+    """The design's pairs (A35_ROWS), each with its bounds, but those of the checkpoints `left_out`."""
+    return [(attrs, words.pair(h, A35_ROWS[h][0])) for h, attrs in BOUNDS if h not in left_out]
+
+
+def below_at(*hs: int) -> display.Summary:
+    """The design's figures, with the rates of the checkpoints `hs` below the floor."""
+    return figures(by_point={h: r for h, (r, _) in A35_ROWS.items()} | {h: FEW for h in hs})
+
+
+def test_the_block_on_upcoming_rows_only():
+    """Only a row labelled UPCOMING, still listed normally, carries the block and the "has passed" line: rows labelled
+    DEPARTED, LANDED, CANCELLED, NO FINAL UPDATE or UNKNOWN get none. The block sits above the row's change list."""
+    fs = summary_rows(["departed", "landed", "cancelled", "upcoming", "no final update", "unknown"])
+    page = page_of(*fs)
+    assert sorted(r.label for r in rows(*fs)) == sorted(words.LABEL_ORDER)
+    for r in rows(*fs):
+        row = row_block(page, r.anchor)
+        assert ('<div class="pairs"' in row) == ('class="passed"' in row) == (r.label == words.UPCOMING), r.label
+    assert page.count('<div class="pairs"') == 1
+    row = row_block(page, "2026-11-04-0900-JFK")
+    assert row.index('<p class="head">') < row.index('<div class="pairs"') < row.index("<details>")
+
+
+def test_the_scheduled_instant_is_the_models_utc(israeli_machine):
+    """data-sched is the row's sched_utc_final, written as the UTC instant it is: 10:00 on 13 November in Israel is
+    08:00 UTC, on any machine."""
+    assert BLOCK_TAG in page_of(upcoming())
+
+
+def test_without_javascript_all_pairs_show():
+    """docs/flight-lookup.md, "Pages", Flight page: without JavaScript the block shows the table's six rows as a list,
+    each the design's pair with its bounds; the "More than 3 days" line and the "has passed" line are hidden until
+    fromhere.js shows one."""
+    page = page_of(upcoming())
+    assert pair_items(page) == expected_pairs()
+    assert PAIR_24 in [t for _, t in pair_items(page)]
+    assert not [attrs for attrs, _ in pair_items(page) if "hidden" in attrs]
+    assert f'<p class="more" hidden>{html.escape(words.MORE_THAN_3_DAYS)}</p>' in pairs_block(page)
+    assert f'<p class="passed" hidden>{html.escape(PASSED)}</p>' in page
+
+
+def test_the_block_holds_the_pairs_then_the_condition_and_the_record_line(israeli_machine):
+    """In order: the pairs, the "More than 3 days" line (its first sentence only, Question 4e), the condition line with
+    the last update in Israel time, and the record line."""
+    block = pairs_block(page_of(upcoming()))
+    parts = [text(inner) for _, inner in re.findall(r"<(ul|p)[^>]*>(.*?)</\1>", block, re.S)]
+    assert parts[1:] == [words.MORE_THAN_3_DAYS, CONDITION, words.PAST_ONLY]
+    assert parts[0] == " ".join(t for _, t in expected_pairs())
+
+
+def test_a_pair_below_the_floor_is_left_out():
+    """Question 4c, Review Focus 3: the 24-hour rate below the floor leaves its pair out. The other five keep their
+    bounds (the 48-hour pair still covers 24 to 48 hours), and every rate on the page keeps its range."""
+    page = page_of(upcoming(), summary=below_at(24))
+    assert pair_items(page) == expected_pairs(24) and len(pair_items(page)) == 5
+    assert check.rate_hits(page) == []
+
+
+def test_the_block_carries_its_top_bound_whatever_pairs_are_present():
+    """With the 70-hour pair below the floor the highest pair ends at 48 hours: the block still says the "More than 3
+    days" line starts after 72, so that a flight 48 to 72 hours out shows no pair rather than that line."""
+    page = page_of(upcoming(), summary=below_at(70))
+    assert BLOCK_TAG in page
+    assert pair_items(page) == expected_pairs(70)
+
+
+def test_no_block_when_no_pair_clears_the_floor():
+    """Review Focus 3: a fresh archive clears the floor nowhere, so an upcoming row gets no block at all: no pair, no
+    condition or record line, no "has passed" line, no rate, and no fromhere.js."""
+    page = page_of(upcoming(), summary=BELOW)
+    assert 'class="pairs"' not in page and 'class="passed"' not in page and "fromhere.js" not in page
+    assert words.PAST_ONLY not in text(page) and "cannot say what the list shows now" not in text(page)
+    assert not re.search(r"1 in \d", text(page))
+    assert "Since 27 October: one upcoming." in text(page)
+
+
+def test_the_passed_line_sits_outside_the_block():
+    """The "has passed" line comes right after the block, hidden, so that fromhere.js can hide the whole block and show
+    the line (docs/flight-lookup.md, "Pages", Flight page); both sit above the row's change list."""
+    page = page_of(upcoming())
+    block = pairs_block(page)
+    passed = f'<p class="passed" hidden>{html.escape(PASSED)}</p>'
+    assert 'class="passed"' not in block and "has passed" not in block
+    assert page[page.index(block) + len(block):].startswith(f"\n{passed}\n")
+    row = row_block(page, UPCOMING_ROW)
+    assert row.index(block) < row.index(passed) < row.index("<details>")
+
+
+def test_another_number_line():
+    """A number listed as cancelled whose flight is not (C2, C10) names the flight's numbers that departed, landed or
+    are still listed, each linked to its row and joined as the partner sentence joins them (Question 4a). A number
+    that shares the time, terminal and desks keeps its partner sentence too (docs/flight-lookup-plan.md, "What this
+    plan decided"). The flight's other numbers, and a cancelled flight's, get no such line."""
+    fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695")]
+    page = page_of(*fs, only="lh0691a")
+    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport departed: LH 695."
+            in text(page))
+    assert ('airport departed: <a href="../flight/LH695-D.html#2026-10-29-0900-FRA"><span class="d">LH 695</span></a>.'
+            "</p>") in page
+    assert "Probably the same flight as LH 695 (same time, terminal and check-in desks)." in text(page)
+    two = page_of(*fs, lh("lh697", local(29, 9, 0), "697"), only="lh0691a")
+    assert "airport departed: LH 695 and LH 697." in text(two)
+    landed = page_of(*os_pair(), only="os1083")
+    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport landed: OS 083."
+            in text(landed))
+    listed = page_of(lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"),
+                     lh("lh695-31", local(31, 9, 0), "695", "open"), only="lh0691a-31")
+    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport is still listed: "
+            "LH 695.") in text(listed)
+    assert "Another flight number" not in text(page_of(*fs, only="lh695"))
+    assert "Another flight number" not in text(page_of(*ey_ly(), only="ey"))
+
+
+def test_the_partner_sentence_names_only_time_terminal_and_desks_partners():
+    """docs/flight-lookup.md, "Words": the partner sentence names the numbers that share the time, terminal and
+    check-in desks, whatever their own label (AF 8350 left the list during a hole). OS 1083, joined to OS 083's flight
+    by airline alone (C1) at another expected time, is neither's partner: it gets the "Another flight number" line."""
+    desks = dict(counters_final="78-99", group="g")
+    fs = [*os_pair(), flight("ly003", local(29, 9, 0), flight_no="003", **desks),
+          flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", **desks),
+          flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks),
+          flight("af", local(29, 9, 0), airline="AF", flight_no="8350", outcome="gap", **desks)]
+    assert ("Probably the same flight as DL 7426, AM 7895 and AF 8350 (same time, terminal and check-in desks)."
+            in text(page_of(*fs, only="ly003")))
+    for fid in ("os083", "os1083"):
+        assert "Probably the same flight" not in text(page_of(*fs, only=fid)), fid
+    assert "airport landed: OS 083." in text(page_of(*fs, only="os1083"))
+
+
+def test_fromhere_js_only_on_pages_with_a_block():
+    """The script loads in the head of a page with a block, once, and on no other page: one without an upcoming row,
+    or one whose upcoming row has no block because no pair clears the floor."""
+    page = page_of(upcoming())
+    assert page.count(SCRIPT) == 1 and page.index(SCRIPT) < page.index("</head>")
+    assert "<script" not in page.replace(SCRIPT, "")
+    for other in (page_of(*summary_rows(["departed", "cancelled", "no final update", "unknown"])),
+                  page_of(upcoming(), summary=BELOW)):
+        assert "<script" not in other
 
 
 # --- day page --------------------------------------------------------------------------------------
@@ -468,7 +651,7 @@ def test_cancellations_show_c9s_warning():
 GAP = (utc(27, 18, 24, 46), utc(29, 12, 29, 3))
 LATER_GAP = (utc(31, 8, 2, 45), utc(31, 11, 32, 45))
 
-APPENDIX_A = [  # docs/site-redesign-plan.md, "Appendix A", verbatim
+APPENDIX_A = [  # docs/site-redesign-plan.md, "Appendix A", with docs/flight-lookup-plan.md's placed in it, verbatim
     '## Where the data comes from',
     "The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.",
     '{ATTRIBUTION}',
@@ -487,6 +670,23 @@ APPENDIX_A = [  # docs/site-redesign-plan.md, "Appendix A", verbatim
     'The airport also uses the words "final" and "not final". It doesn\'t publish what they mean, so this site quotes them as they are.',
     '## Probably the same flight',
     "Airlines often sell seats on one flight under several flight numbers. When numbers share the same time, terminal and check-in desks, this site lists them as probably the same flight. The list doesn't say so itself, and arrivals with no check-in desks can occasionally be grouped by mistake.",
+    # docs/flight-lookup-plan.md, "Appendix A", placed after "Probably the same flight"
+    '## A flight',
+    'Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the same expected time, terminal and check-in desks for them. A number that did not depart or land is counted with a number of its own airline, or one with its own desks. A flight counts as departed or landed when any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.',
+    '## What is counted',
+    'A flight is counted two days after its scheduled time, so that all the flights of one hour are counted together, whatever happened to them. A flight that left the list with no final status, or while nothing was recorded, has no known outcome. It is left out of every figure, and how many there are is given beside the figures.',
+    '## Why every figure is a range',
+    'Cancellations come in runs: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each figure comes with a range wide enough to allow for both. A figure is shown only when it rests on at least 10 cancelled flights, from at least 5 airlines and 5 days; below that, the page gives the counts and says there are too few so far to say.',
+    '## Why three days',
+    "The airport's list shows a flight from about three days before its scheduled time, so the table starts at 70 hours to go. A flight that is already listed as cancelled when it first appears is almost never seen, so every figure is about flights that reached the list normally.",
+    '## Why the later rows hold more flights',
+    'Flights whose first days on the list fell before the records began, or in the gap from 27 to 29 October, were seen only in their last hours. They are in the later rows of the table and not in the earlier ones.',
+    '## Signs under test',
+    "No figure is given for one flight yet. I am testing four signs that might go with a later cancellation: a flight of the same airline from the same airport, scheduled to land 30 minutes to 12 hours before a departure, listed as cancelled; the same flight number's previous flight listed as cancelled; another flight of the same airline, scheduled within a day either side, listed as cancelled; and a flight number first listed less than two days before its scheduled time. The rules were fixed beforehand, in the code tagged [{TAG}]({CODE_URL}/tree/{TAG}). The counted flights are those first listed from {START}, the counting start; the 24-hour row is the table's row for 24 hours to go, and its checkpoint is that moment.",
+    'A sign may change what this site shows only when both of these hold:',
+    '1. The count. Take the counted flights of the 24-hour row in the order of the scheduled time they showed at the checkpoint. The gate is reached at the first such time that is at least 60 days after the counting start and by which 200 of those flights were later listed as cancelled. The days and the count are taken over every counted flight in the row.',
+    '2. The sign has passed its test, read on the counted flights scheduled up to that time.',
+    'The lift is the rate with the sign over the rate without it. Its range is 2.5 standard errors of its logarithm either side, grouped as the ranges above are. 2.5, not 2, because four signs are tested at once. A sign passes when it clears the floor (10 cancelled flights with the sign, from 5 airlines and 5 days) and the whole range lies above 1. A sign that fails stays failed for this version.',
     '## Gaps in the records',
     'Records start on the evening of 27 October 2026. {one sentence per gap: "There are no records from 27 October 20:24 to 29 October 14:29."} A flight that left the list during a gap is marked UNKNOWN.',
     "## How it's built",
@@ -494,35 +694,52 @@ APPENDIX_A = [  # docs/site-redesign-plan.md, "Appendix A", verbatim
 ]
 
 
+TAG = "record-v1"
+COUNTING_START = datetime(2026, 11, 15, 22)  # naive UTC: 00:00 on 16 November in Israel
+
+
+def how(gaps=(GAP,)) -> str:
+    return views.how_it_works_page(ATTRIBUTION, list(gaps), TAG, COUNTING_START)
+
+
 def appendix_text(gap_sentences: str) -> str:
-    """Appendix A as a reader sees it on the page: markdown marks gone, placeholders filled."""
-    lines = [re.sub(r"^(## |- )", "", line) for line in APPENDIX_A]
+    """Appendix A as a reader sees it on the page: markdown marks gone (a link reads as its text), placeholders
+    filled: the tag, and the counting start as its Israel date, written as the lede writes a date."""
+    lines = [re.sub(r"^(## |- |\d\. )", "", line) for line in APPENDIX_A]
     joined = " ".join(lines).replace("{ATTRIBUTION}", ATTRIBUTION)
+    joined = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", joined)  # a link reads as its text
+    joined = joined.replace("{TAG}", TAG).replace("{START}", "16 November 2026")
     return re.sub(r"\{one sentence per gap: [^}]*\}", gap_sentences, joined)
 
 
-def test_how_it_works_is_appendix_a_verbatim():
-    page = views.how_it_works_page(ATTRIBUTION, [GAP])
+def test_how_it_works_is_appendix_a_verbatim(israeli_machine):
+    """Both appendices, in order, each heading a section heading; the tag links to its code, and the gate's two
+    conditions are a numbered list."""
+    page = how()
     assert "<title>How this works</title>" in page and "<h1>How this works</h1>" in page
     assert appendix_text("There are no records from 27 October 20:24 to 29 October 14:29.") in text(page)
+    assert [html.unescape(h) for h in re.findall(r"<h2>(.*?)</h2>", page)] == [
+        line[3:] for line in APPENDIX_A if line.startswith("## ")]
+    assert f'in the code tagged <a href="{words.CODE_URL}/tree/record-v1">record-v1</a>.' in page
+    assert "<ol>\n<li>The count. Take" in page and "up to that time.</li>\n</ol>" in page
     assert f'<a href="{words.CODE_URL}">' in page
     assert '<link rel="stylesheet" href="style.css">' in page
 
 
 def test_how_it_works_one_sentence_per_gap_in_israel_time_with_dates():
-    page = text(views.how_it_works_page(ATTRIBUTION, [GAP, LATER_GAP]))
+    page = text(how([GAP, LATER_GAP]))
     assert ("Records start on the evening of 27 October 2026. There are no records from 27 October 20:24 to "
             "29 October 14:29. There are no records from 31 October 10:02 to 31 October 13:32. A flight that left "
             "the list during a gap is marked UNKNOWN.") in page
 
 
 def test_how_it_works_without_gaps():
-    page = text(views.how_it_works_page(ATTRIBUTION, []))
+    page = text(how([]))
     assert "Records start on the evening of 27 October 2026. A flight that left the list" in page
 
 
 def test_how_it_works_carries_the_full_attribution_and_the_footer():
-    page = views.how_it_works_page(ATTRIBUTION, [GAP])
+    page = how()
     assert ATTRIBUTION in text(page)
     assert all(t in text(page) for t in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE))
 
@@ -976,7 +1193,7 @@ def every_page() -> dict[str, str]:
             DayInfo(date(2026, 10, 30), 1, 1, 0, "today", False),
             lists(flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", **AT_LEAST_23))),
         "cancellations": cancellations_page(),
-        "how it works": views.how_it_works_page(ATTRIBUTION, [GAP, LATER_GAP]),
+        "how it works": how([GAP, LATER_GAP]),
         "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), lists(to[1], obs=to_obs)),
         "front page": front(),
         "front page, ten cancellations": front(recent=twelve_cancelled()),
@@ -987,6 +1204,15 @@ def every_page() -> dict[str, str]:
         "front page, below the floor everywhere": front(BELOW),
         "front page, a row below the floor": front(figures(by_point={h: r for h, (r, _) in A35_ROWS.items()}
                                                            | {3: rate(8, 3754, 469.25, 200.0, 1000.0, floor=False)})),
+        "a flight page with the block": page_of(upcoming()),
+        "a flight page, a pair below the floor": page_of(upcoming(), summary=below_at(24)),
+        "a flight page, below the floor everywhere": page_of(upcoming(), summary=BELOW),
+        "another flight number departed": page_of(lh("lh0691a", local(29, 9, 0), "0691A", "canceled"),
+                                                  lh("lh695", local(29, 9, 0), "695"), only="lh0691a"),
+        "another flight number landed": page_of(*os_pair(), only="os1083"),
+        "another flight number still listed": page_of(lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"),
+                                                      lh("lh695-31", local(31, 9, 0), "695", "open"),
+                                                      only="lh0691a-31"),
         "day, numbers listed as cancelled in a flight that departed": bracket_day(),
         "cancellations, a warning by C9": views.cancellations_page(lists(*ey_ly())),
     }
