@@ -35,8 +35,8 @@ from .counting import Cell, Flight, Stretch
 from .load import load
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
-TAG = "record-v1"  # the record's version: its folder, and the tag of the frozen code (the owner confirms it at Task 8)
-COUNTING_START: datetime | None = None  # set at Task 8's stop: an Israel midnight, as naive UTC
+TAG = "record-v1"  # the record's version: its folder, and the tag of the frozen code (the owner's, at Task 8)
+COUNTING_START: datetime | None = datetime(2026, 11, 15, 22)  # owner's, Task 8: 16 Nov 2026 00:00 Israel, naive UTC
 GATE_CANCELLED, GATE_DAYS, SIGN_ROW = 200, 60, 24  # "The gate": 200 cancelled in the 24-hour row, over 60 days or more
 
 SIGNS = ("S1", "S2", "S3", "S4")

@@ -22,7 +22,7 @@ from model import build as model_build
 from model_helpers import write_receipt, write_snapshot
 from test_figures_check import Number, nov
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import counting, record
+from timeline import counting, record, words
 from timeline.load import load
 
 FIRST = T(1, 0)  # the first download
@@ -570,6 +570,11 @@ def started(monkeypatch):
 
 def files(folder: Path) -> dict[str, bytes]:
     return {p.relative_to(folder).as_posix(): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
+
+
+def test_the_counting_start_is_an_israel_midnight(israeli_machine):
+    local = words.il_time(record.COUNTING_START)
+    assert (local.hour, local.minute, local.second, local.microsecond) == (0, 0, 0, 0)
 
 
 def test_main_needs_the_counting_start(record_model, tmp_path, monkeypatch, capsys):

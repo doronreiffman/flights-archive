@@ -374,6 +374,7 @@ COLLECTOR_MUTATIONS = {
     "record: S1 window from the departure's final time": (RECORD, "_between(of_airline, sched - INBOUND[1], sched - INBOUND[0])", '_between(of_airline, r["sched_utc_final"] - INBOUND[1], r["sched_utc_final"] - INBOUND[0])'),
     "record: whole ignores a tied number still listed": (RECORD, 'for y in by_slot.get((r["direction"], r["airport"], a.sched_utc), ()))', "for y in ())"),
     "record: a number that left read as cancelled afterwards": (RECORD, "y.from_at <= t < y.to_ever", "y.from_at <= t < y.to_at"),
+    "record: counting start an hour off": (RECORD, "datetime(2026, 11, 15, 22)", "datetime(2026, 11, 15, 23)"),
     "record: S2 the earliest before": (RECORD, "whole(max(before, key=lambda a: a.sched_utc)", "whole(min(before, key=lambda a: a.sched_utc)"),
     "record: S3 includes its own slot": (RECORD, '               and (by_id[b.flight_id]["direction"], by_id[b.flight_id]["airport"], b.sched_utc)\n               != (r["direction"], r["airport"], sched)\n', ""),
     "record: S4 late when first seen at the first list": (RECORD, "resumed = {first_fetch, *(end for _, end in holes_)}", "resumed = {*(end for _, end in holes_)}"),
