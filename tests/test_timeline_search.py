@@ -1,4 +1,4 @@
-"""The front page's search script, run under Node (docs/site-redesign.md: front-page item 4, "Search data").
+"""The front page's search script, run under Node (docs/flight-lookup.md: "Pages", Front page, item 2; docs/site-redesign.md, "Search data").
 The script needs no browser for its ranking; the page hook runs against a small stand-in for the page."""
 import json
 import shutil

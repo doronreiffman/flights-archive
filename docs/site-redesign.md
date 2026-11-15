@@ -47,7 +47,7 @@ These replace the "Wording" section of `docs/timeline.md`. They put the project 
 
 ### Who is a "flight"
 
-Replaced by rules C1 to C4 in `docs/flight-lookup.md`: what a flight is, its result, and which flights make a rate. The split described next is retired. Until then, a flight was a codeshare group (`codeshare_group_id`): the flight numbers the model groups for one scheduled day. A group's members are shown and counted together only when they share the same main label, the same DELAYED flag and the same warning text; otherwise each member is its own flight. Every count on the site counted flights this way.
+Replaced by rules C1 to C4 in `docs/flight-lookup.md`: what a flight is, its result, and which flights make a rate. The split described next is retired. Before `docs/flight-lookup.md`, a flight was a codeshare group (`codeshare_group_id`): the flight numbers the model groups for one scheduled day. A group's members are shown and counted together only when they share the same main label, the same DELAYED flag and the same warning text; otherwise each member is its own flight. Every count on the site counted flights this way.
 
 ### Labels
 
@@ -60,7 +60,7 @@ Each flight on each day gets one main label, colored, plus an optional second on
 | `departed` | DEPARTED | none |
 | `landed` | LANDED | none |
 | `canceled` | CANCELLED | the warning (below) |
-| `open`, `sched_utc_final` after the last sighting of the board (`confirmed_until` of the last snapshot) | UPCOMING | none |
+| `open`, `sched_utc_final` after the last sighting of the board (`confirmed_until` of the last snapshot) | UPCOMING | none; when some pair of the from-here table clears the floor, the row also carries the from-here block (`docs/flight-lookup.md`, "Pages", Flight page) |
 | `open`, `sched_utc_final` at or before that sighting | NO FINAL UPDATE | none (the label says it) |
 | `gap` | UNKNOWN | "No records for the time it left the airport's list." |
 | `vanished` | UNKNOWN | "Removed from the airport's list N hours before it was scheduled, with no final status. Not necessarily cancelled; it may have moved to another time." |
@@ -111,7 +111,7 @@ One line per change, oldest first, the time in a left column:
 
 ### Codeshares
 
-A flight's partners are the other numbers of the flight under C1 in `docs/flight-lookup.md` (`partners()` in `src/timeline/flights.py`); the sentence below stands.
+A number's partners are the other numbers of its flight under C1 in `docs/flight-lookup.md` that the list showed with the same expected time, terminal and check-in desks (`partners()` in `src/timeline/flights.py`). A number joined by its airline or desks alone is not one; when it is listed as cancelled in a flight that is not, it gets the "Another flight number" line (`docs/flight-lookup.md`, "Pages", Flight page). The sentence below stands.
 
 Per day, inside that day's row on the flight page: "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)." Each number links to its own page at that day's anchor. Partners change between days: of the 725 flight numbers scheduled on more than one day, 64 had two different non-empty partner lists (79 if a day with no partners counts as a list of its own), 2026-10-30. "Probably": the grouping is inferred, and arrivals with no desks can merge two flights.
 
@@ -130,8 +130,8 @@ Top to bottom:
 1. In the header band: the title "Cancelled flights at Tel Aviv airport", as the wordmark. Under it: "A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and which ones were cancelled."
 2. Search box: "Flight number or city, e.g. LY 001 or Paris". Order: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number. Up to 10 results as links to flight pages, then "N more: type more of the number or city" when more match. It needs JavaScript; without it the box is hidden, and the day list (item 7) reaches every flight.
 3. "From here to the scheduled time": the table of how often a flight still listed normally was later listed as cancelled, by time to go, with its record line, the lines under it and the count and late lines. Its words, counting and floor are in `docs/flight-lookup.md` ("Pages", Front page, item 3; C1 to C10), not here.
-4. The total, as stat tiles and a sentence: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N (between 1 in A and 1 in B)." or, below the floor, "Too few so far to say." Y counts closed flights (C4) with a known result (C2), by the counting method of `docs/flight-lookup.md` (item 4 of its front page; C8 gives the range, the floor and the rounding). It replaces the earlier headline, whose "1 in N" had no range.
-5. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (provisional): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. Today: TO 3459. Under `docs/flight-lookup.md` it is picked among flights labelled CANCELLED by C10 and told through the number of C9.
+4. The total, as stat tiles and a sentence: "So far, X of Y flights with a known outcome were listed as cancelled. That's about 1 in N (between 1 in A and 1 in B)." or, below the floor, the same first sentence followed by "Too few so far to say." Y counts closed flights (C4) with a known result (C2), by the counting method of `docs/flight-lookup.md` (item 4 of its front page; C8 gives the range, the floor and the rounding). It replaces the earlier headline, whose "1 in N" had no range.
+5. One flight's story: a grey box with one cancelled flight's full change list in the "What changed" words, including the earliest record and any gap line, and a link to its flight page. Which flight (provisional): the most recent cancelled flight with a non-censored warning (rules 3, 8 to 11); if none, the cancelled flight with the most change lines; ties by scheduled time, then flight number. On 2026-10-30: TO 3459. Under `docs/flight-lookup.md` it is picked among flights labelled CANCELLED by C10 and told through the number of C9.
 6. "Recent cancellations": the 10 most recent cancelled flights by scheduled time, upcoming ones included: date, flight, route with "scheduled to leave/land HH:MM", warning. Each links to its row's anchor on the flight page. "All cancellations" below. On a narrow screen each entry stacks (flight and date, then route, then warning); no fixed column widths.
 7. "Flights each day": an inline SVG chart of the last 14 days with flights plus the days ahead. Each day shows its flights in three parts (cancelled, no known outcome, the rest) with the numbers in text beside the bar ("370 flights · 8 cancelled · 190 unknown"), never in color alone. The day of the last record (Israel date) is "today", drawn like past days; later days are pale, "ahead". A day the existing `partial` rule flags is pale and labelled "incomplete". Each day links to its day page. Under the chart, a compact list of every day the site has, linked, so no flight is out of reach without JavaScript.
 8. "Last updated 30 Oct 2026, 00:02" (the last sighting of the board, stored or unchanged, Israel time). Since the 2026-11-04 restyle it sits in the header band, under item 1's line.
