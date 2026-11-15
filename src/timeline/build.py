@@ -10,7 +10,7 @@ from pathlib import Path
 from model.report import ATTRIBUTION
 from model.rules import GAP_HOURS
 
-from . import display, flights, record, views, words
+from . import counting, display, flights, record, views, words
 from .load import load
 
 STATIC = Path(__file__).parent / "static"
@@ -45,8 +45,8 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     if undated:
         raise ValueError(f"{len(undated)} flights have no final scheduled time ({undated[:10]}); "
                          "every flight must land on a day page")
-    first_check, last_check = snaps[0]["fetched_at"], snaps[-1]["confirmed_until"]  # the last sighting of the board
-    gaps = [(s["prev"], s["fetched_at"]) for s in snaps if (s["gap_before_s"] or 0) > GAP_HOURS * 3600]
+    first_check, last_check = snaps[0]["fetched_at"], counting.last_sighting(snaps)
+    gaps = counting.holes(snaps)  # the counting rule's own holes, so the pages and the figures read the same gaps
     rows = flights.make_rows(table, obs, last_check, GAP_HOURS)
     flights.check_unique(rows)
     flights_ = flights.group_flights(rows, table, last_check)
@@ -72,7 +72,7 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     partners, others = flights.partners(flights_, table), flights.others(flights_)
     for page, page_rows in sorted(by_page.items()):
         files[page] = views.flight_page(page_rows, partners, others, summary, last_check)
-    for name in ("search.js", "style.css"):
+    for name in ("search.js", "fromhere.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
     return files
 

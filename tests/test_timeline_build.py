@@ -17,8 +17,14 @@ from model.report import ATTRIBUTION
 from model_helpers import at, row, write_receipt, write_snapshot
 from test_timeline_flights import flight
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import build, flights, words
+from timeline import build, check, counting, flights, words
 from timeline.check import BANNED
+
+
+def upload_check(site) -> None:
+    """Every site the tests build passes the upload check (docs/flight-lookup.md, "Tests and checks")."""
+    assert check.scan(site) == []
+    assert check.missing_notices(site) == []
 
 
 def make_site(tmp_path, snapshots) -> Path:
@@ -27,6 +33,7 @@ def make_site(tmp_path, snapshots) -> Path:
         write_snapshot(raw, when, rows)
     model_build.build(raw, model)
     build.build(model, site)
+    upload_check(site)
     return site
 
 
@@ -53,6 +60,28 @@ def chart_day(index: str, day: str) -> str:
     return re.search(rf'<a href="day/{day}.html"[^>]*>.*?</a>', chart(index), re.S).group(0)
 
 
+def chart_counts(index: str, day: str) -> str:
+    """The counts the chart prints beside a day's date: "4 flights · 1 cancelled · 1 unknown"."""
+    return re.search(r'<text x="\d+" y="\d+">([^<]*)</text>', chart_day(index, day)).group(1)
+
+
+def day_count_line(page: str) -> str:
+    return re.search(r'<p class="count">([^<]*)</p>', page).group(1)
+
+
+def day_counts(page: str) -> tuple[int, int, int]:
+    """A day page's flights, cancelled and unknown, read from its count line (a zero is left out of the line)."""
+    line = day_count_line(page)
+    found = [re.search(rf"([\d,]+) {word}", line) for word in ("flights?", "cancelled", "unknown")]
+    return tuple(int(m.group(1).replace(",", "")) if m else 0 for m in found)
+
+
+def total_counts(index: str) -> tuple[int, int]:
+    """The front page's total: (listed as cancelled, flights with a known outcome)."""
+    m = re.search(r"So far, ([\d,]+) of ([\d,]+) flights with a known outcome were listed as cancelled\.", text(index))
+    return int(m.group(1).replace(",", "")), int(m.group(2).replace(",", ""))
+
+
 LY1 = row(sched_local="2026-10-28T10:00:00")
 CODESHARE = [row(airline="EY", flight_no="607", sched_local="2026-10-28T12:00:00", counters="12-21"),
              row(airline="LY", flight_no="9614", sched_local="2026-10-28T12:00:00", counters="12-21")]
@@ -75,7 +104,13 @@ def test_the_site_is_the_redesigned_pages_and_nothing_of_v1(site):
     files = {p.relative_to(site).as_posix() for p in site.rglob("*") if p.is_file()}
     assert files == {build.MARKER, "index.html", "how-it-works.html", "cancellations.html", "day/2026-10-28.html",
                      "flight/EY607-D.html", "flight/IZ991-D.html", "flight/LY001-D.html", "flight/LY9614-D.html",
-                     "search.js", "style.css"}
+                     "search.js", "fromhere.js", "style.css"}
+
+
+def test_fromhere_js_is_written(site):
+    """The second script, written whether or not a page loads it: a flight page gets a block only once a pair clears
+    the floor, and then loads ../fromhere.js."""
+    assert read(site, "fromhere.js") == (build.STATIC / "fromhere.js").read_text(encoding="utf-8")
 
 
 def test_only_html_css_and_js_besides_the_marker(site):
@@ -216,16 +251,99 @@ def test_a_cancellation_reads_the_same_on_the_front_page_and_its_flight_page(sit
     assert "<td>at least 25 hours</td>" in read(site, "cancellations.html")
 
 
-def test_the_total_leaves_out_flights_not_yet_closed(tmp_path):
-    """LY 001 and IZ 991 were due at 08:00 UTC on 28 October, before the last record at 08:15, and LY 002, listed as
-    cancelled for the 29th, is still ahead: none is 48 hours past its time (C4), so the total counts none of them."""
-    iz = dict(airline="IZ", flight_no="991", airport="ATH", city_en="ATHENS")
-    ly2 = dict(flight_no="002", sched_local="2026-10-29T10:00:00")
+def test_the_total_counts_closed_flights(tmp_path):
+    """The last record is at 08:15 UTC on 29 October, so a flight is closed when it was due by 08:15 UTC on the 27th
+    (C4). LY 001, listed as cancelled and due at 08:00 UTC, is closed and counted; LY 002, due at 08:30 UTC, departed
+    and its time has passed, but it is not yet closed, so the total leaves it out."""
+    ly1, ly2 = dict(sched_local="2026-10-27T10:00:00"), dict(flight_no="002", sched_local="2026-10-27T10:30:00")
     site = make_site(tmp_path, [
-        (at(7, 45, day=28), [row(), row(**iz), row(**ly2)]),
-        (at(8, 0, day=28), [row(), row(**iz, status="CANCELED"), row(**ly2, status="CANCELED")]),
-        (at(8, 15, day=28), [row(status="DEPARTED"), row(**iz, status="CANCELED"), row(**ly2, status="CANCELED")])])
-    assert "So far, 0 of 0 flights with a known outcome were listed as cancelled." in text(read(site, "index.html"))
+        (at(7, 45), [row(**ly1), row(**ly2)]),
+        (at(8, 0), [row(**ly1, status="CANCELED"), row(**ly2)]),
+        (at(8, 45), [row(**ly1, status="CANCELED"), row(**ly2, status="DEPARTED")]),
+        (at(8, 15, day=29), [row(flight_no="003", sched_local="2026-10-30T10:00:00")])])
+    assert "So far, 1 of 1 flights with a known outcome were listed as cancelled." in text(read(site, "index.html"))
+
+
+# --- the counts, site-wide (docs/flight-lookup.md, "Tests and checks", words and pages) ---------------
+
+def closing_model() -> list:
+    """Records from 07:30 to 09:10 UTC on 26 October, then none until 12:00 UTC on 29 October: a flight due by 12:00
+    UTC on the 27th is closed (C4). 26 October holds four flights of five numbers: LY 001 departed; EY 607 and
+    LY 9614, one flight (C1), which departed though EY 607 was listed as cancelled (C2); IZ 991, listed as cancelled;
+    LY 003, which left the list in the gap (unknown). 27 October holds LY 004, which left in the gap. LY 006 departed
+    on 28 October and is not yet closed; LY 005 is still ahead, on 30 October. No closed flight has a number still
+    listed (Question 3's case is left out)."""
+    auh = dict(sched_local="2026-10-26T11:00:00", airport="AUH", city_en="ABU DHABI", counters="12-21")
+    ey, ly9614 = dict(airline="EY", flight_no="607", **auh), dict(flight_no="9614", **auh)
+    iz = dict(airline="IZ", flight_no="991", sched_local="2026-10-26T11:00:00", airport="ATH", city_en="ATHENS",
+              counters="34-41")
+    ly1, ly3 = dict(sched_local="2026-10-26T10:00:00"), dict(flight_no="003", sched_local="2026-10-26T12:00:00")
+    ly6 = dict(flight_no="006", sched_local="2026-10-28T16:00:00", airport="CDG", city_en="PARIS")
+    later = [row(flight_no="004", sched_local="2026-10-27T10:00:00"), row(**ly6)]
+    ly5 = row(flight_no="005", sched_local="2026-10-30T10:00:00")
+    return [
+        (at(7, 30, day=26), [row(**ly1), row(**ey), row(**ly9614), row(**iz), row(**ly3), *later, ly5]),
+        (at(8, 15, day=26), [row(**ly1, status="DEPARTED"), row(**ey, status="CANCELED"), row(**ly9614),
+                             row(**iz, status="CANCELED"), row(**ly3), *later, ly5]),
+        (at(9, 10, day=26), [row(**ly1, status="DEPARTED"), row(**ey, status="CANCELED"),
+                             row(**ly9614, status="DEPARTED"), row(**iz, status="CANCELED"), row(**ly3), *later, ly5]),
+        (at(12, 0, day=29), [row(**ly6, status="DEPARTED"), ly5])]
+
+
+def test_the_chart_counts_equal_the_day_pages(tmp_path):
+    """The chart counts flights as the day pages do (C1, labelled by C10): 26 October is four flights, not five
+    numbers, and EY 607's cancelled listing inside a flight that departed is not a cancelled flight."""
+    site = make_site(tmp_path, closing_model())
+    index, pages = read(site, "index.html"), all_pages(site)
+    days = sorted(name[4:14] for name in pages if name.startswith("day/"))
+    assert days == ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-30"]
+    assert {day: chart_counts(index, day) for day in days} == {day: day_count_line(pages[f"day/{day}.html"])
+                                                               for day in days}
+    assert chart_counts(index, "2026-10-26") == "4 flights · 1 cancelled · 1 unknown"
+
+
+def test_over_days_whose_flights_are_all_closed_the_day_pages_sum_to_the_total(tmp_path):
+    """26 and 27 October are closed whole at the last record; LY 006 (28 October) has departed but is not closed, and
+    LY 005 (30 October) is ahead, so neither day is in the sum and neither flight is in the total. Every closed flight
+    is on the two days, so the total is theirs."""
+    site = make_site(tmp_path, closing_model())
+    table, _, snaps = build.load(tmp_path / "model")
+    closed: dict[date, list[bool]] = {}
+    for f in counting.flights(table, counting.last_sighting(snaps)):
+        closed.setdefault(f.day, []).append(f.closed)
+    whole = [day for day, flags in sorted(closed.items()) if all(flags)]
+    assert whole == [date(2026, 10, 26), date(2026, 10, 27)]
+    assert not any(any(flags) for day, flags in closed.items() if day not in whole)
+    pages = all_pages(site)
+    counts = [day_counts(pages[f"day/{day}.html"]) for day in whole]
+    cancelled, known = sum(c for _, c, _ in counts), sum(n - u for n, _, u in counts)
+    assert total_counts(read(site, "index.html")) == (cancelled, known) == (1, 3)
+
+
+def test_a_closed_flight_still_listed(tmp_path):
+    """LY 001 and LY 9614, one flight (C1), were due at 08:00 UTC on 27 October. LY 001 was listed as cancelled and
+    LY 9614 is still listed normally at the last record, 48 hours and 15 minutes later: the flight is closed. Its
+    label is C10's, NO FINAL UPDATE, and the total counts it as cancelled, by C2 (Question 3). So its day page counts
+    no cancelled flight while the total counts one."""
+    ly1, ly9614 = dict(sched_local="2026-10-27T10:00:00"), dict(flight_no="9614", sched_local="2026-10-27T10:00:00")
+    site = make_site(tmp_path, [(at(7, 45), [row(**ly1), row(**ly9614)]),
+                                (at(8, 0), [row(**ly1, status="CANCELED"), row(**ly9614)]),
+                                (at(8, 15, day=29), [row(**ly9614)])])
+    day = read(site, "day/2026-10-27.html")
+    assert re.findall(r'<span class="labels">(.*?)</span></li>', day) == [
+        '<span class="label l-no-final-update">NO FINAL UPDATE</span>']
+    assert day_counts(day) == (1, 0, 0)
+    assert total_counts(read(site, "index.html")) == (1, 1)
+
+
+def test_a_fresh_small_model_passes_the_upload_check(tmp_path):
+    """Review Focus 3: a model too small to clear the floor anywhere prints no range, says "too few so far to say", and
+    passes the upload check."""
+    site = make_site(tmp_path, closing_model())
+    upload_check(site)
+    pages = all_pages(site)
+    assert [name for name, page in pages.items() if "(between" in text(page)] == []
+    assert "Too few so far to say." in text(pages["index.html"])
 
 
 def test_the_story_is_the_latest_cancellation_with_a_known_warning(tmp_path):
@@ -312,7 +430,7 @@ def test_the_same_model_gives_the_same_bytes_in_separate_processes(tmp_path, sit
         subprocess.run([sys.executable, "-m", "timeline.build", "--model", str(model), "--out", str(out)],
                        check=True, env=env, cwd=Path(__file__).parent.parent, capture_output=True)
         outs.append({p.relative_to(out).as_posix(): p.read_bytes() for p in sorted(out.rglob("*")) if p.is_file()})
-    assert outs[0] == outs[1] and len(outs[0]) == 11
+    assert outs[0] == outs[1] and len(outs[0]) == 12
 
 
 def test_cli_builds_the_site_and_refuses_a_missing_model(tmp_path, site, capsys):
@@ -358,5 +476,6 @@ def test_the_gap_sentence_and_last_updated_follow_the_receipts(tmp_path):
     write_receipt(rec, s2, action="unchanged", when=at(8, 45))
     model_build.build(raw, model, rec)
     build.build(model, site)
+    upload_check(site)
     assert "There are no records from 27 October 09:00 to 27 October 10:15." in text(read(site, "how-it-works.html"))
     assert "Last updated 27 Oct 2026, 10:45" in text(read(site, "index.html"))
