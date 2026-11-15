@@ -383,11 +383,13 @@ def test_day_page_has_no_change_lines():
 
 
 def bracket_day():
-    """One flight at 09:00 to Frankfurt (C1): LH 0691A and LH 0693A, listed as cancelled, beside LH 695 and LH 697,
-    which departed. In row order LH 0691A comes first, so it is the flight's first row; the flight is DEPARTED (C10)."""
+    """Two flights to Frankfurt (C1), both DEPARTED (C10). At 09:00, LH 0691A and LH 0693A, listed as cancelled, beside
+    LH 695 and LH 697, which departed; in row order LH 0691A comes first, so it is the flight's first row. At 11:00,
+    the design's own case: LH 0691A, listed as cancelled, beside LH 695, which departed."""
     fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh0693a", local(29, 9, 0), "0693A", "canceled"),
-          lh("lh695", local(29, 9, 0), "695"), lh("lh697", local(29, 9, 0), "697")]
-    return views.day_page(DayInfo(DAY, 1, 0, 0, "past", False), lists(*fs))
+          lh("lh695", local(29, 9, 0), "695"), lh("lh697", local(29, 9, 0), "697"),
+          lh("lh0691a-11", local(29, 11, 0), "0691A", "canceled"), lh("lh695-11", local(29, 11, 0), "695")]
+    return views.day_page(DayInfo(DAY, 2, 0, 0, "past", False), lists(*fs))
 
 
 def test_day_rows_name_every_number_with_the_bracket():
@@ -395,6 +397,7 @@ def test_day_rows_name_every_number_with_the_bracket():
     each, after the flight's other numbers and before the route; the row takes the flight's label, not its first
     row's."""
     page = bracket_day()
+    assert "11:00 LH 695 (LH 0691A is listed as cancelled) to Frankfurt (FRA) DEPARTED" in text(page)
     assert ("09:00 LH 695, LH 697 (LH 0691A is listed as cancelled) (LH 0693A is listed as cancelled) "
             "to Frankfurt (FRA) DEPARTED") in text(page)
     assert "CANCELLED" not in text(page)
@@ -906,14 +909,25 @@ def test_built_by_line():
 
 def test_front_page_order():
     """docs/flight-lookup.md, "Pages", Front page: the band, the search box (moved up), the block, the total's tiles
-    and sentence, the story, recent cancellations, the chart, the day list and the built-by line."""
+    and sentence, the story, recent cancellations, the chart, the day list and the built-by line; the search data
+    last in the main column."""
     page = front()
     order = ['<h1 class="wordmark">', 'class="lede"', 'class="updated"', "</header>", '<input id="search"',
-             'id="search-results"', 'id="flights-data"', "<h2>From here to the scheduled time</h2>",
-             '<table class="fromhere">', 'class="stats"', 'class="total"', 'class="story"', "Recent cancellations",
-             'href="cancellations.html"', "Flights each day", '<svg class="chart"', 'class="days"', 'class="built"',
+             'id="search-results"', "<h2>From here to the scheduled time</h2>", '<table class="fromhere">',
+             'class="stats"', 'class="total"', 'class="story"', "Recent cancellations", 'href="cancellations.html"',
+             "Flights each day", '<svg class="chart"', 'class="days"', 'class="built"', 'id="flights-data"', "</main>",
              "<footer>"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
+
+
+def test_the_table_comes_before_the_search_data():
+    """The search data (about 130 KB on a full archive) is the main column's last element, so the from-here table
+    renders before it has arrived; search.js is deferred and finds it by id. One copy only."""
+    page = front()
+    assert page.count('id="flights-data"') == 1
+    assert page.index('<table class="fromhere">') < page.index('id="flights-data"')
+    data = re.search(r'<script type="application/json" id="flights-data">.*?</script>', page, re.S).group(0)
+    assert page.index(f"{data}\n</main>") > page.index('class="built"')
 
 
 def test_front_page_without_cancellations():

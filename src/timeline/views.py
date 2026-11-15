@@ -435,8 +435,7 @@ def front_page(summary: Summary, story: Row | None, recent: list[ListFlight], ch
                      f'<p class="updated">Last updated {updated.day} {updated:%b %Y, %H:%M}</p>'])
     search = [f'<input id="search" type="search" hidden placeholder="{e(SEARCH_HINT)}" '
               'aria-label="Find a flight by number or city">',
-              '<ul id="search-results" hidden></ul>',
-              f'<script type="application/json" id="flights-data">{search_json(entries)}</script>']
+              '<ul id="search-results" hidden></ul>']
     body = [*search, from_here(summary), _total(summary.figures.total)]
     if story is not None:
         body.append(_story(story))
@@ -449,4 +448,7 @@ def front_page(summary: Summary, story: Row | None, recent: list[ListFlight], ch
              f'<p class="days">Every day: {day_links}</p>',
              f'<p class="built">Built by {e(words.BUILT_BY)} · <a href="how-it-works.html">How this works</a> · '
              f'<a href="{e(words.CODE_URL)}">Code on GitHub</a></p>']
+    # The search data last in <main>, so the table above renders before it has arrived; search.js is deferred and
+    # finds it by id.
+    body.append(f'<script type="application/json" id="flights-data">{search_json(entries)}</script>')
     return layout(TITLE, "\n".join(body), "", head, top)

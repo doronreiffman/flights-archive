@@ -1,8 +1,8 @@
-// Finds flights from the front page's box (docs/site-redesign.md, front-page item 4). The entries come from the
-// page's #flights-data JSON (timeline.flights.search_entries, in airline and number order, written by
-// views.search_json): {"n": number keys, "p": place keys, "t": title, "u": page address}. Without JavaScript the
-// box stays hidden and the day list reaches every flight. Matching is plain string comparison, so any character
-// typed is just text.
+// Finds flights from the front page's box (docs/flight-lookup.md, "Pages", Front page, item 2). The entries come from
+// the #flights-data JSON at the end of the page's main column (timeline.flights.search_entries, in airline and number
+// order, written by views.search_json): {"n": number keys, "p": place keys, "t": title, "u": page address}. Without
+// JavaScript the box stays hidden and the day list reaches every flight. Matching is plain string comparison, so any
+// character typed is just text.
 const LIMIT = 10;
 const MORE = " more: type more of the number or city";
 
