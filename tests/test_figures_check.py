@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from counting_helpers import board, number
 from model import build as model_build
 from model_helpers import row, write_receipt, write_snapshot
 from timeline import counting, display, rates, record
@@ -593,7 +594,38 @@ def test_the_counts_match_a3_and_a17(check, model):
     code = code_counts(check, model)
     assert list(code) == list(check.EXPECTED_COUNTS)  # every row of A3 and A17, in the figures file's order
     assert code == sql_counts(check, model)
-    assert 0 not in code.values()  # the model holds each row's case, so every row is compared
+    # Every row has a case here, so a row the code or the SQL leaves out shows. The counts cannot tell rows of the
+    # same count apart (A3 is 1, 1 and 1): test_summary_counts_puts_each_count_in_its_row does.
+    assert 0 not in code.values()
+
+
+def test_summary_counts_puts_each_count_in_its_row(check):
+    """Hand rows with a different count in each row: display.summary's counts each in their own row, and the flights
+    that left with no final status split by whether one of the flight's numbers was last seen before its scheduled
+    time (A3's bool_or), strictly before."""
+    sched, last = nov(3, 12), nov(6, 0)
+    table = [
+        # left during the hole, each last seen before its time: the split leaves them out
+        number("g1", sched, outcome="gap", airport="FCO", last_seen_at=sched - H),
+        number("g2", sched, outcome="gap", airport="GVA", last_seen_at=sched - H),
+        # left before the scheduled time: two flights of one number, and one whose other number left after it
+        number("v1", sched, outcome="vanished", airport="BER", last_seen_at=sched - 10 * H),
+        number("v2", sched, outcome="vanished", airport="CDG", last_seen_at=sched - 2 * H),
+        number("m1", sched, outcome="dropped", airport="MUC", last_seen_at=sched + H),
+        number("m2", sched, outcome="vanished", airport="MUC", flight_no="2", last_seen_at=sched - H),
+        # left after it: last seen at exactly the scheduled time
+        number("d", sched, outcome="dropped", airport="DUB", last_seen_at=sched),
+        # not counted: a flight not yet closed, and a closed flight with a known result
+        number("open", nov(5, 0), outcome="vanished", airport="IST", last_seen_at=nov(4, 0)),
+        number("dep", sched, outcome="departed", airport="JFK", last_seen_at=sched - H),
+    ]
+    flights_ = counting.flights(table, last)
+    s = display.summary(table, [], board((nov(1, 0), last)))
+    assert (s.unknown_gap, s.unknown_no_final) == (2, 4)
+    s = replace(s, late_after=5, late_holds=6, late_unplaced=7, late_before=8)
+    assert check.summary_counts(s, flights_, table) == (
+        dict(zip([("A3", r) for r in check.A3_ROWS], (2, 3, 1)))
+        | dict(zip([("A17", r) for r in check.A17_ROWS], (5, 6, 7, 8))))
 
 
 def counts_as_sql(check, model: Model, monkeypatch) -> dict[tuple[str, str], int]:

@@ -62,6 +62,11 @@ def test_a_flight_with_a_number_still_listed_is_upcoming_until_it_departs():
     # once LH 695 departs, or lands for an arrival
     assert display.label(*flight("departed"), T(5, 13)) == words.DEPARTED
     assert display.label(*flight("landed", direction="A"), T(5, 13)) == words.LANDED
+    # rule 1 before rule 2: one number departed while another is still listed
+    f, by_id = one_flight(cancelled("a", T(5, 12), T(5, 0), 12 * 60, 12 * 60 + 15, airline="LH", flight_no="0691A"),
+                          number("b", T(5, 12), "departed", airline="LH", flight_no="695"),
+                          number("c", T(5, 12), "open", airline="LH", flight_no="697"))
+    assert len(f.numbers) == 3 and display.label(f, by_id, T(5, 13)) == words.DEPARTED
 
 
 def test_cancelled_only_when_no_number_is_listed_otherwise():

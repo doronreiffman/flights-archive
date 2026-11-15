@@ -40,7 +40,8 @@ def delayed(f: Flight, delayed_ids: set[str]) -> bool:
 def warning_number(f: Flight, by_id: dict[str, dict]) -> str | None:
     """C9: the flight_id whose warning a cancelled flight shows in lists, its number whose cancelled listing came
     first: the earliest `canceled_first_seen_at` among its numbers that ended listed as cancelled (A17), the airline
-    and then the flight number deciding a tie. None when the flight's result is not cancelled (C2)."""
+    and then the flight number deciding a tie, in the lists' name order, as text (flights._newest_first): "LY 1302"
+    before "LY 730". None when the flight's result is not cancelled (C2)."""
     if f.result != "cancelled":
         return None
     first = min((by_id[fid] for fid in f.numbers if by_id[fid]["outcome"] == "canceled"),
@@ -78,13 +79,14 @@ class Summary:
 
 
 def summary(table: list[dict], obs: list[dict], snaps: list[dict]) -> Summary:
-    """The front page's figures on the model `load` returns, as of its last sighting."""
+    """The front page's figures on the model `load` returns, as of its last sighting. The counting rule runs first,
+    so that its named stops (counting.flights, counting.stretches) come before anything here reads a row."""
+    figures = counting.figures(table, obs, snaps)
     flights_ = counting.flights(table, counting.last_sighting(snaps))
     by_id = {r["flight_id"]: r for r in table}
     unknown = [f for f in flights_ if f.closed and f.result == "unknown"]
     gap = sum(any(by_id[fid]["outcome"] == "gap" for fid in f.numbers) for f in unknown)  # A3: the hole first
     late = Counter(_late(by_id[warning_number(f, by_id)]) for f in flights_ if f.closed and f.result == "cancelled")
-    return Summary(figures=counting.figures(table, obs, snaps),
-                   unknown=len(unknown), unknown_gap=gap, unknown_no_final=len(unknown) - gap,
+    return Summary(figures=figures, unknown=len(unknown), unknown_gap=gap, unknown_no_final=len(unknown) - gap,
                    late_after=late["after"], late_holds=late["holds"], late_unplaced=late["unplaced"],
                    late_before=late["before"], first_record=words.il_time(snaps[0]["fetched_at"]).date())
