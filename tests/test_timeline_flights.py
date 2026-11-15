@@ -252,7 +252,8 @@ def test_a_list_labels_a_flight_by_c10():
 
 def test_a_cancelled_flights_warning_is_c9s():
     """A cancelled flight leads with its number listed as cancelled first (C9), whose warning the lists show: LY
-    9614, though EY 607 comes first in the row. Any other flight leads with its first row."""
+    9614, though EY 607 comes first in the row. A flight whose result is not cancelled (C2) leads with its first
+    row."""
     got = lists(*ey_ly(), lh("lh0691a", local(29, 10, 0), "0691A", "canceled"), lh("lh695", local(29, 10, 0), "695"))
     assert [(ids([fl])[0], fl.label, fl.lead.flight_id, fl.lead.warning) for fl in got] == [
         (["ey", "ly"], "CANCELLED", "ly", "at least 23 hours"),
@@ -262,15 +263,20 @@ def test_a_cancelled_flights_warning_is_c9s():
 
 def test_partners_share_time_terminal_and_desks():
     """Only the numbers of a flight that the list showed with the same last expected time, terminal and check-in
-    desks are "probably the same flight": OS 1083 joins OS 083's flight by airline (C1) but is not its partner."""
+    desks are "probably the same flight", whatever each number's own label: OS 1083 joins OS 083's flight by airline
+    (C1) but is not its partner; AF 8350, which left the list during a hole (UNKNOWN), is a partner of LY 003, DL 7426
+    and AM 7895, which departed."""
     desks = dict(counters_final="78-99", group="g")
     fs = [*os_pair(), flight("ly003", local(29, 9, 0), flight_no="003", **desks),
           flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", **desks),
-          flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks)]
+          flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks),
+          flight("af", local(29, 9, 0), airline="AF", flight_no="8350", outcome="gap", **desks)]
     lists_ = lists(*fs)
-    assert ids(lists_) == [["os083", "os1083"], ["ly003", "dl", "am"]]
+    assert ids(lists_) == [["os083", "os1083"], ["ly003", "dl", "am", "af"]]
+    assert [r.label for r in lists_[1].rows] == ["DEPARTED", "DEPARTED", "DEPARTED", "UNKNOWN"]
     got = {fid: [p.flight_id for p in ps] for fid, ps in flights.partners(lists_, fs).items()}
-    assert got == {"os083": [], "os1083": [], "ly003": ["dl", "am"], "dl": ["ly003", "am"], "am": ["ly003", "dl"]}
+    assert got == {"os083": [], "os1083": [], "ly003": ["dl", "am", "af"], "dl": ["ly003", "am", "af"],
+                   "am": ["ly003", "dl", "af"], "af": ["ly003", "dl", "am"]}
 
 
 def test_partners_read_a_missing_terminal_and_empty_desks_as_equal():
