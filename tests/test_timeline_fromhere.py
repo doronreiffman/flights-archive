@@ -375,17 +375,6 @@ def ages(tree: dict) -> list[str]:
     return lines
 
 
-def shown_text(tree: dict) -> str:
-    """The text of every element that shows: neither it nor any element round it is hidden."""
-    def texts(el):
-        if el["hidden"]:
-            return
-        yield el["text"]
-        for k in el["children"]:
-            yield from texts(k)
-    return " ".join(texts(tree))
-
-
 def blank_ages(tree: dict) -> dict:
     tree = copy.deepcopy(tree)
     for el in walk(tree):
@@ -512,10 +501,11 @@ def test_the_last_day_ahead_passed():
     assert passed_shown(after, "t") and not chances_shown(after, "t")
     assert layout(part(after, "t")) == layout(part(built, "t"))
     # The no-flight-ahead headline and "Worked out from" line show, the flight-ahead line hides, and the all-airlines
-    # line reads its form without a time.
+    # line reads its form without a time. Nothing says "isn't on the airport's list": the page holds no such line,
+    # and the script writes no text but the age (test_the_script_writes_no_text_but_the_updated_line, "the last
+    # passed").
     assert slot(after) == {"none-ahead": [True, True], "flight-ahead worked": [False]}
     assert aa_shown(after) == ["off"]
-    assert NOT_LISTED not in shown_text(after)
 
 
 def test_the_last_of_several_days_ahead_passed():
@@ -525,8 +515,7 @@ def test_the_last_of_several_days_ahead_passed():
     assert passed_shown(after, "l0") and passed_shown(after, "t")
     assert layout(part(after, "l0")) == ["head", "chances", "passed", "support", "own"]
     assert slot(after) == {"none-ahead": [True, True], "flight-ahead worked": [False]}
-    assert aa_shown(after) == ["off"]
-    assert NOT_LISTED not in shown_text(after)
+    assert aa_shown(after) == ["off"]  # nothing says "isn't on the airport's list", as above ("the last of two passed")
 
 
 def test_a_page_a_week_old():
@@ -602,3 +591,12 @@ def test_a_page_without_the_past_list_is_left_as_built_when_a_day_must_move_ther
     # With nothing to move there, the rest is read: the only day ahead has passed, and there is no later list.
     _, after, _ = run(flight_page(top=2, later=None, past=None), 3)
     assert passed_shown(after, "t") and slot(after)["none-ahead"] == [True, True]
+
+
+def test_a_day_that_passes_moves_into_an_empty_past_list():
+    # The build writes .past on every flight page, empty for a number with no past day yet: a day that passes is its
+    # first.
+    _, after, _ = run(flight_page(top=2, later=(26,), past=()), 5)
+    assert (days(after, "now"), days(after, "later"), days(after, "past")) == (["l0"], [], ["t"])
+    assert passed_shown(after, "t") and not chances_shown(after, "t")
+    assert layout(part(after, "l0")) == ["head", "chances", "passed", "support", "own"]
