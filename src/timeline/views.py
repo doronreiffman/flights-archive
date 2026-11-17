@@ -554,14 +554,16 @@ def _section(kind: str, heading: str | None, body: list[str]) -> str:
 def _search() -> str:
     """"Find your flight" (docs/site-redesign.md, "Front page", item 2): the label, the box, its results and the hint in
     one wrapper, hidden until search.js has read the flights, so that none of them shows without the others; in the
-    box's place without scripts, the line whose last words link to the day list."""
+    box's place without scripts, the line whose last words link to the day list. The box is named by its visible
+    label (no aria-label: WCAG 2.5.3) and described by the hint; the results are announced as the script writes
+    them."""
     before, link, after = words.FIND_OFF
     return "\n".join(['<div class="find" id="find" hidden>',
                       f'<label class="find-l" for="search">{e(words.FIND_LABEL)}</label>',
                       f'<input id="search" type="search" placeholder="{e(words.SEARCH_HINT)}" '
-                      'aria-label="Find a flight by number or city">',
-                      '<ul id="search-results" hidden></ul>',
-                      f'<p class="find-hint">{e(words.FIND_HINT)}</p>',
+                      'aria-describedby="find-hint">',
+                      '<ul id="search-results" aria-live="polite" hidden></ul>',
+                      f'<p class="find-hint" id="find-hint">{e(words.FIND_HINT)}</p>',
                       "</div>",
                       f'<p class="find-off" id="find-off">{e(before)}<a href="#days">{e(link)}</a>{e(after)}</p>'])
 
@@ -583,8 +585,8 @@ def chance_table(summary: Summary, airport: blend.Airport) -> str:
     the last row, left out when either is below C8's floor; the six rows of C5's points, each its share to one
     decimal, or "Not enough flights yet" below the floor; the line under it, its flights the mean of the rows shown
     to the nearest 500, left out when no row is shown; the delay line, each direction's delays of an hour or more
-    over its flights that flew, left out while either direction's delays are below the floor (C8 reads a delay
-    rate's delayed flights). Plain HTML, no script."""
+    over its flights that flew, with no floor (Question 6e's "under 1%" is for a small archive), left out only while
+    a direction has no flight that flew, as there is no figure to give. Plain HTML, no script."""
     rows = [(name, airport.rows[h]) for h, name in words.ROW_NAMES.items()]
     (_, first), (_, last) = rows[0], rows[-1]
     shown = [r for _, r in rows if r.clears_floor]
@@ -600,7 +602,7 @@ def chance_table(summary: Summary, airport: blend.Airport) -> str:
     if shown:
         body.append(f'<p class="under">{e(words.under_table(_about_500(shown), summary.first_record))}</p>')
     departures, arrivals = airport.delay["D"], airport.delay["A"]
-    if departures.clears_floor and arrivals.clears_floor:
+    if departures.flights and arrivals.flights:
         line = words.delay_line(departures.cancelled / departures.flights, arrivals.cancelled / arrivals.flights)
         body.append(f'<p class="late"><b>{e(words.DELAY_LEAD)}</b> {e(line)}</p>')
     return _section("s-fromhere", words.TABLE_HEADING, body)
@@ -672,11 +674,12 @@ def chart(days: list[DayInfo]) -> str:
 
 
 def day_list(days: list[DayInfo]) -> str:
-    """"Pick a day:" and every day the site has, linked, so that no flight is out of reach without JavaScript; the list
-    is where the line in the search box's place leads."""
-    return "\n".join([f'<p class="days-h">{e(words.PICK_A_DAY)}</p>', '<ol class="days" id="days">',
+    """"Pick a day:" and every day the site has, linked, so that no flight is out of reach without JavaScript. The
+    line in the search box's place leads to the wrapper, so "Pick a day:" stays in view above the list."""
+    return "\n".join(['<div class="pick" id="days">', f'<p class="days-h">{e(words.PICK_A_DAY)}</p>',
+                      '<ol class="days">',
                       *(f'<li><a href="day/{x.day:%Y-%m-%d}.html">{_short_date(x.day)}</a></li>' for x in days),
-                      "</ol>"])
+                      "</ol>", "</div>"])
 
 
 def front_page(summary: Summary, airport: blend.Airport, story: tuple[Row, str] | None, recent: list[ListFlight],
