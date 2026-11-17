@@ -74,6 +74,11 @@ DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
 BACKTEST = ("src/timeline/backtest.py", ["tests/test_backtest.py"])
 NAME_LIST = ("src/timeline/names.py", ["tests/test_names.py"])
+# The one test that ties the flight page's markup to the names fromhere.js reads: each side's own tests pin only
+# their own side.
+NAMES = "tests/test_timeline_views.py::test_the_page_holds_every_name_fromhere_js_reads"
+VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
+FROMHERE_NAMES = ("src/timeline/static/fromhere.js", [NAMES])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -250,6 +255,11 @@ COLLECTOR_MUTATIONS = {
     "fromhere: the form without a time left showing": (FROMHERE, "[...line.children].forEach((el) => { el.hidden = el !== shown; });", '[...line.children].forEach((el) => { el.hidden = el !== shown && !el.classList.contains("off"); });'),
     "fromhere: no-flight-ahead headline kept hidden": (FROMHERE, '  kids(support, "none-ahead").forEach((el) => { el.hidden = false; });\n', ""),
     "fromhere: the flight-ahead line left showing with no flight ahead": (FROMHERE, '  kids(support, "worked").forEach((el) => { if (!el.classList.contains("none-ahead")) el.hidden = true; });\n', ""),
+    "fromhere: reads an id the page does not carry": (FROMHERE_NAMES, 'getElementById("now")', 'getElementById("top")'),
+    "fromhere: finds a day's lines by a class the page does not carry": (FROMHERE_NAMES, 'kid(head, "own")', 'kid(head, "mine")'),
+    "fromhere: tests a class the page does not carry": (FROMHERE_NAMES, 'classList.contains("later")', 'classList.contains("next")'),
+    "fromhere: reads an attribute the page does not carry": (FROMHERE_NAMES, 'getAttribute("data-more-after")', 'getAttribute("data-more")'),
+    "fromhere: queries a selector the page does not carry": (FROMHERE_NAMES, 'querySelectorAll("[data-updated]")', 'querySelectorAll("[data-age]")'),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
     "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
     "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
@@ -656,6 +666,10 @@ COLLECTOR_MUTATIONS = {
     'views: head separators left to the style sheet': (VIEWS, '<p class="head">{" · ".join(parts)}</p>', '<p class="head">{" ".join(parts)}</p>'),
     "views: a later day's chances on two lines": (VIEWS, 'body = _figs(headline) if top else [', 'body = _figs(headline) if True else ['),
     'views: partner line without a spoken name': (VIEWS, '        if spoken is None:\n            raise ValueError(', '        if False:\n            raise ValueError('),
+    "views: #now renamed away from fromhere.js": (VIEWS_NAMES, """'<div id="now">'""", """'<div id="top">'"""),
+    "views: a day's own lines renamed away from fromhere.js": (VIEWS_NAMES, """'<div class="own">'""", """'<div class="mine">'"""),
+    "views: a pair renamed away from fromhere.js": (VIEWS_NAMES, '<div class="pair" data-after=', '<div class="option" data-after='),
+    "views: the all-airlines line's top bound renamed away from fromhere.js": (VIEWS_NAMES, '<div class="aa" data-more-after=', '<div class="aa" data-more='),
     "flights: a twin with no news yet read as still on": (FLIGHTS, 'words.NO_NEWS_YET: "has no news yet"}', 'words.NO_NEWS_YET: "is still listed"}'),
     "words: every name takes 's": (WORDS, 'return "\'" if name.endswith("s") else "\'s"', 'return "\'s"'),
     "words: every name takes a bare apostrophe": (WORDS, 'return "\'" if name.endswith("s") else "\'s"', 'return "\'"'),

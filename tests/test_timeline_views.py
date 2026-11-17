@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 
 import pytest
 
@@ -1216,6 +1217,119 @@ def test_the_slot_holds_every_name_the_page_script_reads():
                                         ("aa", False), ("fresh", False), ("means", False)]
     assert ("Worked out from all airlines at Ben Gurion, because LY 001 and its airline have no flights so far."
             in text(page_of(fs[0])))
+
+
+FROMHERE_JS = Path(views.__file__).parent / "static" / "fromhere.js"
+# The ways fromhere.js reads a name off the page, each with the name as a string literal: the id it gets, a class it
+# tests, a class it finds an element's children by (its helpers kid and kids, given an element or a kid() of one), an
+# attribute it reads, the selector it queries.
+FROMHERE_READS = {"ids": r'getElementById\("([^"]+)"\)',
+                  "classes tested": r'classList\.contains\("([^"]+)"\)',
+                  "classes found by": r'(?=\bkids?\((?:\w+|kid\(\w+, "[^"]+"\)), "([^"]+)"\))',
+                  "attributes": r'getAttribute\("([^"]+)"\)',
+                  "selectors": r'querySelectorAll\("([^"]+)"\)'}
+FROMHERE_CALLS = r"\b(?:getElementById|classList\.contains|getAttribute|querySelectorAll|kids?)\("
+
+
+def read_as_fromhere(page: str, met: Counter) -> tuple[int, int | None]:
+    """Walk a built flight page as fromhere.js reads it, down every path the visitor's clock can take it, asserting
+    that each element it reads stands where the script looks for it; `met` counts, for each name the walk reads, the
+    elements found by it. The days ahead the walk reads and the days in .past, (0, None) when the script stops at #now
+    for want of a day ahead."""
+    root = tree(page)
+
+    def having(els: list[El], cls: str) -> list[El]:  # the script's kids(el, cls), and classList.contains(cls)
+        got = [el for el in els if cls in el.classes]
+        met[cls] += len(got)
+        return got
+
+    def attr(el: El, name: str) -> str:  # getAttribute(name): it must be there
+        met[name] += 1
+        assert name in el.attrs, (name, el.tag, el.attrs)
+        return el.attrs[name]
+
+    def bounds(el: El) -> None:
+        assert attr(el, "data-after").isdigit() and attr(el, "data-upto").isdigit(), el.attrs
+
+    # Every page: the age goes into each [data-updated] element, which holds the last update as a UTC instant, and text
+    # only, which the script's textContent replaces.
+    updated = [el for el in root.walk() if "data-updated" in el.attrs]
+    met["[data-updated]"] += len(updated)
+    assert all(SCHED.fullmatch(attr(el, "data-updated")) for el in updated)
+    texts = re.findall(r'<(\w+) [^>]*data-updated="[^"]*"[^>]*>([^<]*)</\1>', page)
+    assert len(texts) == len(updated) and all(t.strip() for _, t in texts), texts
+    # A flight page: #now holds the top day when the build wrote a day ahead; with none, the script stops there.
+    met["now"] += 1
+    (now,) = [el for el in root.walk() if el.attrs.get("id") == "now"]
+    ahead = [el for el in root.walk() if "data-sched" in el.attrs]  # the days the build wrote as ahead
+    tops = having(now.kids, "day")
+    assert len(tops) == min(len(ahead), 1), [el.attrs for el in tops]
+    if not tops:
+        return 0, None
+    # .later and .past are siblings of #now: the script finds them among its parent's children. .past stands even with
+    # no day in it, since the days that pass go to its head.
+    (parent,) = [el for el in root.walk() if any(kid is now for kid in el.kids)]
+    (later,) = having(parent.kids, "later")
+    (past,) = having(parent.kids, "past")
+    days = [*tops, *having(later.kids, "day")]
+    assert list(map(id, days)) == list(map(id, ahead)), [el.attrs for el in days]
+    for day in days:  # any of them can pass, or come to the top and take the support before its .own
+        assert day.tag == "section" and SCHED.fullmatch(attr(day, "data-sched")), day.attrs
+        (passed,) = having(day.kids, "passed")
+        assert passed.tag == "p" and "hidden" in passed.attrs, passed
+        (own,) = having(day.kids, "own")
+        for chances in having(day.kids, "chances"):  # its first pair shows without scripts, the rest hidden
+            pairs = having(chances.kids, "pair")
+            for pair in pairs:
+                bounds(pair)
+            assert "hidden" not in chances.attrs and pairs
+            assert ["hidden" in pair.attrs for pair in pairs] == [False] + [True] * (len(pairs) - 1)
+    # The lines under the top day's chances: the all-airlines line, whose forms with a time, its "more than 3 days"
+    # line and its form without a time the script picks among, only the last showing without scripts; the
+    # no-flight-ahead parts, hidden, and the flight-ahead line, shown, which the script swaps once no day is ahead.
+    (support,) = having(tops[0].kids, "support")
+    (line,) = having(support.kids, "aa")
+    assert attr(line, "data-more-after").isdigit(), line.attrs
+    forms = [el for el in line.kids if not having([el], "more") and not having([el], "off")]
+    for form in forms:
+        bounds(form)
+    (more,), (off,) = having(line.kids, "more"), having(line.kids, "off")
+    assert forms and [el for el in line.kids if "hidden" not in el.attrs] == [off]
+    parts = having(support.kids, "none-ahead")
+    assert parts and all("hidden" in el.attrs for el in parts), parts
+    for worked in having(support.kids, "worked"):
+        assert ("hidden" in worked.attrs) == bool(having([worked], "none-ahead")), worked.attrs
+    return len(days), len(having(past.kids, "day"))
+
+
+def test_the_page_holds_every_name_fromhere_js_reads():
+    """The names fromhere.js reads the page by, read out of the script itself: the id it gets, the classes it tests or
+    finds an element's children by, the attributes it reads and the [data-updated] selector. Walked as the script
+    walks them (read_as_fromhere), built flight pages hold each where the script reads it, and the walk reads the
+    script's names, no more and no fewer, so a name renamed on either side fails here. The script's own tests run it on
+    a hand-made stand-in page: this test is what ties the two together. The pages: a number with a day ahead, later
+    days and a past day; one with no day ahead; one with a day ahead and no past day."""
+    script = FROMHERE_JS.read_text(encoding="utf-8")
+    found = {kind: re.findall(pattern, script) for kind, pattern in FROMHERE_READS.items()}
+    assert all(found.values()), found
+    # Every call of those ways names its name as a string literal, but the helpers' own (kid and kids pass a class on
+    # to classList.contains), and the script reads no name in any other way: a rewrite that changes its idioms fails
+    # here until this test reads the new one.
+    passed_on = re.findall(FROMHERE_CALLS + r'(?![^)]*")([^)]*)\)', script)
+    assert passed_on == ["el, cls", "cls", "el, cls", "el, cls"], passed_on
+    assert sum(map(len, found.values())) + len(passed_on) == len(re.findall(FROMHERE_CALLS, script)), found
+    assert re.findall(r"querySelector\(|getElementsBy|closest\(|matches\(|dataset|className|hasAttribute\(|\.id\b",
+                      script) == []
+    names = {name for got in found.values() for name in got}
+    fs = [flight("up", AHEAD, outcome="open"), flight("gone", LATER, **AT_LEAST_23),
+          flight("up2", datetime(2026, 11, 1, 9, 0), outcome="open"), flight("past", local(28, 9, 0))]
+    met = Counter()
+    walked = {"later and past days": read_as_fromhere(page_of(*fs), met),
+              "no day ahead": read_as_fromhere(page_of(fs[3]), met),
+              "no past day": read_as_fromhere(page_of(fs[0]), met)}
+    assert walked == {"later and past days": (3, 1), "no day ahead": (0, None), "no past day": (1, 0)}
+    assert set(met) == names, (sorted(set(met) - names), sorted(names - set(met)))
+    assert [name for name in sorted(names) if not met[name]] == []
 
 
 def test_a_page_with_no_counted_flight_at_the_airport_carries_no_chances():
