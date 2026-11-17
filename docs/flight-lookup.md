@@ -465,7 +465,7 @@ What picks a form (approved by me, 2026-11-17, with the lines):
 | Link | What the numbers mean |
 
 - The airline's line with dates (approved by me, 2026-11-17) stands where one bad week is behind the airline's cancellations and the "Worked out from" line does not already give its dates: on LH 694's page, whose own history leads, and not on LH 697's. My terms reading asks for it: a page gives the dates when one bad week is behind an airline's cancellations (`docs/terms.md`, clause 4).
-- "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history." is my own wording (2026-11-17), in place of D11's "counted with". It stands on the page of a number whose flight is grouped under another airline (C8), as a line of its own above that airline's "so far" line. The lines after it name that airline as its own flights' pages do. It says nothing about who flies the plane.
+- "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history." is my own wording (2026-11-17), in place of D11's "counted with". It stands on the page of a number whose flight is grouped under another airline (C8), as a line of its own above that airline's "so far" line. The lines after it name that airline as its own flights' pages do. The airline in it is always its spoken name: every grouping airline is on the names list. It says nothing about who flies the plane.
 - The all-airlines line has six forms, one per stretch of time left: "2 to 3 days", "1 to 2 days", "12 to 24 hours", "6 to 12 hours", "3 to 6 hours" and "less than 3 hours", each followed by "before a flight:". "6 to 12 hours before a flight:" was approved in round 4; the other five are approved by me, 2026-11-17. Each form gives the figure of the point at its far end, so it leans high: 1.6%, 1.4%, 1.1%, then "under 1%" three times on the 2026-11-17 model. "Before a flight" was added in round 4: read aloud, "before" alone left the reader asking "before what?".
 - A departure's page reads "about 8% of departures delayed an hour or more" (LH 697 on the mockup).
 - The form without a time takes the front page's total, 1.7%.
@@ -534,11 +534,10 @@ The disclaimer. It is the first section of "How this works", and every page link
 
 ### Still open
 
-Every line this section listed as without approved words on 2026-11-17 has them now, in the tables above and in `docs/site-redesign.md`. Three things remain. All three are for the hand check during the build, before the first upload.
+Every line this section listed as without approved words on 2026-11-17 has them now, in the tables above and in `docs/site-redesign.md`. Two things remain. Both are for the hand check during the build, before the first upload.
 
-1. **The list of spoken names for airlines.** The build proposes it, for the airlines with the most flights, and I approve it.
+1. **The list of spoken names for airlines.** The build proposes it, for the airlines with the most flights and every airline that a number's flight is grouped under (C8), and I approve it. So the partner line always names the airline ("…worked out from LOT's history."), never "its airline's history", which a reader would take for the number's own airline (my call, 2026-11-17).
 2. **"How this works", sections 2 to 10.** Drafted in the build and approved by me ("Pages", How this works).
-3. **One composed line I have not read.** On the page of a number sold with a flight of an airline that has no spoken name, my line would end "…so the numbers here are worked out from its airline's history.", by the names rule. It comes to me with the list of names.
 
 ## Pages
 
