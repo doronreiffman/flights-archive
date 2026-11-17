@@ -69,10 +69,6 @@ FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
-# The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
-NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
-VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
-FROMHERE_NAMES = ("src/timeline/static/fromhere.js", [NAMES])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -219,28 +215,32 @@ COLLECTOR_MUTATIONS = {
     "search: keeps spaces": (SEARCH, 'return query.toLowerCase().replace(/\\s+/g, "");', "return query.toLowerCase();"),
     "search: box shown before the data is read": (SEARCH, "    const entries = JSON.parse(data.textContent);", "    box.hidden = false;\n    const entries = JSON.parse(data.textContent);"),
     "fromhere: a boundary belongs to the upper lead-in": (FROMHERE, "hours > after && hours <= upto", "hours >= after && hours < upto"),
-    "fromhere: a time without Z read as local": (FROMHERE, '!schedIso.endsWith("Z")', "false"),
+    "fromhere: a time without Z read as local": (FROMHERE, '!iso.endsWith("Z")', "false"),
+    "fromhere: a non-string time not refused": (FROMHERE, 'typeof iso !== "string" || ', ""),
     "fromhere: passed a minute early": (FROMHERE, "if (hours <= 0) return", "if (hours <= 1 / 60) return"),
-    "fromhere: passed hides only the list": (FROMHERE, "    block.hidden = true;\n    const line = block.nextElementSibling;", "    pairs.forEach((li) => { li.hidden = true; });\n    const line = block.nextElementSibling;"),
-    "fromhere: passed shows no line": (FROMHERE, "if (line && line.classList.contains(\"passed\")) line.hidden = false;", ""),
-    "fromhere: hides the list on a bad attribute": (FROMHERE, "  if (result === null) return;", "  if (result === null) { pairs.forEach((li) => { li.hidden = true; }); return; }"),
     "fromhere: never shows more than 3 days": (FROMHERE, 'if (hours > moreAfter) return "more";', ""),
     "fromhere: more from the top pair, not the block's bound": (FROMHERE, "if (hours > moreAfter) return", "if (hours > Math.max(...bounds.map((b) => b[1]))) return"),
     "fromhere: a missing top bound read as zero": (FROMHERE, "  return text === null || text.trim() === \"\" ? NaN : Number(text);", "  return text === null ? 0 : Number(text);"),
-    "fromhere: none hides only the pairs": (FROMHERE, "    block.hidden = true; // the condition", "    pairs.forEach((li) => { li.hidden = true; }); // the condition"),
-    "fromhere: none shows the passed line": (FROMHERE, "    block.hidden = true; // the condition", "    block.hidden = true; block.nextElementSibling.hidden = false; // the condition"),
-    "fromhere: more leaves the pairs showing": (FROMHERE, '[...block.children].forEach((child) => { child.hidden = !child.classList.contains("more"); });', '[...block.children].forEach((child) => { child.hidden = child.tag === "p" && !child.classList.contains("more"); });'),
-    "fromhere: more leaves the condition line showing": (FROMHERE, '[...block.children].forEach((child) => { child.hidden = !child.classList.contains("more"); });', '[...block.children].forEach((child) => { child.hidden = child.tag === "li"; });'),
-    "fromhere: more line hidden": (FROMHERE, '{ child.hidden = !child.classList.contains("more"); }', "{ child.hidden = true; }"),
-    "fromhere: every pair hidden": (FROMHERE, "li.hidden = i !== result;", "li.hidden = true;"),
-    "fromhere: an unreadable pair bound ignored": (FROMHERE, "  if (bounds.some((pair) => !Number.isFinite(pair[0]) || !Number.isFinite(pair[1]))) return;\n", ""),
-    "fromhere: block selected by the table's class": (FROMHERE, 'querySelectorAll("div.pairs")', 'querySelectorAll(".fromhere")'),
     "fromhere: an empty bound read as zero": (FROMHERE, '  return text === null || text.trim() === "" ? NaN : Number(text);', "  return text === null ? NaN : Number(text);"),
-    "fromhere: a non-string time not refused": (FROMHERE, 'typeof schedIso !== "string" || ', ""),
     "fromhere: an unreadable top bound not refused": (FROMHERE, " || !Number.isFinite(moreAfter)) return null;", ") return null;"),
-    "fromhere: more line taken from the page, not the block": (FROMHERE, '!child.classList.contains("more"); });', 'child !== document.querySelector(".more"); });'),
-    "fromhere: passed line taken from the page, not the block": (FROMHERE, "const line = block.nextElementSibling;", 'const line = document.querySelector(".passed");'),
-    "fromhere: reads a class the block does not carry": (FROMHERE_NAMES, 'line.classList.contains("passed")', 'line.classList.contains("gone")'),
+    "fromhere: 60 minutes reads less than an hour": (FROMHERE, "if (hours < 1) return", "if (hours <= 1) return"),
+    "fromhere: days rounded up": (FROMHERE, "Math.floor(hours / 24)", "Math.ceil(hours / 24)"),
+    "fromhere: text written outside the updated line": (FROMHERE, "el.textContent = text;", "el.parentElement.textContent = text;"),
+    "fromhere: a bad attribute changes the page": (FROMHERE, "  if (times.includes(null)) return null;\n", ""),
+    "fromhere: an unreadable bound read": (FROMHERE, "  return bounds.every(([after, upto]) => Number.isFinite(after) && Number.isFinite(upto)) ? bounds : null;", "  return bounds;"),
+    "fromhere: the later days not read": (FROMHERE, '  const days = [top, ...kids(later, "day")];', "  const days = [top];"),
+    "fromhere: only the top day's pair follows the clock": (FROMHERE, "else showPair(d, nowMs);", "else showPair(head, nowMs);"),
+    "fromhere: above 72 hours the first pair hidden": (FROMHERE, 'if (typeof result === "number") pairs.forEach((pair, i) => { pair.hidden = i !== result; });', "pairs.forEach((pair, i) => { pair.hidden = i !== result; });"),
+    "fromhere: a passed day's chances left showing": (FROMHERE, "  if (chances) chances.hidden = true;\n", ""),
+    "fromhere: a passed day's line left hidden": (FROMHERE, "  if (line) line.hidden = false;\n", ""),
+    "fromhere: a passed day left at the top": (FROMHERE, ".filter((d) => d !== head);", ".filter((d) => d !== head && d !== top);"),
+    "fromhere: passed days oldest first": (FROMHERE, "leaving.forEach((d) =>", "leaving.reverse().forEach((d) =>"),
+    "fromhere: the support left behind": (FROMHERE, '    if (support) head.insertBefore(support, kid(head, "own"));\n', ""),
+    "fromhere: a page without the past list half moved": (FROMHERE, "  if (leaving.length && !past) return; // nowhere to move them: the page stays as built\n", ""),
+    "fromhere: the stretch from the passed day": (FROMHERE, 'showStretch(line, ahead.getAttribute("data-sched"), nowMs)', 'showStretch(line, top.getAttribute("data-sched"), nowMs)'),
+    "fromhere: the form without a time left showing": (FROMHERE, "[...line.children].forEach((el) => { el.hidden = el !== shown; });", '[...line.children].forEach((el) => { el.hidden = el !== shown && !el.classList.contains("off"); });'),
+    "fromhere: no-flight-ahead headline kept hidden": (FROMHERE, '  kids(support, "none-ahead").forEach((el) => { el.hidden = false; });\n', ""),
+    "fromhere: the flight-ahead line left showing with no flight ahead": (FROMHERE, '  kids(support, "worked").forEach((el) => { if (!el.classList.contains("none-ahead")) el.hidden = true; });\n', ""),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
     "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
     "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
@@ -413,8 +413,6 @@ COLLECTOR_MUTATIONS = {
     "views: record line left out of the flight page's block": (VIEWS, """f"<p>{e(words.PAST_ONLY)}</p>", "</div>",""", """"</div>","""),
     "views: cancellations page holds a flight with any number listed as cancelled": (VIEWS, "    cancelled = flights.recent_cancellations(flights_, n=len(flights_))", "    cancelled = flights._newest_first([fl for fl in flights_ if any(r.label == words.CANCELLED for r in fl.rows)], lambda fl: fl.rows[0])"),
     "views: summary line from a fixed first record": (VIEWS, "_summary(rows, summary.first_record)", "_summary(rows, date(2026, 10, 27))"),
-    "views: the block's top bound renamed away from fromhere.js": (VIEWS_NAMES, 'data-more-after="{e(MORE_AFTER)}"', 'data-more="{e(MORE_AFTER)}"'),
-    "views: the more line inside the list": (VIEWS_NAMES, """"</ul>", f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>',""", """f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>', "</ul>","""),
     "style: pale cancel text": (STYLE, "--cancel-fg: #b3261e;", "--cancel-fg: #e8827a;"),
     "style: dim muted text in the dark": (STYLE, "--muted: #9aa3b2;", "--muted: #5c5c61;"),
     "style: dim band text": (STYLE, "--band-muted: #c5d1ea;", "--band-muted: #5f6f93;"),
