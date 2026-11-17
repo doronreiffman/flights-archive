@@ -30,7 +30,7 @@ SPOKEN_NAMES: dict[str, str] = {
     "FB": "Bulgaria Air", "GQ": "Sky Express", "H4": "HiSky Europe", "H7": "HiSky", "HH": "Qanot Sharq",
     "HM": "Air Seychelles", "HY": "Uzbekistan Airways", "I2": "Iberia Express", "IB": "Iberia", "IZ": "Arkia",
     "J2": "Azerbaijan Airlines", "KL": "KLM", "LH": "Lufthansa", "LO": "LOT", "LX": "Swiss", "LY": "El Al",
-    "NO": "Neos", "OS": "Austrian Airlines", "QS": "Smartwings", "RO": "Tarom", "SK": "SAS",
+    "NO": "Neos", "OS": "Austrian Airlines", "QS": "Smartwings", "RO": "TAROM", "SK": "SAS",
     "SN": "Brussels Airlines", "TO": "Transavia", "TP": "TAP Air Portugal", "U8": "TUS Airways", "UA": "United",
     "UN": "Transaero",  # check: the name of an airline the drafter believes stopped flying (unverified)
     "UX": "Air Europa", "VS": "Virgin Atlantic", "W4": "Wizz Air Malta", "W6": "Wizz Air", "W9": "Wizz Air UK",
