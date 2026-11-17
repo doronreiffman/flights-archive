@@ -536,8 +536,15 @@ def _bracket(h: History) -> str:
     return f"({_n(h.cancelled)} of its {_n(h.flights)} flights were cancelled)"
 
 
+def possessive(name: str) -> str:
+    """The ending a name takes: a bare apostrophe after a lowercase "s" ("British Airways'"), else 's ("SAS's")."""
+    return "'" if name.endswith("s") else "'s"
+
+
 def _whose(spoken: str | None, text: Callable[[str], str], data: Callable[[str], str]) -> str:
-    return _fill(text, "{s}'s history", s=data(spoken)) if spoken else text("its airline's history")
+    if not spoken:
+        return text("its airline's history")
+    return _fill(text, "{s}" + possessive(spoken) + " history", s=data(spoken))
 
 
 def worked_out(number: History, airline: History, spoken: str | None, ahead: bool, listed_since: bool,
@@ -592,7 +599,8 @@ def so_far(h: History, with_week: bool, text: Callable[[str], str] = str,
 def partner(number: str, lead: str, spoken: str, text: Callable[[str], str] = str,
             data: Callable[[str], str] = str) -> str:
     """The line above an airline's "so far" line on the page of a number sold with another airline's flight."""
-    return _fill(text, "{a} is also sold as {b}, so the numbers here are worked out from {s}'s history.",
+    return _fill(text, "{a} is also sold as {b}, so the numbers here are worked out from {s}" + possessive(spoken)
+                 + " history.",
                  a=data(number), b=data(lead), s=data(spoken))
 
 
