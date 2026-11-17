@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -390,7 +391,7 @@ def average(k: int, n: int) -> str:
 
 def about(x: float) -> str:
     """A share as a chance: "under 1%" below 0.01, else "about N%", whole, halves up; never "0%"."""
-    return "under 1%" if x < 0.01 else f"about {math.floor(x * 100 + 0.5)}%"
+    return "under 1%" if x < 0.01 else f"about {math.floor(round(x * 100, 9) + 0.5)}%"
 
 
 def _outward(one_in: float, up: bool) -> str:
@@ -402,7 +403,7 @@ def _outward(one_in: float, up: bool) -> str:
 def pct_range(rate: Rate) -> str | None:
     """"1.7% (between 1.1% and 2.9%)": one decimal, the ends outward; None below the floor and for a rate with no
     range (as one_in_range)."""
-    if one_in_range(rate) is None:
+    if not rate.clears_floor or rate.one_in_from is None or rate.one_in_to is None or rate.one_in is None:
         return None
     return (f"{pct1(rate.cancelled, rate.flights)} (between {_outward(rate.one_in_to, False)} "
             f"and {_outward(rate.one_in_from, True)})")
@@ -679,7 +680,7 @@ def strip_heading(number: str, text: Callable[[str], str] = str, data: Callable[
 
 def strip_key(counts: dict[str, int]) -> list[str]:
     """"landed 22", "upcoming 3": each kind of mark with its count, in LABEL_ORDER, none for a count of 0."""
-    return [f"{label.lower()} {counts[label]}" for label in LABEL_ORDER if counts.get(label)]
+    return [f"{label.lower()} {_n(counts[label])}" for label in LABEL_ORDER if counts.get(label)]
 
 
 def mark_name(day: date, label: str) -> str:
