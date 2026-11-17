@@ -104,14 +104,14 @@ The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once t
 
 ## Timeline
 
-`src/timeline/` turns the model into a static site: a front page that leads with cancellations (how many, the recent ones, how much warning each got) and a flight search, a page per flight number with every day it was scheduled and what changed, and a page per day. The wording never claims more than the airport's list showed (a cancellation's time is a range and its warning a range or a lower bound; no delays or operators), and every page cites the source and says it is unofficial. Pages, words and checks: [site-redesign.md](site-redesign.md); v1 and the publishing decision: [timeline.md](timeline.md). Published at https://dt4564wsgvijr.cloudfront.net since 2026-10-30; my reading of the data.gov.il terms is that they allow publishing it ([terms.md](terms.md)).
+`src/timeline/` turns the model into a static site, "Will It Fly?": a front page that leads with "Find your flight", the chance table and the total; a page per flight number with its two chances (cancelled, and delayed an hour or more), what they were worked out from, its days as a strip and what changed on each; a page per day; and a page of every cancellation. The wording never claims more than the airport's list showed (a cancellation's time is a range and its notice a range or a lower bound; delays only at an hour or more; no operators), and every page cites the source and says it is unofficial. Pages, words and checks: [site-redesign.md](site-redesign.md) and [flight-lookup.md](flight-lookup.md); v1 and the publishing decision: [timeline.md](timeline.md). Published at https://dt4564wsgvijr.cloudfront.net since 2026-10-30; my reading of the data.gov.il terms is that they allow publishing it ([terms.md](terms.md)).
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m timeline.build --model data/model --out site
 .venv/bin/python -m http.server -d site 8000   # then open http://localhost:8000
 ```
 
-Publishing (live since 2026-10-30): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases and words, the built-by placeholder (which stops any upload while it is still there), and the source and unofficial lines on every page. Both write to AWS, so each runs only when I approve it; design, takedown and cost in [publishing.md](publishing.md).
+Publishing (live since 2026-10-30): a separate stack, `site-template.yaml`, serves the site from a private S3 bucket through CloudFront, and `sh scripts/publish.sh` uploads a build after checking the AWS identity, the build marker, the banned phrases and words, the built-by placeholder (which stops any upload while it is still there), the source, unofficial and estimates lines on every page, and a "Worked out from" line on every flight page that gives a chance. Both write to AWS, so each runs only when I approve it; design, takedown and cost in [publishing.md](publishing.md).
 
 ## Cost
 

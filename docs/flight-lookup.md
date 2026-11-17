@@ -89,7 +89,7 @@ The public sees nothing different until the gate. The difference is how soon it 
 
 **D8. The browse view waits.** Recommendation: not built in version 1. Sorting by risk needs a per-flight figure, and filters alone repeat what the day pages and the search already do. Alternative: build filters by airline, destination, terminal and day now, with no risk column.
 
-**D9. The stop rule for the five sessions (q13).** Recommendation: if two or more of five outsiders read the rate as a promise about their own flight, the words change before launch or the table moves below the total. Whether anyone names a use is a probe, not a stop. Alternative: the rule in `docs/timeline.md`, which stops product work when fewer than two of five name a real use. `docs/site-redesign.md` records a review's proposal to drop that rule and leaves it open.
+**D9. The stop rule for the five sessions (q13).** Recommendation: if two or more of five outsiders read the rate as a promise about their own flight, the words change before launch or the table moves below the total. Whether anyone names a use is a probe, not a stop. Alternative: the rule then in `docs/timeline.md`, which stops product work when fewer than two of five name a real use. `docs/site-redesign.md` records a review's proposal to drop that rule and leaves it open.
 
 ### Decided 2026-11-17 (q27)
 
@@ -184,7 +184,7 @@ Measured on this model. These facts shape the rules below.
 ## Anti-goals (a failure even if it works)
 
 - A reader taking a chance as a promise about their flight. Every chance reads "about" or "under" and says what it was worked out from, every page's footer says the chances are estimates and not promises, and q13 tests for this misreading.
-- "0%" as a chance, anywhere. Below 1%, a chance reads "under 1%".
+- "0%" as a chance, anywhere. Below 1%, a flight's chance reads "under 1%".
 - A chance on a flight page with no "Worked out from" line on that page.
 - One bad week read as a steady rate. Where a record's cancellations all fall in one week, its line names the dates.
 - A number's own cancelled-of-flights standing alone as its chance. That record is a median of 6 flights long (A21), and none cancelled in 6 cannot tell "never" from "1 in 3" (the usual 95% bound for none in six is 39%); one cancelled in two would read as 50%. The blend's pull towards the airline is the answer to this, and the history line gives counts only.
@@ -370,7 +370,7 @@ Every figure in the examples is from the 2026-11-17 model. The chances among the
 - A chance reads "Chance it's cancelled: about 15%". "About", because it is an estimate.
 - Below 1%: "under 1%" in sentences and headlines. The front page's table keeps one decimal (0.8%), where the numbers line up.
 - From 1% to 10%: whole numbers in headlines ("about 3%"), one decimal in the table and in the averages for all airlines (1.6%). The approved lines write the delay averages whole, with "about" ("about 8% for departures and 5% for arrivals").
-- A chance is never "0%". Below 1%, it reads "under 1%".
+- A flight's chance is never "0%". Below 1%, it reads "under 1%".
 - A bad week is named with its dates.
 - Every count on a page uses the same flights: each flight whose ending is known. So the history line, the "Worked out from" line and the strip agree (LO 155: 22, not the 20 flights that are also two days past, C4). One exception, decided on 2026-11-17: a number marked cancelled on a day its flight flew under another number. Its "so far" line and its chance count that day as flown (C2), while its strip keeps the number's own mark, with the twin line under that day.
 - History lines give counts, not percentages ("22 flights · none cancelled"). The chance is the headline's job.
@@ -604,7 +604,7 @@ Plain words, written to the same reading test; "I" allowed as now. The page open
 9. What is being tested next: the four named signs and their test, with the gate quoted in full, as on the built page. Its opening sentence there, "No figure is given for one flight yet.", becomes untrue and goes.
 10. How it's built, for the technical reader, and the code link.
 
-Only the opening paragraph and section 1 have approved words. Sections 2 to 10 are drafted in the build and approved by me at the hand check, before the first upload (my decision, 2026-11-17). Their text on the built page was written for the 2026-11-12 rules, and several of its sentences become untrue (no delay figures; every figure a range; the labels' old names). For the drafter:
+Only the opening paragraph and section 1 have approved words. Sections 2 to 10 are drafted in the build and approved by me at the hand check, before the first upload (my decision, 2026-11-17). Their text on the page built before q27 was written for the 2026-11-12 rules, and several of its sentences became untrue (no delay figures; every figure a range; the labels' old names). For the drafter:
 - Section 9 keeps the gate's text as the built page has it, bar its first sentence.
 - The page says that the delay chance counts only flights that flew.
 - It says once that airline names are spelled as the airport spells them.
@@ -671,7 +671,7 @@ What changed on 2026-11-17 is what the pages say. A flight page now gives a chan
 
 - A chance is an estimate from past flights, not a promise. Every page says so in its footer and links to "What the numbers mean", which defines "cancelled" and "delayed".
 - A flight page that gives a chance says what it was worked out from: the flight's own history with its counts, its airline's history, and how soon it leaves. History lines give counts, not percentages.
-- A chance is never "0%". Below 1%, it reads "under 1%".
+- A flight's chance is never "0%". Below 1%, it reads "under 1%".
 - When one bad week is behind a flight's or an airline's cancellations, the page gives its dates.
 - Delays under an hour are never counted.
 - Every page says when it was last updated, and a flight page tells the reader to check with their airline.
@@ -839,7 +839,7 @@ Its tests:
 
 ## Five outsiders (q13)
 
-The script in `docs/timeline.md` quotes v1's words, and the tasks I approved on 2026-11-12 quote "1 in N" with its range. Approved by me, 2026-11-17, for the new pages: the tasks and the watch list below, with at least two of the five readers not technical and near the test reader's age.
+The script that stood in `docs/timeline.md` quoted v1's words, and the tasks I approved on 2026-11-12 quote "1 in N" with its range. Approved by me, 2026-11-17, for the new pages: the tasks and the watch list below, with at least two of the five readers not technical and near the test reader's age.
 
 Tasks, the owner watching and saying nothing:
 1. "Your daughter is flying tomorrow afternoon. Here is the site, on your phone. Tell me what it tells you about her flight." (A flight scheduled about a day ahead is picked just before the session.)

@@ -219,7 +219,7 @@ Top to bottom:
 5. In smaller type: the number's "so far" line, its airline's, the all-airlines line, the freshness line ("Updated 3 hours ago. Things may have changed, so check with your airline.") and the link "What the numbers mean".
 6. What belongs to the traveller's day alone: "Also sold as …" and its "What changed" list. The day stands once, here at the top; its mark in the strip links here.
 7. The strip, "LO 155, day by day": one mark per day of the number, with its key (`docs/flight-lookup.md`, "Words").
-8. The later days still ahead, soonest first. Each: its date, "scheduled to land at 19:45", its label, its two chances on one line, then its own lines.
+8. The later days still ahead, soonest first. Each: its date, "scheduled to land at 19:45", its label, its chances on one line (the cancellation chance alone on a day already DELAYED), then its own lines.
 9. The past days, newest first.
 
 A day's lines, in order: the date written out ("Monday 16 November"); the time line ("scheduled to land at 19:20"; with an expected time, or on a past day that landed or left, the forms under "Labels"); the city when the page has more than one ("to Athens (ATH)"); the main label and the second label; the label's line; the notice sentence under CANCELLED; the changed-back line; the twin line; "Also sold as …" (a day can carry both); the note on expected times, once a page; then "What changed" in a `<details>` element, open for a cancelled day and closed otherwise.
@@ -350,7 +350,7 @@ What q27 adds (built):
 - **The upload check** reads text. Its `SCANNED` set stays `.html`, `.css` and `.js`, although the upload then sends two more types; the font files and their licence are pinned by tests instead ("Tests and checks").
 - **The scripts.** `search.js` writes the two new search lines. `fromhere.js` moves the next day ahead to the top and writes "Updated N hours ago", and works both out again each time the page is shown again (`docs/flight-lookup.md`, "Pages").
 - **`docs/terms.md`.** My reading for these pages is already there (2026-11-17, its clause 4 paragraph). Two of its lines follow the build: the clause 8 line, which quotes `UNOFFICIAL`, and the end of the clause 4 paragraph, which describes the upload check's rules as they stand.
-- **Cost.** No new AWS service. Each upload sends five more files, the four fonts and their licence: five more PUT requests at $0.0055 per 1,000, about $0.00003, and 40,956 bytes more storage (`docs/publishing.md`, "Cost (monthly)"; prices not re-read for this update). An upload stays about half a cent. The mockup pages weigh about what the built ones do: the front page 146,117 bytes against 147,000 in the local build of 2026-11-17, the style sheet 22,787 against 14,203 (measured for this update).
+- **Cost.** No new AWS service. Each upload sends five more files, the four fonts and their licence: five more PUT requests at $0.0055 per 1,000, about $0.00003, and 40,956 bytes more storage (`docs/publishing.md`, "Cost (monthly)"; prices not re-read for this update). An upload stays about half a cent. The mockup pages weigh about what the built ones do: the front page 146,117 bytes against 147,000 in the v2 build of 2026-11-17 and 146,420 in the q27 build of 2026-11-18, the style sheet 22,787 against 14,203 and 27,668 (measured for this update).
 
 ## Tests and checks
 
@@ -372,7 +372,7 @@ New, each with a `scripts/mutation_check.py` entry:
 
 What q27 changes (built). The lists above describe the tests as they stand; each sentence, label and rule that changes takes its exact-text test and its mutation entry with it.
 
-- **The no-font rule.** `tests/test_timeline_style.py` (`test_nothing_loaded_from_elsewhere`, which the build replaced with `test_fonts_load_only_from_the_sites_own_folder`) refuses `@import`, `url(` and `font-face` anywhere in the sheet. New rule: `@import` is still refused; a `url(` may stand only inside an `@font-face` rule and must name a `.woff2` file of the site's own fonts folder that exists among the static files; no address with a scheme or a host, no `data:` address, no image. Mutations: a sheet that names a font on another host, and one that names an image, must fail.
+- **The no-font rule.** `tests/test_timeline_style.py` (`test_nothing_loaded_from_elsewhere`, which the build replaced with `test_fonts_load_only_from_the_sites_own_folder`) refused `@import`, `url(` and `font-face` anywhere in the sheet. New rule: `@import` is still refused; a `url(` may stand only inside an `@font-face` rule and must name a `.woff2` file of the site's own fonts folder that exists among the static files; no address with a scheme or a host, no `data:` address, no image. Mutations: a sheet that names a font on another host, and one that names an image, must fail.
 - **The font files**: their four names, sizes and SHA-256 pinned, and the licence's, so a changed or missing file fails a test and not an upload.
 - **The style tests for the built look** are rewritten for look A: the colour tokens and the text pairs that must clear 4.5:1, in the light scheme and in the dark one; a mark for every label, NO NEWS YET included; the header band's test goes with the band; the from-here table no longer stacks on a phone.
 - **One exact-text test** per label line, per notice rule 1 to 11 in both its forms, for "First on the list at", for each title form (one, two, three and five cities; a cut-short second spelling; an arrival), for "Also sold as" with one and with two numbers, for the footer's three lines, the page description and each page's lines in "Pages".
@@ -389,9 +389,9 @@ Markup and CSS; exact colors and spacing within the look rules; the chart's draw
 
 For q27:
 
-- The dark scheme's values, within the look's rule (paper and ink swapped, a lighter red) and the 4.5:1 test in both schemes. No mockup shows it; it ships with q27, and I look at it at the hand check.
+- The dark scheme's values, within the look's rule (paper and ink swapped, a lighter red) and the 4.5:1 test in both schemes. No mockup shows it; it shipped with q27, and I looked at it at the hand check (2026-11-17).
 - The day page, the cancelled-flights page and "How this works" in look A. The mockups show the front page and three flight pages only; the other pages take the same parts (the top line, sections under a heavy rule, tables, labels).
-- Where the font files sit in the built site, how long a browser may keep them, and whether the licence text is committed beside them (recommended: yes).
+- Where the font files sit in the built site, how long a browser may keep them, and whether the licence text is committed beside them (it is: `src/timeline/static/fonts/LICENSE.txt`).
 - How the search label and hint hide with the box when scripts are off. The mockups use one style rule (`:has()`); a wrapper that the script shows is sturdier.
 - How a second spelling of one city is folded into a title (the mockups: a name that is the beginning of another is named once).
 - Whether a title is marked whole as the airport's data. The upload check's word rules skip such spans, and the title now holds the site's own words ("to", "or", "other cities").

@@ -527,7 +527,7 @@ def worked_out(number: History, airline: History, spoken: str | None, ahead: boo
     """The line under a headline, in the form docs/flight-lookup.md picks: a number with 14 counted flights or more
     leads; below that its airline does ("mostly from"), and below 100 flights of its own, all airlines. `spoken` is
     the airline's spoken name, None for "its airline"; `listed_since` is whether a flight of the number is
-    scheduled after its last cancelled one."""
+    scheduled after its last cancelled one and was still on the airport's list after that one's time."""
     num = data(number.name)
     if number.flights >= MOSTLY_BELOW_NUMBER:
         whose = _whose(spoken, text, data)

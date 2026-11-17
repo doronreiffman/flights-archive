@@ -393,7 +393,7 @@ def front_page(cancelled: int, known: int, story: Row | None, recent: list[tuple
 
 ## Appendix A: "How this works" copy (verbatim; I review the first-person lines)
 
-Since q27 the page's text is in `views.how_it_works_page` (`src/timeline/views.py`), not here; this appendix holds the v2 copy of 2026-10-30.
+Since q27 the page's text is in `views.how_it_works_page` (`src/timeline/views.py`), with its opening and section 1 in `words.HOW_OPENING` and `words.WHAT_THE_NUMBERS_MEAN` (`src/timeline/words.py`), not here; this appendix holds the v2 copy of 2026-10-30.
 
 > ## Where the data comes from
 > The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.

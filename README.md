@@ -38,7 +38,7 @@ This project keeps that record. It saves every version of the board, writes down
 - **Collector**, live on AWS. A Lambda function in Tel Aviv checks every 2 minutes whether the board changed and downloads it when it did, about 4 times an hour. The archive starts on 27 October 2026 and has been continuous since 29 October.
 - **Archive.** Every board is stored exactly as received, and every version is kept for 10 years under S3 Object Lock (governance mode); the collector never overwrites a stored file. After every download it also writes a receipt: when it ran, what it got, which code version wrote it. As of 4 November 2026: 559 boards, covering 6,015 flight listings (a flight sold under several numbers counts once per number).
 - **Data model.** DuckDB turns the archive into Parquet tables: every change to every flight, retimed flights linked to their new slot where the board allows it, flight numbers that share a slot, times and check-in counters grouped as likely codeshares, and each first CANCELED sighting bracketed between the last board without it and the first board with it.
-- **Will It Fly?**, the history site, live at [dt4564wsgvijr.cloudfront.net](https://dt4564wsgvijr.cloudfront.net). A page for every flight number with the chance it's cancelled and the chance it's delayed an hour or more, from a simple blend of the number's, its airline's and the whole airport's records, each with what it was worked out from; then the number's days as a strip, and each change the airport's list showed. Delays under an hour are not shown, since the airport doesn't say whether its times mean leaving the gate or taking off. Also a page per day, every cancellation with its notice (a range or a lower bound where the records allow), and a search box. Static pages, rebuilt and uploaded by hand; search engines are asked not to list them, so visitors arrive by link.
+- **Will It Fly?**, the history site, live at [dt4564wsgvijr.cloudfront.net](https://dt4564wsgvijr.cloudfront.net). A page for every flight number with the chance it's cancelled and the chance it's delayed an hour or more, from a simple blend of the number's, its airline's and the whole airport's records, each with what it was worked out from; then the number's days as a strip, and each change the airport's list showed. A delay counts only at an hour or more, since the airport doesn't say whether its times mean leaving the gate or taking off. Also a page per day, every cancellation with its notice (a range or a lower bound where the records allow), and a search box. Static pages, rebuilt and uploaded by hand; search engines are asked not to list them, so visitors arrive by link.
 
 ## How it works
 
@@ -59,7 +59,7 @@ This project keeps that record. It saves every version of the board, writes down
 ## What's next
 
 - **A tested model** in place of the simple blend: one figure per flight for cancellation and one for delay, with a public check of how accurate it is.
-- **A site that rebuilds itself every night**, so its pages never go stale between hand uploads.
+- **A site that rebuilds itself every night**, so its pages no longer wait for a hand upload.
 - **Five watched sessions** with outside readers, at least two of them not technical, to find the lines people misread before the site is launched.
 
 ## Data and license
