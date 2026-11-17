@@ -236,25 +236,50 @@ def test_the_day_bars_take_their_colours_from_the_tokens():
 PHONE_WIDTH = 390
 
 
-def applies_on_a_phone(media: tuple[str, ...]) -> bool:
-    """Whether every at-rule in `media` holds at 390 px, in either colour scheme."""
+def applies(media: tuple[str, ...], width: int) -> bool:
+    """Whether every at-rule in `media` holds on a screen `width` px wide, in either colour scheme."""
     for at in media:
         if at == DARK:
             continue
         m = re.fullmatch(r"@media \((max|min)-width: (\d+)px\)", at)
         assert m, f"a media query the test does not read: {at}"
         bound = int(m.group(2))
-        if (m.group(1) == "max" and PHONE_WIDTH > bound) or (m.group(1) == "min" and PHONE_WIDTH < bound):
+        if (m.group(1) == "max" and width > bound) or (m.group(1) == "min" and width < bound):
             return False
     return True
 
 
+def applies_on_a_phone(media: tuple[str, ...]) -> bool:
+    return applies(media, PHONE_WIDTH)
+
+
 SIZE = re.compile(r"(?:^|\s)(\d*\.?\d+)(rem|px|em|%)(?=/|\s|$)")
+CLAMP = re.compile(r"clamp\(([^)]*)\)")
+
+
+def length(token: str, width: int) -> float:
+    """A rem, px or vw length in px on a screen `width` px wide."""
+    m = re.fullmatch(r"(\d*\.?\d+)(rem|px|vw)", token.strip())
+    assert m, token
+    value, unit = float(m.group(1)), m.group(2)
+    return {"rem": value * 16, "px": value, "vw": value * width / 100}[unit]
+
+
+def font_px(value: str, width: int) -> float | None:
+    """The size a `font-size` or `font` value sets on a screen `width` px wide; None for one relative to its parent."""
+    m = CLAMP.search(value)
+    if m:
+        lo, mid, hi = (length(t, width) for t in m.group(1).split(","))
+        return min(max(lo, mid), hi)
+    m = SIZE.search(value)
+    assert m, value
+    return None if m.group(2) in ("em", "%") else length(m.group(1) + m.group(2), width)
 
 
 def test_nothing_on_a_phone_under_13_px():
-    """docs/site-redesign.md, "Type": every size that can apply at 390 px is 13 px or more; a size relative to its
-    parent never shrinks it, and the root keeps the browser's 16 px that a rem counts from."""
+    """docs/site-redesign.md, "Type": every size that can apply at 390 px is 13 px or more, a size that shrinks with
+    the screen included at its floor; a size relative to its parent never shrinks it, and the root keeps the
+    browser's 16 px that a rem counts from."""
     assert "font-size" not in declared((), "html") and "font-size" not in declared((), ":root")
     sizes = []
     for at, sel, decls in RULES:
@@ -262,13 +287,28 @@ def test_nothing_on_a_phone_under_13_px():
             continue
         for prop in ("font-size", "font"):
             if prop in decls:
-                m = SIZE.search(decls[prop])
-                assert m, (at, sel, prop, decls[prop])
-                sizes.append((sel, float(m.group(1)), m.group(2)))
+                sizes.append((sel, decls[prop]))
     assert sizes
-    for sel, value, unit in sizes:
-        px = {"rem": value * 16, "px": value, "em": value * 13, "%": value / 100 * 13}[unit]
-        assert px >= 13, f"{sel}: {value}{unit}"
+    for sel, value in sizes:
+        floor = font_px(value, 0)  # a clamp() at its floor
+        if floor is None:
+            m = SIZE.search(value)
+            assert float(m.group(1)) / (100 if m.group(2) == "%" else 1) >= 1, f"{sel}: {value}"
+        else:
+            assert floor >= 13, f"{sel}: {value}"
+
+
+def test_the_total_fits_a_phone():
+    """docs/site-redesign.md, "On a phone": no sideways scrolling. The total's three figures keep their own line each
+    (nowrap), so on a phone they shrink with the screen and the row wraps rather than run past the edge. Measured
+    with headless Chrome: "12,345", "234" and "1.7%" fit one line at 360 px with the figures at 36 px."""
+    assert declared((), ".stat b").get("white-space") == "nowrap"
+    row = declared((PHONE,), ".stats")
+    assert (row.get("display"), row.get("flex-wrap")) == ("flex", "wrap")
+    figure = declared((PHONE,), ".stat b")["font-size"]
+    assert CLAMP.search(figure) and "vw" in figure
+    assert font_px(figure, 360) <= 36
+    assert font_px(figure, 320) >= 32  # still a figure, not a footnote
 
 
 def test_tabular_numbers():
@@ -361,6 +401,67 @@ def test_the_cancellations_table_stacks_on_a_phone_and_the_chance_table_does_not
     assert not [c for c in printed if "data-label" in c or "Notice" in c]
     stacking = {"display", "position", "clip-path", "content", "float"}
     assert not [(at, sel) for at, sel, decls in RULES if ".fromhere" in sel and stacking & decls.keys()]
+    # Nor does any rule a phone reads set the display of a table's parts, by element, outside the cancellations table.
+    table_part = re.compile(r"(?:^|[\s>+~])(?:table|thead|tbody|tr|th|td)(?![\w-])")
+    for at, sel, decls in RULES:
+        if applies_on_a_phone(at) and "display" in decls:
+            for part in parts(sel):
+                assert not table_part.search(part) or ".cancellations" in part, (at, part)
+
+
+def test_the_masthead_dot_is_not_read_aloud():
+    """The dot between the site's name and "Tel Aviv airport" is drawn by the sheet; its empty alternative text keeps
+    a screen reader from reading it."""
+    assert declared((), ".where::before").get("content") == '"\\00b7" / ""'
+
+
+def test_links_are_ink():
+    """docs/site-redesign.md, "Look A": links are ink with an underline, inside the soft lines too ("Also sold as",
+    the footer)."""
+    assert declared((), "a").get("color") == "var(--ink)"
+    link = re.compile(r"(?:^|[\s>+~])a(?:[:.\[]|$)")
+    for at, sel, decls in RULES:
+        for part in parts(sel):
+            if link.search(part) and "color" in decls:
+                assert decls["color"] == "var(--ink)", (at, part)
+
+
+def test_the_heavier_weight_words():
+    """docs/site-redesign.md, "Type": column heads, "Updated …", "What changed" and "Pick a day" are ordinary words in
+    the heavier weight."""
+    for sel in ("th", ".updated", "summary", ".days-h"):
+        assert declared((), sel).get("font-weight") == "600", sel
+
+
+def names(part: str) -> tuple[set[str], set[str], set[str]]:
+    """The classes, ids and element names a selector needs on a page, its :not(), attributes and pseudo parts aside."""
+    part = re.sub(r":not\([^)]*\)", "", part)
+    part = re.sub(r"\[[^\]]*\]", "", part)
+    part = re.sub(r"::?[\w-]+(?:\([^)]*\))?", "", part)
+    return (set(re.findall(r"\.([\w-]+)", part)), set(re.findall(r"#([\w-]+)", part)),
+            set(re.findall(r"(?:^|[\s>+~])([a-z][a-z0-9]*)", part)))
+
+
+@pytest.mark.parametrize("width", [1280, 1040, 390, 360])
+def test_find_your_flight_is_the_largest_line_on_the_front_page(width):
+    """The plan's Task 9: "Find your flight" is the largest line on the front page's first screen. Every rule whose
+    classes, ids and element names all stand on a front page (the views tests' own) counts, wherever on the page
+    it falls, so the label outsizes the total's figures too."""
+    from test_timeline_views import front  # the front page the views tests build
+    page = front()
+    on_page = ({c for m in re.finditer(r'class="([^"]*)"', page) for c in m.group(1).split()},
+               set(re.findall(r'\bid="([^"]*)"', page)), set(re.findall(r"<([a-z][a-z0-9]*)[\s>/]", page)))
+    sizes = {}
+    for at, sel, decls in RULES:
+        if sel.startswith("@") or not applies(at, width):
+            continue
+        for part in parts(sel):
+            if all(need <= have for need, have in zip(names(part), on_page)):
+                for prop in ("font-size", "font"):
+                    if prop in decls and font_px(decls[prop], width) is not None:
+                        sizes[part] = font_px(decls[prop], width)
+    find = sizes.pop(".find-l")
+    assert sizes and all(size < find for size in sizes.values()), (find, max(sizes.items(), key=lambda kv: kv[1]))
 
 
 # --- fonts (Task 7) -------------------------------------------------------------------------------------------------

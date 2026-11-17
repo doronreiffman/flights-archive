@@ -39,7 +39,7 @@ body {
 }
 p { margin: 0; }
 b { font-weight: 600; }
-a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible, summary:focus-visible, #search:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 /* The airport's own strings keep their published spacing ("ARKIA  ISRAELI  AIRLINES"). */
@@ -57,8 +57,10 @@ a:focus-visible, summary:focus-visible, #search:focus-visible { outline: 3px sol
 .wordmark a { text-decoration: none; }
 .wordmark a:hover { text-decoration: underline; text-decoration-thickness: 2px; }
 .where { font-size: 1.3125rem; line-height: 1.2; }
-.where::before { content: "\00b7"; margin-right: 10px; }
-.updated { margin-left: auto; color: var(--soft); font-size: 1.0625rem; line-height: 1.4; }
+/* The dot is the line's own decoration: empty alternative text keeps a screen reader from reading it, and a browser
+   without that syntax keeps the first declaration. */
+.where::before { content: "\00b7"; content: "\00b7" / ""; margin-right: 10px; }
+.updated { margin-left: auto; color: var(--soft); font-size: 1.0625rem; font-weight: 600; line-height: 1.4; }
 
 /* --- finding a flight leads the front page: its label is the largest line there, the box a plain box. The script
    shows the wrapper (#find) and hides the line that stands in its place without scripts (#find-off). ------------- */
@@ -358,9 +360,12 @@ details .quoted { margin-top: 2px; padding-top: 8px; border-top: 1px solid var(-
   .late { font-size: 1.125rem; }
   .note { font-size: 1rem; }
 
-  .stats { grid-template-columns: auto auto auto; justify-content: start; }
+  /* The total's figures shrink with the screen, so the three tiles keep one line at 360 px even with a five-digit
+     count ("12,345", "234", "1.7%" end 2 px inside the edge); narrower, or with longer figures, the row wraps rather
+     than pushing the page sideways. */
+  .stats { display: flex; flex-wrap: wrap; row-gap: 12px; }
   .stat { padding: 0 14px; font-size: 1.0625rem; }
-  .stat b { margin-bottom: 6px; font-size: 2.875rem; }
+  .stat b { margin-bottom: 6px; font-size: clamp(2rem, 10vw, 2.875rem); }
 
   h3 { font-size: 1.3125rem; }
   .story .changes { font-size: 1.125rem; }
