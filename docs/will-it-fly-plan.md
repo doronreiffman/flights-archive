@@ -171,7 +171,7 @@ The design leaves these to the builder. Where it gave a recommendation, the plan
 
 ## Questions for the owner
 
-Each task that depends on one is written to its recommendation, so no task waits. A different answer is folded in before that task starts. A bare line number (":562") is `docs/flight-lookup.md`'s.
+Answered by me on 2026-11-17: all eight as recommended, so each task stands as written. A bare line number (":562") is `docs/flight-lookup.md`'s.
 
 1. **The "Worked out from" line when the traveller's day carries no chances.** The check requires the line on any flight page that holds a chance (`docs/flight-lookup.md:817`). A traveller's day that is marked cancelled, removed early or already landed carries none (:562), but a later day ahead carries its own chances with "no 'Worked out from' line of its own" (:563). Such a page fails the check. Recommendation: the slot keeps the line, in its flight-ahead form, under that day's own lines, whenever any day ahead on the page carries chances. Tasks 11 and 12.
 2. **A day ahead that already departed or landed** (2 on the 2026-11-17 model). A day is ahead "whatever its label" (:557), and the slot's cases (:560-563) cover UPCOMING, cancelled and removed early only. Recommendation: it stays the traveller's day, with the past day's time line ("scheduled 19:45 · landed around 19:30 · LANDED"), no chances, and Question 1's rule for the line. Tasks 10 and 11.
