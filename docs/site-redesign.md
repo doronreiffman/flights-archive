@@ -5,7 +5,7 @@ The 2026-11-17 update keeps the grade.
 
 Status: design v2, 2026-10-30. Worked out with me over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Built 2026-10-30 (plan: `docs/site-redesign-plan.md`; what building changed: "Deviations" at the end); published 2026-10-30 (`docs/publishing.md`). It replaces the "Pages", "Wording", "How it is built" and "Tests and mutation checks" sections of `docs/timeline.md`, which now point here.
 
-Updated 2026-11-17 for q27, not built. That day I decided the redesign, "Will It Fly?" in look A (`docs/flight-lookup.md`, "Decided 2026-11-17", D10 to D12); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in (`docs/flight-lookup.md`, "Update"). Until q27 is built, the code and the live site follow the earlier text of this file (commit 7c0d374) and the look under "The look as built".
+Updated 2026-11-17 for q27, not built. That day I decided the redesign, "Will It Fly?" in look A (`docs/flight-lookup.md`, "Decided 2026-11-17", D10 to D12); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in (`docs/flight-lookup.md`, "Update"). Until q27 is built, the code and the live site follow the earlier text of this file (commit 7c0d374) and the look under "The look as built". Later the same day I answered every open word and question the update had listed (`docs/flight-lookup.md`, D13); what is still open is listed there, under "Words", "Still open".
 
 Mockups I approved for look and wording, with real data from the 2026-10-30 00:02 build: `docs/site-redesign/front-page-mockup.html` and `docs/site-redesign/flight-page-mockup.html` (open in a browser; the heading above each card is mockup chrome). Where a mockup and the rules below differ, the rules win. Known differences: the mockups title-case airline and airport names, leave out "last expected", the earliest-record and gap lines, "Times are Israel time" (front page), "Last updated", the story box's place in the page list, and use a footer that would fail the check.
 Those mockups show the site as designed on 2026-10-30. The 2026-11-17 design was worked out on four rounds of mockups by a Fable designer, kept outside the repository; the rules below carry what they settled.
@@ -23,7 +23,7 @@ The site is my portfolio piece for a job search: a recruiter or hiring manager c
 - A flight page answers for the traveller's own flight first: its days still ahead come first, soonest first, with the nearest day's chances on a phone's first screen; then the flight number's days as a strip; then past days, newest first.
 - Every line a traveller reads passes my test (2026-11-17): a 60-year-old checking her daughter's flight reads it aloud without pausing.
 - A hiring reader can see who built it and reach the code from every page's footer.
-- Clean on a phone (390 px wide, the width the mockups were measured at) and a laptop, light by default with a dark mode. Look A's mockups are light only ("Left to the builder", "Outside this design").
+- Clean on a phone (390 px wide, the width the mockups were measured at) and a laptop, light by default with a dark mode. Look A's dark scheme ships with q27 (my decision, 2026-11-17); the mockups are light only, so its values are derived by the look's rule and shown to me at the hand check.
 - Looks right with a few weeks of data and fills in as data grows, with no redesign.
 
 ## Non-goals
@@ -44,7 +44,7 @@ The site is my portfolio piece for a job search: a recruiter or hiring manager c
 
 ## Words (approved by me, 2026-11-17; they replace the words of 2026-10-30 where the two differ)
 
-The words that carry figures (the chances, the table, the total, the disclaimer) are in `docs/flight-lookup.md`, "Words", with how they were reached. This section and "Pages" hold the rest. The built site shows the 2026-10-30 words until q27 is built. Every line in the tables below was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code has them today, and passes.
+The words that carry figures (the chances, the table, the total, the disclaimer) are in `docs/flight-lookup.md`, "Words", with how they were reached. This section and "Pages" hold the rest. The built site shows the 2026-10-30 words until q27 is built. Every line in the tables below was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code has them today, and passes. Lines I approved later the same day, for the cases the first approval left open (`docs/flight-lookup.md`, D13), are marked "approved by me, 2026-11-17".
 
 - The site's name is "Will It Fly?", with "Tel Aviv airport" beside it. It replaces "Cancelled flights at Tel Aviv airport".
 - "Cancelled": not "CANCELED" and, since 2026-11-17, not "listed as cancelled". Where a sentence says when, it says "marked cancelled". "How this works" says once what it means: the airport's list marked the flight cancelled.
@@ -53,7 +53,7 @@ The words that carry figures (the chances, the table, the total, the disclaimer)
 - Times are Israel time; the footer of every page says "All times are Israel time."
 - Notice is given in whole hours: lower ends rounded down, upper ends rounded up (unchanged: hours only, no switch to days, so a range never mixes units). The time left to a flight is named in days and hours ("3 days away", "6 to 12 hours before a flight").
 - The airport's status words appear in lower case in the change lines: on time, delayed, landing, landed, departed, cancelled, early. "Final" and "not final" are the airport's words with no published definition; they appear in quotes, and a page that quotes them says once: "“Final” and “not final” are the airport's own words. It doesn't explain them." The note stands under the first list of changes that is already open and quotes them or, when none is open, under the first that quotes them.
-- An airline's name stands as the airport publishes it, with no note beside it: "(as the airport lists it)" is dropped on every page.
+- An airline's name stands as the airport publishes it, with no note beside it: "(as the airport lists it)" is dropped on every page. Inside a sentence it takes a spoken name ("Names").
 
 ### Who is a "flight"
 
@@ -78,9 +78,9 @@ Each flight on each day gets one main label, plus an optional second one. A labe
 
 Both sides of the UPCOMING comparison are the model's naive UTC values; comparing the Israel wall-clock `sched_local_final` instead turns the 9 evening flights of 29 October (scheduled 23:30 to 23:55 Israel time, last record 22:02 UTC) into UPCOMING.
 
-Second label: DELAYED, when the airport itself showed the status DELAYED in this flight row's own records. Shown beside the main label: "LANDED · DELAYED". It is the airport's word and carries no minutes. It is not the "delayed an hour or more" of the chances, which is counted from the airport's expected time (`docs/flight-lookup.md`, "The blend", Delays); the two meanings on one site are an open question ("Outside this design").
+Second label: DELAYED, by the hour rule (my decision, 2026-11-17): a day is labelled DELAYED when the airport's expected time is an hour or more after the scheduled time, the rule the counts and the chances use (`docs/flight-lookup.md`, "The blend", Delays). Shown beside the main label: "LANDED · DELAYED". No line stands under it. Until then the label was added whenever the airport's own records showed the status DELAYED, whatever the minutes; that word still shows in a list of changes ("Status delayed").
 
-Expected times. When the airport's last expected time differs from the scheduled time, a day's line shows both: "scheduled 19:45 · expected 19:55" (it was "scheduled to leave 16:45 · last expected 17:09"). No difference is computed on the line. For past days I approved "Landed around 19:55" and "Left around 17:38" on 2026-11-17. That they take the place of "scheduled 19:45 · expected 19:55" on a day marked LANDED or DEPARTED, where the round-4 reader paused at "expected", is a reading that awaits my confirmation, and the full line is open ("No approved words yet"). A page that shows an expected time carries one note, once, on the first day that shows one: "Expected times are the airport's own. Delays under an hour aren't counted, because the airport doesn't say whether its time means leaving the gate or taking off."
+Expected times and past days. When the airport's last expected time differs from the scheduled time, a day with no final word yet (ahead, NO NEWS YET or UNKNOWN) shows both: "scheduled 19:45 · expected 19:55" (it was "scheduled to leave 16:45 · last expected 17:09"). A past day that landed or left reads, approved by me, 2026-11-17: "Monday 16 November · scheduled 19:45 · landed around 19:55 · LANDED", and a departure "scheduled 17:30 · left around 17:38 · DEPARTED" (times made up). The scheduled time stays, because it is how the reader knows the flight, and both times show even when they are the same ("scheduled 19:45 · landed around 19:45"). No difference is computed on the line. "Landed around" and "left around" are my fix after round 4, where the reader paused at "expected" on a day marked LANDED; I confirmed their place on 2026-11-17. A page carries one note, once, on the first day that shows "expected", "landed around" or "left around": "Expected times are the airport's own. Delays under an hour aren't counted, because the airport doesn't say whether its time means leaving the gate or taking off."
 
 `uncanceled` NULL counts as false (it is NULL for the flights whose earliest record already showed them cancelled and that were never seen otherwise). When true, a line goes under whatever the final label is: "Marked cancelled for a while, then back on." If the final label is CANCELLED again: "Cancelled, back on, then cancelled again." The notice shows only under a final CANCELLED and comes from the model's cancellation fields as they are.
 
@@ -94,7 +94,7 @@ How long before its scheduled time the airport's list already showed the flight 
 |---|---|---|---|
 | 1 | `hi` is NULL, `lo` ≥ 60 | "Cancelled with at least 23 hours' notice. It was already cancelled when it first appeared." (h(lo, down)) | "23+ hours" |
 | 2 | `hi` is NULL, `lo` < 60 | "How much notice is unknown: it was already cancelled when it first appeared." | "unknown" |
-| 3 | `hi` < 0, not censored | "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." For an arrival, "should have landed". The amount follows the 2026-10-30 rule: "less than an hour" when −lo < 60; else "about an hour" when −hi < 120; else "about h(−hi, down) hours". The two shorter amounts are composed from that rule and the approved sentence; the approved words show "about 2 hours" only | "none" |
+| 3 | `hi` < 0, not censored | "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." For an arrival, "should have landed". The amount follows the 2026-10-30 rule: "less than an hour" when −lo < 60; else "about an hour" when −hi < 120; else "about h(−hi, down) hours". The two shorter amounts ("…less than an hour after it should have left.", "…about an hour after it should have left.") are approved by me, 2026-11-17 | "none" |
 | 4 | `hi` < 0, censored | "Cancelled with no notice: it was only marked cancelled after its scheduled time. (There's a gap in the records then.)" | "none" |
 | 5 | censored, `lo` ≥ 60 | "Cancelled between 7 and 50 hours before its scheduled time. (There's a gap in the records then.)" (h(lo, down) and h(hi, up)) | "7 to 50 hours" |
 | 6 | censored, 0 ≤ `lo` < 60 | "Cancelled up to 5 hours before its scheduled time. (There's a gap in the records then.)" (h(hi, up)) | "up to 5 hours" |
@@ -104,7 +104,7 @@ How long before its scheduled time the airport's list already showed the flight 
 | 10 | not censored, 0 ≤ `lo` < 60 ≤ `hi` | "Cancelled about an hour before its scheduled time." | "about an hour" |
 | 11 | not censored, `lo` < 0 ≤ `hi` | "Cancelled around its scheduled time." | "almost none" |
 
-- "1 hours" reads "1 hour", as before ("at least 1 hour's notice"). The single hour is composed: the approved lines show none. Boundaries: 0 and 60 belong to the row whose condition says "≥".
+- "1 hours" reads "1 hour": "Cancelled with at least 1 hour's notice."; in lists, "1+ hours" (approved by me, 2026-11-17). Boundaries: 0 and 60 belong to the row whose condition says "≥".
 - Rule 11's list form was "around its time" until round 4: under "Notice given" the reader expects an amount, so the list says "almost none" and the flight page keeps its sentence.
 - "At least" always follows "with": "Cancelled with at least …". "Cancelled at least …" would read as the banned "cancelled at".
 - On a phone the cancellations table stacks and its column heads are hidden, so each notice there is led by "Notice given: ". It was "Warning: ".
@@ -112,9 +112,12 @@ How long before its scheduled time the airport's list already showed the flight 
 
 ### What changed (the opened day on a flight page)
 
-One line per change, oldest first, the time in a left column. My word on 2026-11-17 was to keep the list as built, "already plain". After round 4 I approved the phrase "First on the list at 09:32". That it takes the place of "Earliest record (09:32)" at the head of a list is a reading that awaits my confirmation. On a phone a list of changes reads as lines ("Between 8 Nov 08:46 and 8 Nov 09:02 Cancelled"), not as two narrow columns.
+One line per change, oldest first, the time in a left column. My word on 2026-11-17 was to keep the list as built, "already plain", with one fix after round 4: its first line, "First on the list at 09:32", in place of "Earliest record (09:32)". I confirmed that place the same day. On a phone a list of changes reads as lines ("Between 8 Nov 08:46 and 8 Nov 09:02 Cancelled"), not as two narrow columns.
 
-- First line, on that reading: "First on the list at 09:32 · on time, terminal 3", where the built line reads "Earliest record (09:32)"; the round-4 reader would have said "first seen at 09:32". After the time comes what the first record has, of status, expected time (when it differs from the scheduled time), terminal, check-in desks and zone; empty ones are left out. A first record that already shows the flight cancelled reads "already cancelled" there, so its time reads as the listing's, never as a cancellation time. Two cases have no approved form ("No approved words yet").
+- First line: "First on the list at 09:32 · on time, terminal 3". Of the built "Earliest record (09:32)" the round-4 reader would have said "first seen at 09:32". After the time comes what the first record has, of status, expected time (when it differs from the scheduled time), terminal, check-in desks and zone; empty ones are left out. Three more forms, approved by me, 2026-11-17:
+  - A first record on another day than the flight's carries its date: "First on the list on 14 Nov at 19:46 · “not final”, terminal 3".
+  - A first record that is the records' own first list, or the first after a gap, says "already": "Already on the list at 20:04 · landed, expected to land at 19:18, terminal 3"; with a date, "Already on the list on 27 Oct at 20:04 · on time, terminal 3". The flight was on the airport's list before the records could see it, so "first on the list" would be untrue for it.
+  - A first record that already shows the flight cancelled reads "already cancelled" in the status's place ("Already on the list at 20:04 · already cancelled, terminal 3"), so its time reads as the listing's, never as a cancellation time.
 - A change whose record came within an hour of the flight's previous appearance (`prev_observed_at`: the last sighting of that appearance, an unchanged download included, R9): that record's time, "17:32 · Expected to leave at 17:38 instead". An appearance with no change is not a line, so the previous line can be older than `prev_observed_at`.
 - More than an hour (`GAP_HOURS`) since `prev_observed_at`: "Between 27 Oct 20:24 and 14:29 · Check-in desks 345-348, zone B" (TO 3459, on its 29 October row). A time in the change list carries its date only when it differs from the row's day.
 - The cancellation: always a range, "Between 19:16 and 19:32 · Cancelled", never a single time.
@@ -125,26 +128,19 @@ One line per change, oldest first, the time in a left column. My word on 2026-11
 
 A number's partners are the other numbers of its flight under C1 in `docs/flight-lookup.md` that the list showed with the same expected time, terminal and check-in desks (`partners()` in `src/timeline/flights.py`). A number joined by its airline or desks alone is not one; when it is marked cancelled in a flight that is not, it gets the twin line (`docs/flight-lookup.md`, "Words", Flight page: other situations).
 
-Per day, among that day's lines on the flight page: "Also sold as LY 9255 (probably the same plane)." With two partners: "Also sold as LY 9252 and LY 9255 (probably the same plane)." It replaces "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)."; the reason leaves the flight page for "How this works". Each number links to its own page at that day's anchor. Partners change between days: of the 725 flight numbers scheduled on more than one day, 64 had two different non-empty partner lists (79 if a day with no partners counts as a list of its own), 2026-10-30. "Probably": the grouping is inferred, and arrivals with no desks can merge two flights.
+Per day, among that day's lines on the flight page: "Also sold as LY 9255 (probably the same plane)." With two partners: "Also sold as LY 9252 and LY 9255 (probably the same plane)." With three or more: "Also sold as LY 9252, LY 9255 and DL 7426 (probably the same plane)." (approved by me, 2026-11-17). It replaces "Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)."; the reason leaves the flight page for "How this works". Each number links to its own page at that day's anchor. Partners change between days: of the 725 flight numbers scheduled on more than one day, 64 had two different non-empty partner lists (79 if a day with no partners counts as a list of its own), 2026-10-30. "Probably": the grouping is inferred, and arrivals with no desks can merge two flights.
 
 ### Names
 
-- Airline names exactly as the airport publishes them, double spaces included ("ARKIA  ISRAELI  AIRLINES", "K.L.M.", "ROYAL AUSTALIAN AIR FORCE"). My call of 2026-10-30 stands: title case mangles the published names, and correcting them would change the source's text. The note "(as the airport lists it)" is dropped (round 4). How an airline is named inside a sentence ("LOT's history") is open (`docs/flight-lookup.md`, "No approved words yet").
+- Airline names exactly as the airport publishes them, double spaces included ("ARKIA  ISRAELI  AIRLINES", "K.L.M.", "ROYAL AUSTALIAN AIR FORCE"). My call of 2026-10-30 stands: title case mangles the published names, and correcting them would change the source's text. The note "(as the airport lists it)" is dropped (round 4). Inside a sentence an airline takes a spoken name from a short list kept by hand ("LOT", "Lufthansa", "El Al"), and "its airline" when it has none (approved by me, 2026-11-17). The list itself is proposed by the build and approved by me (`docs/flight-lookup.md`, "Still open").
 - Airports by city and code: "Warsaw (WAW)". Cities title-cased (every current city is plain capitals).
 - A flight's title, on its page, in the search list and in the story box: "LO 155 · Warsaw to Tel Aviv" for an arrival, "WZ 016 · Tel Aviv to Moscow" for a departure.
 - A number that has gone to more than one city names them (round 4; the built title, "LH 697, from Tel Aviv", left the reader asking "to where?"): "LH 697 · Tel Aviv to Athens or Frankfurt"; three cities, "Tel Aviv to Athens, Larnaca or Munich"; more, "Tel Aviv to Vitoria, Pristina or 3 other cities"; an arrival, "LH 682 · Munich or Frankfurt to Tel Aviv". The newest day's city comes first. 27 numbers in the 2026-11-17 build have more than one city.
 - Two titles of that build carry the airport's own odd data: "H4 238 · Tel Aviv to Bucharest", where the list also holds a cut-short second spelling, "Bucharest (bane", and "UA 091A · Newark or Ben Gurion to Tel Aviv". The mockups name a city once when one spelling is the beginning of the other.
 
-### No approved words yet
+### Still open
 
-Each item is a line a traveller would read, or a case with no line. None is written here. Each waits for me ("Outside this design, for me"). The list for the figures' words is in `docs/flight-lookup.md`.
-
-1. **"First on the list at 09:32": its place, and two cases.** That the phrase opens a list of changes awaits my confirmation. A first record on another day than the row's: the built line dates it ("Earliest record (14 Nov 19:46)"), and the approved form has a time only. And a first record that is the record's own first list, or the first after a gap: the flight was on the airport's list before then, so "first on the list" would say more than the record knows. The built words, "Earliest record", claim only what the record holds.
-2. **A past day's time line.** I approved "Landed around 19:55" and "Left around 17:38" for past days. Not recorded: whether they take the place of "scheduled 19:45 · expected 19:55" on a day labelled LANDED or DEPARTED, which is the reading that awaits my confirmation; whether the scheduled time stays beside them; what a landed day reads when the two times are the same; and where the note on expected times then stands.
-3. **Where "Updated" stands.** The approved words put the line on the front page and on flight pages. My terms reading says every page says when it was last updated (`docs/terms.md`, clause 4), and so does the disclaimer.
-4. **The front page with scripts off.** The search box, its label and its hint are hidden, and the introduction still says "Look up your flight"; the day list is then the only way in.
-5. **The label DELAYED beside "delayed an hour or more".** The disclaimer defines "delayed" as an hour or more by the expected time. The label is the airport's own word, whatever the minutes.
-6. **Proposed on the mockups, not approved.** The browser-tab title ("Pages", Front page), and a one-city departure's "to City (CODE)" under its title ("Pages", Flight page).
+Every line this section listed as without approved words on 2026-11-17 has them now, in the sections above and in "Pages". What remains is listed in `docs/flight-lookup.md` ("Words", "Still open"): the list of spoken names for airlines, the text of "How this works", sections 2 to 10, and one composed line. All three are for my approval at the hand check during the build.
 
 ## Pages
 
@@ -155,11 +151,26 @@ Every page: `<meta name="robots" content="noindex">` until the launch decision (
 | Where | Words |
 |---|---|
 | Top | **Will It Fly?** · Tel Aviv airport |
-| Under it, on the front page and flight pages | Updated 3 hours ago |
+| Under it, on every page | Updated 3 hours ago |
 | The same, without scripts | Updated 17 Nov at 09:46 |
+| Browser tab | the page's own title |
 | Footer | "Footer", below |
 
-The site's name links to the front page; on the front page it is the page's `<h1>`. "Updated N hours ago" is written by the page's script from the time of the last sighting of the board (`docs/flight-lookup.md`, "Pages", `fromhere.js`); the build writes the date-and-time form, which stands when scripts are off.
+The site's name links to the front page; on the front page it is the page's `<h1>`.
+
+"Updated" stands on every page (my decision, 2026-11-17). The first approval named the front page and flight pages; my terms reading says every page says when it was last updated (`docs/terms.md`, clause 4), and so does the disclaimer. The page's age is written by the page's script from the time of the last sighting of the board (`docs/flight-lookup.md`, "Pages", `fromhere.js`); the build writes the date-and-time form, which stands when scripts are off. Its forms (the third is the first approval's; the others are approved by me, 2026-11-17):
+
+| How old the page is | Words |
+|---|---|
+| Under an hour | Updated less than an hour ago |
+| From 1 hour | Updated 1 hour ago |
+| From 2 to 23 hours, in whole hours rounded down | Updated 3 hours ago |
+| From 24 hours | Updated more than a day ago |
+| From 48 hours, in whole days rounded down | Updated more than 2 days ago |
+
+"More than" keeps an old page from sounding fresher than it is.
+
+The browser tab and a shared link show the page's own title (approved by me, 2026-11-17): "Will It Fly? Tel Aviv airport (Ben Gurion), unofficial" on the front page, a flight's title on its page ("LO 155 · Warsaw to Tel Aviv"), and "Monday 16 November", "Cancelled flights" and "How this works" on the others.
 
 ### Front page (`index.html`)
 
@@ -175,17 +186,18 @@ Top to bottom:
    | Under the box | Your flight number is on your ticket or booking email. |
    | Search, many matches | 12 more. Keep typing to narrow it down. |
    | Search, nothing found | No flight found. Check the number, or try a city. Flights show up here about 3 days before they leave. |
+   | Without scripts, in the box's place | To find your flight, pick its day below. |
 
-   The label is the largest line on the first screen. The order of results is unchanged: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number; up to 10 results as links to flight pages, each by its title. The search needs JavaScript; without it the box, its label and its hint are hidden, and the day list (item 8) reaches every flight. `search.js` writes the two search lines; today it writes "N more: type more of the number or city" and nothing when no flight matches.
+   The label is the largest line on the first screen. The order of results is unchanged: exact flight number (code and number, or number alone), then flight numbers starting with the query, then cities and airport codes starting with it; within each, by airline and number; up to 10 results as links to flight pages, each by its title. The search needs JavaScript. Without it the box, its label and its hint are hidden, and in the box's place stands "To find your flight, pick its day below.", whose last words link to the day list (item 8), which reaches every flight (approved by me, 2026-11-17). `search.js` writes the two search lines; today it writes "N more: type more of the number or city" and nothing when no flight matches.
 3. The introduction: "Look up your flight to see the chance it's cancelled or delayed an hour or more. Based on every flight at Ben Gurion Airport since 27 October."
 4. "Chance of cancellation, by how soon you fly": the table of six rows, the line under it and the delay line (`docs/flight-lookup.md`, "Words", Front page: the table).
 5. The total: three tiles, the sentence, the late line and the left-out line (`docs/flight-lookup.md`, "Words", Front page: the total).
-6. One flight's story, under the heading "A recent cancellation, step by step": the flight's title as a link to its page ("WZ 016 · Tel Aviv to Moscow"), its day ("Tuesday 17 November · scheduled to leave at 05:35"), and its full list of changes in the "What changed" words. Which flight is unchanged: among flights labelled CANCELLED by C10, the most recent with a non-censored notice (rules 3, 8 to 11); if none, the one with the most change lines; ties by scheduled time, then flight number; told through the number of C9.
+6. One flight's story, under the heading "A recent cancellation, step by step": the flight's title as a link to its page ("WZ 016 · Tel Aviv to Moscow"), its day ("Tuesday 17 November · scheduled to leave at 05:35"), and its full list of changes in the "What changed" words. Which flight is unchanged: among flights labelled CANCELLED by C10, the most recent with a non-censored notice (rules 3, 8 to 11); if none, the one with the most change lines; ties by scheduled time, then flight number; told through the number of C9. One more rule (my decision, 2026-11-17): the picker skips a flight first listed after its own scheduled time. On 17 November the story was WZ 016, scheduled to leave at 05:35 and first on the list at 09:32, whose steps make no sense read aloud. The picker is in `src/timeline/flights.py`, which is not a frozen file.
 7. "Recent cancellations": the 10 most recent cancelled flights by scheduled time, upcoming ones included. Columns: Date · Flight · Route · Notice given. A route reads "Tel Aviv to Moscow (ZIA), scheduled to leave at 05:35". Each row links to its day on the flight page. Under it the link "All cancelled flights". With none: "No cancelled flights so far." On a narrow screen each entry stacks (flight and date, then route, then "Notice given: " and the notice).
 8. "Flights each day": one line per day for the last 14 days with flights plus the days ahead, each a link to its day page, with the day's flights drawn as a thin bar and the numbers in text beside it ("370 flights · 8 cancelled · 190 unknown"), never in colour alone. Marks beside a day: "today" for the day of the last record (Israel date); "upcoming" for a later day (it was "ahead"); "upcoming · not all listed yet" for a later day the `partial` rule flags; "some flights missing" for a past day it flags (it was "incomplete"). Under it, "Pick a day:" and every day the site has, linked, so no flight is out of reach without JavaScript. The round-4 reader paused at "unknown" in a day's line ("Unknown what?"). It stands as approved: it is the label UNKNOWN's own word, and a plainer one would have to change in every place at once.
 9. Footer. The built-by line that stood above it is dropped: it is in the footer's links.
 
-In the `<head>`: `<title>` "Will It Fly? Tel Aviv airport (Ben Gurion), unofficial" (proposed, not approved: it is the round-4 mockup's, and no approved line gives a browser-tab title); `<meta name="description">` and Open Graph `og:title`, `og:description`, `og:type` (no image). The description, not shown on the page: "Look up a flight at Ben Gurion Airport to see the chance it's cancelled or delayed an hour or more. Unofficial. Built by [owner's wording]."
+In the `<head>`: `<title>` "Will It Fly? Tel Aviv airport (Ben Gurion), unofficial" (approved by me, 2026-11-17; "Every page"); `<meta name="description">` and Open Graph `og:title`, `og:description`, `og:type` (no image). The description, not shown on the page: "Look up a flight at Ben Gurion Airport to see the chance it's cancelled or delayed an hour or more. Unofficial. Built by [owner's wording]."
 
 ### Flight page (`flight/<airline><number>-<D|A>.html`, one per flight number and direction)
 
@@ -199,9 +211,10 @@ Top to bottom:
    | Title | **LO 155 · Warsaw to Tel Aviv** |
    | Under the title | LOT POLISH AIRLINES · from Warsaw (WAW) · ורשה |
    | Under the title, a number with more than one city | LUFTHANSA |
+   | Under the title, a departure with one city | [AIRLINE] · to Paris (ORY) · [the city in Hebrew] |
 
-   The Hebrew city is `<span lang="he" dir="rtl">`, when the page has one city. A departure with one city would name where it goes, "to Athens (ATH)", as each day of a number with several cities does. Under the title that form is proposed, not approved: no approved line or mockup shows a one-city departure.
-3. The traveller's day, the nearest day still ahead: "**Tuesday 17 November** · scheduled to land at 19:45 · UPCOMING". When no day is ahead: "LH 694 isn't on the airport's list right now. The last one was on Tuesday 10 November."
+   The Hebrew city is `<span lang="he" dir="rtl">`, when the page has one city. A departure names where it goes, "to Paris (ORY)", as each day of a number with several cities does ("to Athens (ATH)"). Under the title that form is approved by me, 2026-11-17.
+3. The traveller's day, the nearest day still ahead: "**Tuesday 17 November** · scheduled to land at 19:45 · UPCOMING". When no day is ahead: "LH 694 isn't on the airport's list right now. The last one was on Tuesday 10 November." While that last flight is still on the airport's list the line reads "LH 694 has no upcoming flight on the airport's list right now. The last one was on Tuesday 10 November." (`docs/flight-lookup.md`, "Words", Flight page: other situations).
 4. The headline slot: the two chances and the "Worked out from" line, closed by a heavy rule (`docs/flight-lookup.md`, "Words" and "Pages").
 5. In smaller type: the number's "so far" line, its airline's, the all-airlines line, the freshness line ("Updated 3 hours ago. Things may have changed, so check with your airline.") and the link "What the numbers mean".
 6. What belongs to the traveller's day alone: "Also sold as …" and its "What changed" list. The day stands once, here at the top; its mark in the strip links here.
@@ -209,7 +222,7 @@ Top to bottom:
 8. The later days still ahead, soonest first. Each: its date, "scheduled to land at 19:45", its label, its two chances on one line, then its own lines.
 9. The past days, newest first.
 
-A day's lines, in order: the date written out ("Monday 16 November"); the time line ("scheduled to land at 19:20", or with an expected time, "Labels"); the city when the page has more than one ("to Athens (ATH)"); the main label and the second label; the label's line; the notice sentence under CANCELLED; the changed-back line; "Also sold as …" or the twin line; the note on expected times, once a page; then "What changed" in a `<details>` element, open for a cancelled day and closed otherwise.
+A day's lines, in order: the date written out ("Monday 16 November"); the time line ("scheduled to land at 19:20"; with an expected time, or on a past day that landed or left, the forms under "Labels"); the city when the page has more than one ("to Athens (ATH)"); the main label and the second label; the label's line; the notice sentence under CANCELLED; the changed-back line; "Also sold as …" or the twin line; the note on expected times, once a page; then "What changed" in a `<details>` element, open for a cancelled day and closed otherwise.
 
 - One day per row of the model's `flights` table (a retime chain is one row), on the day of `sched_local_final`. A retimed row says "Moved to a new scheduled time" with both times.
 - Anchors: every row has one, in full form from `sched_local_first` and the airport, `#2026-10-28-1630-KUT`, so it never changes when a same-number flight appears later (IZ 992 has two rows on 30 October; LY 5115 left twice at 16:30 on 28 October, to Batumi and Kutaisi). Every link to a row carries its anchor. A link to a closed row scrolls to it; the design does not promise the browser opens it.
@@ -248,7 +261,7 @@ Plain words, short sections, written to the same reading test; "I" allowed. It o
 
 > Ben Gurion Airport publishes its list of departures and arrivals on data.gov.il, the government's open-data site. Since 27 October 2026, a small program I built has checked that list every 2 minutes and saved each new version. From that history, this site works out the chance that a flight is cancelled or delayed an hour or more. It's my own project, not an official airport site, and it isn't live: each page says when it was last updated.
 
-Its first section is "What the numbers mean", the disclaimer every page links to. That text, the outline of the sections after it, and which of them still have no approved words are in `docs/flight-lookup.md` ("Words", "Pages"). The page still carries the full `ATTRIBUTION`, the gaps in the records from the model, and the code link.
+Its first section is "What the numbers mean", the disclaimer every page links to. That text, the outline of the sections after it, and the rules for drafting them are in `docs/flight-lookup.md` ("Words", "Pages"). Sections 2 to 10 are drafted in the build and approved by me at the hand check (my decision, 2026-11-17). The page still carries the full `ATTRIBUTION`, the gaps in the records from the model, and the code link.
 
 ### Footer (every page)
 
@@ -283,7 +296,7 @@ My pick among three looks by a Fable designer (`docs/flight-lookup.md`, D10): a 
 - **"Flights each day"** is a list of links, so a long line wraps on a phone: the date, the counts in text, and a thin bar with the cancelled part as a red block standing on it and the unknown part outlined. The day list under it is set as a calendar, seven days to a row (three on a phone).
 - **On a phone.** No sideways scrolling. The cancellations table stacks. A list of changes reads as lines. The top line keeps the site's name and "Tel Aviv airport" on one line with "Updated" under them.
 - **Keyboard focus** shows a 3 px outline in ink.
-- **Dark scheme.** The mockups are light only. The designer's note for look A: paper and ink swap and the red lightens (its example, #ff6b5a on #121212, is 6.69:1); no colour depends on a light ground.
+- **Dark scheme.** It ships with q27 (my decision, 2026-11-17). The mockups are light only, so its values are derived by the look's rule and shown to me at the hand check: paper and ink swap and the red lightens (the designer's example, #ff6b5a on #121212, is 6.69:1); no colour depends on a light ground.
 
 No framework, no images, nothing loaded from elsewhere, no script but `search.js` (the front page) and `fromhere.js`. Charts are SVG written by Python.
 
@@ -359,10 +372,11 @@ What q27 changes (not built). The lists above describe the tests as they stand; 
 
 - **The no-font rule.** `tests/test_timeline_style.py` (`test_nothing_loaded_from_elsewhere`) refuses `@import`, `url(` and `font-face` anywhere in the sheet. New rule: `@import` is still refused; a `url(` may stand only inside an `@font-face` rule and must name a `.woff2` file of the site's own fonts folder that exists among the static files; no address with a scheme or a host, no `data:` address, no image. Mutations: a sheet that names a font on another host, and one that names an image, must fail.
 - **The font files**: their four names and sizes pinned, so a changed or missing file fails a test and not an upload.
-- **The style tests for the built look** are rewritten for look A: the colour tokens and the text pairs that must clear 4.5:1, in the light scheme and in the dark one once it exists; a mark for every label, NO NEWS YET included; the header band's test goes with the band; the from-here table no longer stacks on a phone.
+- **The style tests for the built look** are rewritten for look A: the colour tokens and the text pairs that must clear 4.5:1, in the light scheme and in the dark one; a mark for every label, NO NEWS YET included; the header band's test goes with the band; the from-here table no longer stacks on a phone.
 - **One exact-text test** per label line, per notice rule 1 to 11 in both its forms, for "First on the list at", for each title form (one, two, three and five cities; a cut-short second spelling; an arrival), for "Also sold as" with one and with two numbers, for the footer's three lines, the page description and each page's lines in "Pages".
 - **The flight page's order**: the nearest day ahead at the top, once; the strip; later days ahead soonest first; past days newest first; the two once-a-page notes in their places.
 - **Search** (run under Node): the "more" line, the "No flight found" line, and titles in the new form.
+- **The lines and rules of my answer of 2026-11-17**: the first line's forms (a time; a date; "Already on the list" for a first record in the records' first list or the first after a gap; "already cancelled"); a past day's time line, the same time twice included; DELAYED at 59 and at 60 minutes; "Updated" on every page; the line that stands in the search box's place without scripts; the story picker skipping a flight first listed after its own scheduled time; each page's browser-tab title.
 - **Publish**: four uploads, each with its content type (`tests/test_publish.py`).
 - **Retired** with the words they tested: "(as the airport lists it)", "last expected", the 2026-10-30 warning texts, the built-by line above the footer, the header band.
 - **The upload check's rules**: `docs/flight-lookup.md`, "Tests and checks".
@@ -373,33 +387,29 @@ Markup and CSS; exact colors and spacing within the look rules; the chart's draw
 
 For q27:
 
-- The dark scheme's values, within the look's rule (paper and ink swapped, a lighter red) and the 4.5:1 test in both schemes. No mockup shows it, so I look at it before the first upload.
+- The dark scheme's values, within the look's rule (paper and ink swapped, a lighter red) and the 4.5:1 test in both schemes. No mockup shows it; it ships with q27, and I look at it at the hand check.
 - The day page, the cancelled-flights page and "How this works" in look A. The mockups show the front page and three flight pages only; the other pages take the same parts (the top line, sections under a heavy rule, tables, labels).
 - Where the font files sit in the built site, how long a browser may keep them, and whether the licence text is committed beside them (recommended: yes).
 - How the search label and hint hide with the box when scripts are off. The mockups use one style rule (`:has()`); a wrapper that the script shows is sturdier.
 - How a second spelling of one city is folded into a title (the mockups: a name that is the beginning of another is named once).
 - Whether a title is marked whole as the airport's data. The upload check's word rules skip such spans, and the title now holds the site's own words ("to", "or", "other cities").
 - Dates: written out on a flight page and a day page ("Tuesday 17 November"), short in lists ("Tue 17 Nov"), as on the mockups.
+- Which first records read "Already on the list". Recommended: a first record in the records' first list, or in the first list after a gap that the model marks.
 
 ## Outside this design, for me
 
-- Freshness: "Last updated" comes from a hand-run build and publish (`scripts/publish.sh`). A portfolio page showing a weeks-old date looks abandoned; a scheduled rebuild is q2/q5.
-- Link-preview image: a `.png`, a new file type for the allowlist and the check (q17).
-- Search engines: `noindex` stays until the launch decision (q17).
-- The five outsider sessions (q13): their tasks quote v1 wording, and their stop rule ("fewer than two of five name a real use") was written for a product. The review proposes asking each person what the site is, who made it and what they think that person can do, with a traveler-use question kept as a probe, not a stop. Rewrite the script before any session.
+The questions this section held, from 2026-10-30 and from the q27 update, are settled (`docs/flight-lookup.md`, D13). What is left is mine to do:
 
-For q27:
+- At the hand check during the build, before the first upload: look at the built pages on a phone, light and dark, and approve the list of spoken names and the text of "How this works", sections 2 to 10.
+- Freshness: the scheduled rebuild comes next after q27 (q5, then q2 and q23). Until then every page says how old it is.
+- The link-preview image (q17) waits for the new look, and `noindex` stays until the launch decision.
+- The five outsider sessions (q13), on the script I approved on 2026-11-17 (`docs/flight-lookup.md`, "Five outsiders").
 
-- Every item under "No approved words yet", here and in `docs/flight-lookup.md`.
-- The dark scheme: the goal of 2026-10-30 stands and look A has no dark mockup. Either q27 ships with a dark scheme I have looked at, or light only first.
-- Look at the built pages on a phone before the first upload.
-- `docs/publishing.md` (three uploads by file type; the file types the check reads), `README.md` and `docs/README.md`, which describe the site as built.
-- Whether the round-4 mockups go into the repository, as the two of 2026-10-30 did.
-- The typeface's release and licence, read at the source before the first upload ("Unverified").
+Settled on 2026-11-17: the dark scheme ships with q27; the round-4 mockups stay out of the repository; the typeface's release and licence are read at their source, as a task of the plan; `docs/publishing.md`, `README.md` and `docs/README.md` are brought up by one docs task at the plan's end.
 
 ## Unverified
 
-- The typeface releases (`@ibm/plex-sans-condensed@2.0.0`, `@ibm/plex-sans-hebrew@1.1.0`), their dates, and that the licence keeps the name "Plex" for unchanged files are the designer's note. They were not re-read from the releases or the licence text for this update. What was read from the four files: their sizes, their character counts, IBM's copyright line, the licence notice and the family names.
+- The typeface releases (`@ibm/plex-sans-condensed@2.0.0`, `@ibm/plex-sans-hebrew@1.1.0`), their dates, and that the licence keeps the name "Plex" for unchanged files are the designer's note. They were not re-read from the releases or the licence text for this update. What was read from the four files: their sizes, their character counts, IBM's copyright line, the licence notice and the family names. Reading the rest at the source is a task of the plan (my decision, 2026-11-17).
 - That a page served through the site's CloudFront distribution loads a font file from its own address has not been tried. The first upload shows it.
 - How look A reads on Windows and Android when the font files fail to load: the designer rendered the fallback on a Mac only.
 - The page weights and first-screen measurements of the mockups are the designer's, apart from the file sizes named above.
