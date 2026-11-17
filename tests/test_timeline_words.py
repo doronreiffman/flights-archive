@@ -305,11 +305,6 @@ A35_ROWS = {
 def test_constants_are_the_approved_words():
     assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
                               12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
-    assert words.A_FLIGHT == (
-        "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
-        "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
-        "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when "
-        "any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
 
 
 def test_a_rate_without_a_range_is_shown_like_one_below_the_floor():
@@ -898,7 +893,7 @@ def site_texts() -> list[str]:
     texts += [words.label_note(f, label, ahead) for f, label, ahead, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
-    texts += [words.pair(24, A35_ROWS[24][0]), words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
+    texts += [words.pair(24, A35_ROWS[24][0]), words.ALSO_SOLD, words.SAME_PLANE,
               *words.LEAD_INS.values(), words.condition(datetime(2026, 11, 12, 10, 16, 45)),
               *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed", "has no news yet"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]

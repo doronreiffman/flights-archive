@@ -3,13 +3,14 @@
 import html
 import subprocess
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
 from model.report import ATTRIBUTION
-from timeline import check, record, views, words
+from test_blend import AP  # the design's airport: the total, the rows and the delays, each with a range
+from timeline import check, counting, display, record, views, words
 from timeline.words import ESTIMATES, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
 
 SRC = Path(__file__).parent.parent / "src"
@@ -91,8 +92,11 @@ def real_pages(tmp_path, monkeypatch, built_by):
     for module in (words, check):
         monkeypatch.setattr(module, "BUILT_BY", built_by)
     updated = datetime(2026, 11, 17, 7, 46)
+    summary = display.Summary(figures=counting.Figures(total=AP.total, rows=tuple(AP.rows.items())), unknown=285,
+                              unknown_gap=240, unknown_no_final=45, late_after=15, late_holds=0, late_unplaced=0,
+                              late_before=0, first_record=date(2026, 10, 27))
     return make(tmp_path, {"index.html": views.layout("Flights", "<p>ok</p>", "", updated, front=True),
-                           "how-it-works.html": views.how_it_works_page(ATTRIBUTION, [], record.TAG,
+                           "how-it-works.html": views.how_it_works_page(summary, AP, ATTRIBUTION, [], record.TAG,
                                                                         record.COUNTING_START, updated)})
 
 

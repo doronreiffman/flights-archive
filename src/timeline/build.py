@@ -76,8 +76,8 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     files = {"index.html": views.front_page(summary, records.airport, told,
                                             flights.recent_cancellations(flights_), chart_days, infos,
                                             flights.search_entries(rows), last_check)}
-    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps, record.TAG, record.COUNTING_START,
-                                                         last_check)
+    files["how-it-works.html"] = views.how_it_works_page(summary, records.airport, ATTRIBUTION,
+                                                         gaps, record.TAG, record.COUNTING_START, last_check)
     files["cancellations.html"] = views.cancellations_page(flights_, last_check)
     by_day: dict[date, list[flights.ListFlight]] = {}
     for fl in flights_:

@@ -291,11 +291,6 @@ def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: fl
 
 LEAD_INS = {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
             12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
-A_FLIGHT = (
-    "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
-    "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
-    "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when any "
-    "of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
 
 
 def _n(x: int) -> str:
@@ -691,3 +686,40 @@ def strip_key(counts: dict[str, int]) -> list[str]:
 def mark_name(day: date, label: str) -> str:
     """A mark's name for a screen reader and a tooltip: "Tuesday 17 November, upcoming"."""
     return f"{day:%A} {_day_month(day)}, {label.lower()}"
+
+
+# --- how this works (docs/site-redesign.md, "How this works"; docs/flight-lookup.md, "What the numbers mean") ------
+
+HOW_OPENING = ("Ben Gurion Airport publishes its list of departures and arrivals on data.gov.il, the government's "
+               "open-data site. Since 27 October 2026, a small program I built has checked that list every 2 minutes "
+               "and saved each new version. From that history, this site works out the chance that a flight is "
+               "cancelled or delayed an hour or more. It's my own project, not an official airport site, and it isn't "
+               "live: each page says when it was last updated.")
+# The disclaimer every page links to (MEANS, at MEANS_ANCHOR): seven paragraphs, each its (bold lead, rest) pairs; the
+# fourth has two, as the approved words set "Cancelled" and "Notice given" both in bold.
+WHAT_THE_NUMBERS_MEAN = (
+    (("They're estimates from past flights.",
+      "Since 27 October 2026, this site has kept a record of every flight on Ben Gurion Airport's public list. A “2% "
+      "chance of cancellation” means that among past flights like yours, about 2 in 100 were cancelled. It's not a "
+      "promise about your flight."),),
+    (("How a flight's chance is worked out.",
+      "It starts from the flight's own history. When that history is short, it leans on the airline's history, and "
+      "beyond that on all flights at Ben Gurion. Then it's adjusted for how soon the flight leaves, because the closer "
+      "a flight gets, the less likely it is to be cancelled. This is a simple first version. A fuller one, with more "
+      "factors and a public check of how accurate it is, is on the way."),),
+    (("Bad weeks come in bunches.",
+      "An airline can cancel many flights in a few days, because of a strike, a storm or a security alert. When one "
+      "bad week is behind a flight's number, the page says when it happened."),),
+    (("“Cancelled”", "means the airport's list marked the flight cancelled."),
+     ("“Notice given”", "is how long before the scheduled time that happened. The airline may have told passengers "
+                        "earlier.")),
+    (("“Delayed”",
+      "means the airport's own expected time was an hour or more after the scheduled time. Smaller delays aren't "
+      "counted, because the airport doesn't say whether its times mean leaving the gate or taking off."),),
+    (("The pages aren't live.",
+      "Each page says when it was last updated. Your flight may have changed since, so always check with your "
+      "airline."),),
+    (("Unofficial.",
+      "Flight data: Israel Airports Authority, published on data.gov.il. This site isn't run by, connected to or "
+      "approved by them or the State of Israel."),),
+)
