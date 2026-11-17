@@ -26,9 +26,10 @@ def spoken(code: str) -> str | None:
 
 def needed(records: blend.Records, table: list[dict], flights_: list[counting.Flight]) -> list[tuple[str, str, int, str]]:
     """Each airline that needs a spoken name, sorted by code: (code, published name, counted flights, why). Why is
-    "100 or more flights", "a grouping airline" (C8: some flight is grouped under it) or both. Counted flights are
-    those with a number of the airline whose result is known (C4: not "unknown"), whoever the flight is grouped
-    under."""
+    "100 or more flights", "a grouping airline" (C8: some flight is grouped under it) or both. The count is the
+    flights with a known result (C2: not "unknown"), closed or not, credited to every airline with a number on them,
+    whoever the flight is grouped under. It is not the "so far" figure on the pages (C10's labels, the grouping
+    airline only)."""
     by_id = {r["flight_id"]: r for r in table}
     counted = dict.fromkeys(records.published, 0)
     for f in flights_:
@@ -56,11 +57,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     table, obs, snaps = load(args.model)
     missing = 0
+    print("code  published name  flights with a known result, any airline with a number on them, closed or not  why  "
+          "spoken name")
     for code, published, flights_n, why in needed(blend.records(table, obs, snaps), table,
                                                   counting.flights(table, counting.last_sighting(snaps))):
         name = spoken(code)
         missing += name is None
-        print(f"{code}  {published}  {flights_n} flights  {why}  {name or 'missing'}")
+        print(f"{code}  {published}  {flights_n:,} {'flight' if flights_n == 1 else 'flights'}  {why}  {name or 'missing'}")
     return 1 if missing else 0
 
 

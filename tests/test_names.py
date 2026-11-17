@@ -1,7 +1,8 @@
 """The spoken names (src/timeline/names.py): the name a traveller says aloud for each airline, and the list of
 airlines that still need one (docs/will-it-fly-plan.md, Question 5, answered 2026-11-17: every airline some flight
 is grouped under, and every airline with 100 or more counted flights). The archive is in rows
-(tests/counting_helpers.py), all long closed at LAST."""
+(tests/counting_helpers.py). Most are closed at LAST; LY's and the hour-700 slot are not, and the count does not
+mind."""
 import os
 import subprocess
 import sys
@@ -57,6 +58,7 @@ def test_main_exit_codes(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(names, "load", lambda folder: (archive()[1], [], board(LAST)))
     assert names.main(["--model", str(empty)]) == 1  # AA and DD have no spoken name
     out = capsys.readouterr().out
+    assert out.splitlines()[0].startswith("code  published name  flights with a known result")
     assert "AA  AIRLINE A  100 flights  100 or more flights and a grouping airline  missing" in out
     assert "LY  EL AL ISRAEL AIRLINES  3 flights  a grouping airline  El Al" in out
     monkeypatch.setattr(names, "SPOKEN_NAMES", {"AA": "A", "DD": "D", "LY": "El Al"})
@@ -69,3 +71,14 @@ def test_main_runs_as_a_module(tmp_path):
     done = subprocess.run([sys.executable, "-m", "timeline.names", "--model", str(tmp_path)], env=env,
                           cwd=Path(__file__).parent.parent, capture_output=True, text=True)
     assert done.returncode == 2 and "no model under" in done.stderr
+
+
+def test_main_counts_read_aloud(monkeypatch, capsys, tmp_path):
+    (tmp_path / "flights.parquet").write_bytes(b"")
+    monkeypatch.setattr(names, "load", lambda folder: (archive()[1], [], board(LAST)))
+    monkeypatch.setattr(names, "needed", lambda *a: [("AA", "A", 1, "a grouping airline"),
+                                                     ("DD", "D", 1234, "100 or more flights")])
+    names.main(["--model", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "AA  A  1 flight  a grouping airline" in out
+    assert "DD  D  1,234 flights  100 or more flights" in out
