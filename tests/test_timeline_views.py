@@ -919,13 +919,19 @@ def test_the_slot_with_none_ahead():
     assert '<div class="none-ahead">\n<p class="fig"><span class="fl">Chance its next flight is cancelled:</span>' in page
     assert '<p class="worked none-ahead">' in page and '<p class="worked">' not in page
     assert '<div class="aa" data-more-after="72">\n<p class="off">' in page and 'class="more"' not in page
-    # its last flight removed early on 10 November is scheduled after the last cancelled one: no "since"
+    # owner, 2026-11-17: the sentence follows what it says. A later flight the airport removed from its list before
+    # the last cancelled one (9 November 17:20 UTC) does not count as "since"...
     gone = lh694_page(flight("lh1110", wall(date(2026, 11, 10), 19, 20), outcome="vanished",
                              last_seen_at=datetime(2026, 11, 8, 9, 20), **LH694))
     assert ("Worked out from this flight's history: 4 of its 14 flights were cancelled, all between 6 and 9 "
-            "November.") in shown(div(gone, '<div id="now">'))
-    assert "since" not in text(div(gone, '<div class="support">'))
+            "November. It hasn't been on the airport's list since.") in shown(div(gone, '<div id="now">'))
     assert "The last one was on Tuesday 10 November." in text(gone)
+    # ...but one still on the list after it does: the sentence is absent
+    kept = lh694_page(flight("lh1110", wall(date(2026, 11, 10), 19, 20), outcome="vanished",
+                             last_seen_at=datetime(2026, 11, 9, 20, 0), **LH694))
+    assert ("Worked out from this flight's history: 4 of its 14 flights were cancelled, all between 6 and 9 "
+            "November.") in shown(div(kept, '<div id="now">'))
+    assert "since" not in text(div(kept, '<div class="support">'))
 
 
 @pytest.mark.parametrize("later", [False, True])
