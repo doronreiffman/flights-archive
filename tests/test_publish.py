@@ -16,6 +16,10 @@ OURS = "arn:aws:iam::137953273942:user/doron-admin"
 SITE_BUCKET = "flights-archive-site-sitebucket-abc123"
 ARCHIVE_BUCKET = "flights-archive-archivebucket-onpwo5ns74tw"
 AWS_FLAGS = ["--profile", "flights-sam", "--region", "il-central-1"]
+# One allowlisted sync per file type, each with its content type set: the pages, the sheet, the scripts, the four
+# fonts and their licence.
+UPLOADS = [("*.html", "text/html; charset=utf-8"), ("*.css", "text/css; charset=utf-8"),
+           ("*.js", "text/javascript; charset=utf-8"), ("*.woff2", "font/woff2"), ("*.txt", "text/plain; charset=utf-8")]
 
 
 def make_site(tmp_path, page="<p>So far, 2 of 40 flights with a known outcome were listed as cancelled.</p>",
@@ -27,6 +31,9 @@ def make_site(tmp_path, page="<p>So far, 2 of 40 flights with a known outcome we
     (site / "day" / "2026-10-28.html").write_text(page + footer)
     (site / "style.css").write_text("p{}")
     (site / "search.js").write_text("// search")
+    (site / "fonts").mkdir()
+    (site / "fonts" / "sans-cond-400.woff2").write_bytes(b"wOF2\x00\x01\xff\xfe")  # not UTF-8: the check must skip it
+    (site / "fonts" / "LICENSE.txt").write_bytes(b"Copyright \xc2\xa9 IBM Corp.\r\n")
     (site / ".DS_Store").write_text("finder")
     if marker:
         (site / ".timeline-site").write_text("Made by timeline.build; replaced whole on every build.\n")
@@ -61,24 +68,28 @@ def writes(calls):
     return [c for c in calls if c[:2] in (["s3", "sync"], ["cloudfront", "create-invalidation"]) or c[0] == "s3"]
 
 
-def test_checks_then_uploads_each_type_with_its_content_type_then_invalidates(tmp_path):
+def test_checks_then_uploads_then_invalidates(tmp_path):
     site = make_site(tmp_path)
     done, calls = run_publish(tmp_path, site)
     assert done.returncode == 0, done.stderr
     assert [c[:2] for c in calls] == [["sts", "get-caller-identity"], ["cloudformation", "describe-stacks"],
-                                      ["cloudformation", "describe-stacks"], ["s3", "sync"], ["s3", "sync"],
-                                      ["s3", "sync"], ["cloudfront", "create-invalidation"],
-                                      ["cloudformation", "describe-stacks"]]
-    syncs = [c for c in calls if c[:2] == ["s3", "sync"]]
-    for call, (pattern, ctype) in zip(syncs, [("*.html", "text/html; charset=utf-8"), ("*.css", "text/css; charset=utf-8"),
-                                              ("*.js", "text/javascript; charset=utf-8")]):
-        assert call == ["s3", "sync", f"{site}/", f"s3://{SITE_BUCKET}/", "--delete", "--exclude", "*",
-                        "--include", pattern, "--content-type", ctype, "--cache-control", "max-age=300", *AWS_FLAGS]
-    invalidation = calls[6]
+                                      ["cloudformation", "describe-stacks"], *[["s3", "sync"]] * len(UPLOADS),
+                                      ["cloudfront", "create-invalidation"], ["cloudformation", "describe-stacks"]]
+    invalidation = calls[3 + len(UPLOADS)]
     assert invalidation[invalidation.index("--distribution-id") + 1] == "E2EXAMPLE"
     assert invalidation[invalidation.index("--paths") + 1] == "/*"  # literal: unquoted, sh expands it to /bin /etc ...
     assert all("--profile" in c and c[c.index("--profile") + 1] == "flights-sam" for c in calls)
     assert "https://d111111abcdef8.cloudfront.net/" in done.stdout
+
+
+def test_five_uploads_each_with_its_content_type(tmp_path):
+    """The responses send nosniff, so no type is left to a guess: the fonts as font/woff2, their licence as text."""
+    site = make_site(tmp_path)
+    done, calls = run_publish(tmp_path, site)
+    assert done.returncode == 0, done.stderr
+    assert [c for c in calls if c[:2] == ["s3", "sync"]] == [
+        ["s3", "sync", f"{site}/", f"s3://{SITE_BUCKET}/", "--delete", "--exclude", "*", "--include", pattern,
+         "--content-type", ctype, "--cache-control", "max-age=300", *AWS_FLAGS] for pattern, ctype in UPLOADS]
 
 
 def test_another_account_uploads_nothing(tmp_path):
@@ -117,7 +128,7 @@ def test_a_relative_site_folder_is_read_from_where_the_script_was_run(tmp_path):
     site = make_site(tmp_path)
     done, calls = run_publish(tmp_path, "site", cwd=tmp_path)
     assert done.returncode == 0, done.stderr
-    assert [c[2] for c in calls if c[:2] == ["s3", "sync"]] == [f"{site}/"] * 3
+    assert [c[2] for c in calls if c[:2] == ["s3", "sync"]] == [f"{site}/"] * len(UPLOADS)
 
 
 def test_a_missing_site_folder_uploads_nothing(tmp_path):
@@ -145,4 +156,4 @@ def test_without_site_dir_the_repo_site_folder_is_used_wherever_the_script_is_ru
     elsewhere.mkdir()
     done, calls = run_publish(tmp_path, None, cwd=elsewhere, script=repo / "scripts" / "publish.sh")
     assert done.returncode == 0, done.stderr
-    assert [c[2] for c in calls if c[:2] == ["s3", "sync"]] == [f"{site}/"] * 3
+    assert [c[2] for c in calls if c[:2] == ["s3", "sync"]] == [f"{site}/"] * len(UPLOADS)

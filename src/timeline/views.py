@@ -38,6 +38,11 @@ def _wordmark(root: str) -> str:
     return f'<p class="wordmark"><a href="{root}index.html">{e(HOME)}</a></p>'
 
 
+# The Regular and SemiBold faces most text is set in, asked for before the style sheet names them; the Light face waits
+# for the sheet, and the Hebrew one for a page with Hebrew on it (docs/site-redesign.md, "Look A", Loading).
+PRELOADED = ("sans-cond-400.woff2", "sans-cond-600.woff2")
+
+
 def layout(title: str, body: str, root: str, head_extra: str = "", top: str | None = None) -> str:
     """A whole page; `root` is the way back to the site's top folder ("" or "../"). `top` is the header band's
     content, the wordmark by default (the front page puts its title, lede and last-updated line there)."""
@@ -46,6 +51,8 @@ def layout(title: str, body: str, root: str, head_extra: str = "", top: str | No
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         '<meta name="robots" content="noindex">\n'
         f"<title>{e(title)}</title>\n"
+        + "".join(f'<link rel="preload" href="{root}fonts/{name}" as="font" type="font/woff2" crossorigin>\n'
+                  for name in PRELOADED)
         + (f"{head_extra}\n" if head_extra else "")
         + f'<link rel="stylesheet" href="{root}style.css">\n</head>\n<body>\n'
         f'<header class="band">\n{_wordmark(root) if top is None else top}\n</header>\n'

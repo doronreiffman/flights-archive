@@ -32,7 +32,9 @@ from timeline.words import BUILT_BY, ESTIMATES, PLACEHOLDER, SOURCE_SHORT, UNOFF
 
 BANNED = ("cancelled at", "canceled at", "delayed by", "operated by", "took off", "minutes late", "hours late",
           "pause in our collection")
-SCANNED = {".html", ".css", ".js"}  # every file type scripts/publish.sh uploads
+# The text types scripts/publish.sh uploads. It also sends the four fonts (.woff2) and their licence (.txt), which are
+# not read here: tests pin them (tests/test_timeline_style.py, tests/test_timeline_build.py).
+SCANNED = {".html", ".css", ".js"}
 EXPLAINER = "how-it-works.html"  # the one page that may say "I" and name how the data is collected
 NOTICES = {"source line": SOURCE_SHORT, "unofficial line": UNOFFICIAL, "estimates line": ESTIMATES}  # every page
 EXPLAINER_NOTICES = {"full source line": ATTRIBUTION}  # on EXPLAINER only

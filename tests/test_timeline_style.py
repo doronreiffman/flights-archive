@@ -1,7 +1,9 @@
 """The site's style sheet (docs/site-redesign.md, "Look"): every text color pair clears WCAG's 4.5:1 in the light and
-the dark scheme, the sheet loads nothing from elsewhere, and the rules the pages rely on hold: the hidden search box
+the dark scheme, the sheet loads nothing from elsewhere (its four fonts come from the site's own folder, pinned here
+with their licence), and the rules the pages rely on hold: the hidden search box
 stays hidden without JavaScript, published double spaces show, the Hebrew city cannot reorder the English around it,
 the chart's text takes its color from the checked tokens and keeps its 12 px, and every label has a pill color."""
+import hashlib
 import re
 from pathlib import Path
 
@@ -10,6 +12,15 @@ import pytest
 from timeline import words
 
 SHEET = Path(__file__).parent.parent / "src" / "timeline" / "static" / "style.css"
+FONT_DIR = SHEET.parent / "fonts"
+# The four faces as committed (docs/site-redesign.md, "Look A"; cut down by the designer, so a font tool would be needed
+# to make them again), and the licence of the two IBM Plex releases they come from, the SIL Open Font License 1.1 text
+# byte for byte: name -> (bytes, SHA-256).
+FONTS = {"sans-cond-300.woff2": (11_484, "e070faf89ddc75682e1bf4b433ba2402141aa7f4e1878dd15b22a2ef51e6bd3f"),
+         "sans-cond-400.woff2": (11_440, "b3c68c0f353026db70fa9cbcac91209db1e2a677498564f4b956cdf083c5cb0e"),
+         "sans-cond-600.woff2": (11_468, "20cb8090896387a5f1e149bb73dd7cda143d718afaac3fdea9f3538b63658d46"),
+         "hebrew-sans-400.woff2": (2_108, "37a0d768ea31da4df80b1c947bd795508c8783f4d3a245bd00960bd4bd798d14")}
+LICENCE = {"LICENSE.txt": (4_456, "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da")}
 DARK = "@media (prefers-color-scheme: dark)"
 TOKENS = ("--bg", "--fg", "--muted", "--line", "--accent", "--card", "--cancel-fg", "--cancel-bg", "--ok-fg",
           "--ok-bg", "--plain-fg", "--plain-bg", "--delay-fg", "--delay-bg", "--unknown-fg", "--band-bg", "--band-fg",
@@ -92,11 +103,50 @@ def test_text_pairs_clear_4_5_to_1(scheme, text, background):
     assert ratio >= 4.5, f"{scheme}: {text} {tokens[text]} on {background} {tokens[background]} is {ratio:.2f}:1"
 
 
-def test_nothing_loaded_from_elsewhere():
-    """No web fonts, no images, no other sheets: the site uploads .html, .css and .js only."""
-    css = SHEET.read_text(encoding="utf-8").lower()
-    for banned in ("@import", "url(", "font-face"):
-        assert banned not in css
+FACES = [decls for _, sel, decls in RULES if sel == "@font-face"]
+URL = re.compile(r"""url\(\s*(["']?)(.*?)\1\s*\)""", re.I)
+
+
+def test_the_four_font_files_are_pinned():
+    """A changed or missing file fails here, not at an upload. Hidden files (a Finder .DS_Store) are never built."""
+    found = {p.name: (p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest())
+             for p in FONT_DIR.iterdir() if not p.name.startswith(".")}
+    assert found == FONTS | LICENCE
+
+
+def test_fonts_load_only_from_the_sites_own_folder():
+    """docs/site-redesign.md, "Tests and checks": no other sheet (`@import`); a `url(` only inside an `@font-face` rule,
+    naming one of the four files of the site's own fonts folder, so no address with a scheme or a host, no `data:`
+    address and no image; nor an image named without `url(` (`image-set`)."""
+    css = re.sub(r"/\*.*?\*/", "", SHEET.read_text(encoding="utf-8"), flags=re.S).lower()
+    assert "@import" not in css
+    assert not re.search(r"\bimage(?:-set)?\(", css)
+    in_faces = [m.group(2) for face in FACES for value in face.values() for m in URL.finditer(value)]
+    assert css.count("url(") == len(in_faces) == len(FONTS)
+    assert sorted(in_faces) == sorted(f"fonts/{name}" for name in FONTS)
+
+
+def test_the_hebrew_face_is_limited_to_the_hebrew_block():
+    """Only a page with Hebrew on it fetches the Hebrew file, and every face lets the text show in a fallback until
+    its file arrives (docs/site-redesign.md, "Look A", Loading)."""
+    assert len(FACES) == len(FONTS)
+    assert all(face.get("font-display") == "swap" for face in FACES)
+    ranges = {URL.search(face["src"]).group(2): face.get("unicode-range") for face in FACES}
+    assert ranges == {"fonts/sans-cond-300.woff2": None, "fonts/sans-cond-400.woff2": None,
+                      "fonts/sans-cond-600.woff2": None, "fonts/hebrew-sans-400.woff2": "U+0590-05FF"}
+
+
+def test_the_text_is_set_in_the_four_faces_before_the_designs_fallbacks():
+    """docs/site-redesign.md, "Look A": the condensed face in Light, Regular and SemiBold, the Hebrew one in Regular,
+    and behind them "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif."""
+    faces = {(face["font-family"], face["font-weight"], URL.search(face["src"]).group(2)) for face in FACES}
+    assert faces == {('"FA Sans Cond"', "300", "fonts/sans-cond-300.woff2"),
+                     ('"FA Sans Cond"', "400", "fonts/sans-cond-400.woff2"),
+                     ('"FA Sans Cond"', "600", "fonts/sans-cond-600.woff2"),
+                     ('"FA Hebrew Sans"', "400", "fonts/hebrew-sans-400.woff2")}
+    assert SCHEMES["light"]["--sans"] == ('"FA Sans Cond", "FA Hebrew Sans", "Arial Narrow", "Roboto Condensed", '
+                                          '"Helvetica Neue", Arial, sans-serif')
+    assert declared((), "body")["font"].endswith(" var(--sans)")
 
 
 def test_hidden_attribute_wins_over_any_display_rule():

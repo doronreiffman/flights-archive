@@ -3,6 +3,13 @@
    schemes (tests/test_timeline_style.py). Class names come
    from src/timeline/views.py. Nothing is loaded from elsewhere. */
 
+/* The four faces, from fonts/ beside this sheet (docs/site-redesign.md, "Look A"; their licence is fonts/LICENSE.txt).
+   The Hebrew one covers the Hebrew block only, so a page without Hebrew never fetches it. */
+@font-face { font-family: "FA Sans Cond"; font-weight: 300; font-display: swap; src: url("fonts/sans-cond-300.woff2") format("woff2"); }
+@font-face { font-family: "FA Sans Cond"; font-weight: 400; font-display: swap; src: url("fonts/sans-cond-400.woff2") format("woff2"); }
+@font-face { font-family: "FA Sans Cond"; font-weight: 600; font-display: swap; src: url("fonts/sans-cond-600.woff2") format("woff2"); }
+@font-face { font-family: "FA Hebrew Sans"; font-weight: 400; font-display: swap; src: url("fonts/hebrew-sans-400.woff2") format("woff2"); unicode-range: U+0590-05FF; }
+
 :root {
   color-scheme: light dark;
   --bg: #ffffff; --fg: #14171c; --muted: #5a6170; --line: #e2e5ea; --accent: #1d4ab0; --card: #f5f7fa;
@@ -14,6 +21,7 @@
   --unknown-fg: #5a6170;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06);
   --width: 1000px; --gutter: 24px;
+  --sans: "FA Sans Cond", "FA Hebrew Sans", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -33,7 +41,7 @@
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
-  font: 1rem/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font: 1rem/1.55 var(--sans);
   font-variant-numeric: tabular-nums;
   overflow-wrap: break-word;
 }

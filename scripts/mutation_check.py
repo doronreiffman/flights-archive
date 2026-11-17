@@ -53,6 +53,7 @@ SYNC = ("scripts/sync.sh", ["tests/test_sync.py"])
 WORDS = ("src/timeline/words.py", ["tests/test_timeline_words.py"])
 FLIGHTS = ("src/timeline/flights.py", ["tests/test_timeline_flights.py"])
 VIEWS = ("src/timeline/views.py", ["tests/test_timeline_views.py"])
+VIEWS_SITE = ("src/timeline/views.py", ["tests/test_timeline_build.py"])  # read on every page of a built site
 SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
 FROMHERE = ("src/timeline/static/fromhere.js", ["tests/test_timeline_fromhere.py"])
@@ -303,6 +304,18 @@ COLLECTOR_MUTATIONS = {
     "site folder read from the repo root": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "$ROOT" && cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
     "script runs from the caller's folder": (PUBLISH, 'cd "$ROOT"\n', ""),
     "default site folder from the caller's folder": (PUBLISH, 'SITE=$(cd "${SITE_DIR:-$ROOT/site}" 2>/dev/null && pwd)', 'SITE=$(cd "${SITE_DIR:-site}" 2>/dev/null && pwd)'),
+    # the four fonts and their licence (docs/site-redesign.md, "Look A"; the licence served, the owner, 2026-11-17)
+    "publish: fonts not uploaded": (PUBLISH, "upload '*.woff2' 'font/woff2'\n", ""),
+    "publish: fonts with a guessed type": (PUBLISH, "upload '*.woff2' 'font/woff2'\n", 'aws s3 sync "$SITE/" "s3://$bucket/" --delete --exclude \'*\' --include \'*.woff2\' --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION"\n'),
+    "publish: licence not uploaded": (PUBLISH, "upload '*.txt' 'text/plain; charset=utf-8'\n", ""),
+    "site: fonts not written": (SITE, '    for name in FONT_FILES:\n        files[f"fonts/{name}"] = (STATIC / "fonts" / name).read_bytes()\n', ""),
+    "site: fonts read as text": (SITE, '(STATIC / "fonts" / name).read_bytes()', '(STATIC / "fonts" / name).read_text(encoding="latin-1")'),
+    "site: licence not written": (SITE, '"hebrew-sans-400.woff2",\n              "LICENSE.txt")', '"hebrew-sans-400.woff2")'),
+    "views: no preload": (VIEWS_SITE, "                  for name in PRELOADED)", "                  for name in ())"),
+    "style: a font from another host": (STYLE, 'url("fonts/sans-cond-300.woff2")', 'url("https://fonts.example.com/fonts/sans-cond-300.woff2")'),
+    "style: an image in the sheet": (STYLE, "  margin: 0; background: var(--bg); color: var(--fg);", '  margin: 0; background: var(--bg) url("plane.png"); color: var(--fg);'),
+    "style: the Hebrew face for every character": (STYLE, " unicode-range: U+0590-05FF;", ""),
+    "style: the faces left out of the font stack": (STYLE, '--sans: "FA Sans Cond", "FA Hebrew Sans", ', "--sans: "),
     "words: warning rules out of order": (WORDS, "    if hi < 0 and not censored:", '    if lo >= 60:\n        return 8, f"at least {hours(_down(lo))}"\n    if hi < 0 and not censored:'),
     "words: censored range rounded down at the top": (WORDS, "    return math.ceil(minutes / 60)", "    return math.floor(minutes / 60)"),
     "words: first sight treated as censored range": (WORDS, "    if hi is None:", "    if False:"),
@@ -427,7 +440,6 @@ COLLECTOR_MUTATIONS = {
     "style: chart text in an unchecked color": (STYLE, ".chart text { fill: var(--fg); }", ".chart text { fill: var(--line); }"),
     "style: chart text given a size": (STYLE, ".chart { display: block;", ".chart { font-size: 16px; display: block;"),
     "style: a label without its color": (STYLE, ".l-delayed { color: var(--delay-fg); background: var(--delay-bg); }", ""),
-    "style: a web font": (STYLE, "/* --- page ", "@import url(font.css);\n/* --- page "),
     "style: flight numbers may wrap": (STYLE, ".cancellations td:nth-child(2) .d { white-space: pre; }", ".cancellations td:nth-child(2) .d { white-space: pre-wrap; }"),
     "style: from-here table never stacks": (STYLE, "  .fromhere, .fromhere tbody, .fromhere tr, .fromhere td { display: block; }\n", ""),
     "style: from-here cells print no head": (STYLE, '  .fromhere td::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 400; }\n', ""),
