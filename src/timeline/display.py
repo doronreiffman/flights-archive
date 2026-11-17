@@ -1,4 +1,4 @@
-"""Rules shown only on pages (docs/flight-lookup.md, C9 and C10; "Words", the count line and the late line;
+"""Rules shown only on pages (docs/flight-lookup.md, C9 and C10; "Words", the late line and the left-out line;
 docs/flight-lookup-figures.md, A3, A17 and A24): a flight's label in lists and the hour rule for DELAYED, a cancelled flight's
 warning number, and the front page's figures.
 
@@ -71,8 +71,8 @@ def _late(r: dict) -> str:
 
 @dataclass(frozen=True)
 class Summary:
-    """The front page's figures (docs/flight-lookup.md, "Words": the total, the table, the count line and the late
-    line)."""
+    """The front page's figures (docs/flight-lookup.md, "Words": the total, the table, the late line and the left-out
+    line), and the left-out counts "How this works" gives."""
     figures: counting.Figures  # the total and the table's rows (C1 to C8)
     unknown: int  # closed flights with no known result, counted beside the rates (C4, A3)
     unknown_gap: int  # of them, those with a number that left the list during a hole in the record

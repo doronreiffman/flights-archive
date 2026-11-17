@@ -488,8 +488,9 @@ def _gap(start: datetime, end: datetime) -> str:
     return f"There are no records from {a.day} {a:%B %H:%M} to {b.day} {b:%B %H:%M}."
 
 
-def _written(day: date) -> str:
-    """A date written out with its year, as the page writes a date: "27 October 2026"."""
+def _written(day: date | datetime) -> str:
+    """A date written out with its year, as the page writes a date: "27 October 2026". A datetime is read as its own
+    date (the counting start, already in Israel time)."""
     return f"{day.day} {day:%B %Y}"
 
 
@@ -535,6 +536,8 @@ def _figures(airport: blend.Airport) -> tuple[str, list[str]]:
 
 
 def _items(tag: str, items: list[str]) -> str:
+    """A list of `items` as written: each is HTML, inserted unescaped, so it may hold only the page's own text and
+    markup, never a string from the airport's data that has not been through d()."""
     return "\n".join([f"<{tag}>", *(f"<li>{item}</li>" for item in items), f"</{tag}>"])
 
 
