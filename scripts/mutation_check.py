@@ -71,6 +71,9 @@ FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
+BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
+BACKTEST = ("src/timeline/backtest.py", ["tests/test_backtest.py"])
+NAME_LIST = ("src/timeline/names.py", ["tests/test_names.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -625,6 +628,44 @@ COLLECTOR_MUTATIONS = {
     "views: support in every day": (VIEWS, "    if top:\n", "    if True:\n"),
     "flights: a twin with no news yet read as still on": (FLIGHTS, 'words.NO_NEWS_YET: "has no news yet"}', 'words.NO_NEWS_YET: "is still listed"}'),
     "words: removed under an hour early reads 0 hours": (WORDS, 'how = "less than an hour" if early < 1 else hours(early)', "how = hours(early)"),
+    # the blend: a number's, an airline's and the airport's records, and the two chances (docs/flight-lookup.md, "The blend")
+    "blend: number weight 13": (BLEND, "NUMBER_WEIGHT = 14", "NUMBER_WEIGHT = 13"),
+    "blend: airline weight 99": (BLEND, "AIRLINE_WEIGHT = 100", "AIRLINE_WEIGHT = 99"),
+    "blend: weights swapped": (BLEND, "_share(airport.total), AIRLINE_WEIGHT)\n    chance = pull(number.cancelled, number.flights, airline_rate, NUMBER_WEIGHT)", "_share(airport.total), NUMBER_WEIGHT)\n    chance = pull(number.cancelled, number.flights, airline_rate, AIRLINE_WEIGHT)"),
+    "blend: scaling dropped": (BLEND, "    return chance if factor is None else chance * factor\n", "    return chance\n"),
+    "blend: delay scaled": (BLEND, "    return pull(number.delayed, number.flew, airline_rate, NUMBER_WEIGHT)\n", "    return pull(number.delayed, number.flew, airline_rate, NUMBER_WEIGHT) * scaling(airport, row_for(None))\n"),
+    "blend: a boundary in the upper stretch": (BLEND, "STRETCHES = ((48, 72, 70),", "STRETCHES = ((47, 72, 70),"),
+    "blend: no floor fallback": (BLEND, "    tried = [h, *sorted(c for c in airport.rows if c > h), *sorted((c for c in airport.rows if c < h), reverse=True)]\n", "    tried = [h]\n"),
+    "blend: delays of both directions": (BLEND, 'if f.closed and f.result == "operated" and f.key[0] == direction])', 'if f.closed and f.result == "operated"])'),
+    "blend: counts from the number's own outcome": (BLEND, "            own[f.key] = f\n", "            own[f.key] = counting.flights([r], last)[0]\n"),
+    "blend: a flight still listed counted": (BLEND, "for f in flights_ if known(lab := display.label(f, by_id, last))]", 'for f in flights_ if (lab := display.label(f, by_id, last)) and f.result != "unknown"]'),
+    "blend: delays over every flight": (BLEND, "pull(airline.delayed, airline.flew, _share(airport.delay[direction]), AIRLINE_WEIGHT)\n    return pull(number.delayed, number.flew,", "pull(airline.delayed, airline.flights, _share(airport.delay[direction]), AIRLINE_WEIGHT)\n    return pull(number.delayed, number.flights,"),
+    "blend: bad week at 7 days": (BLEND, "BAD_WEEK_DAYS = 6", "BAD_WEEK_DAYS = 7"),
+    "blend: airline of the number's own": (BLEND, "            per_airline[f.airline][f.key] = f\n", '            per_airline.setdefault(r["airline"], {})[f.key] = f\n'),
+    "blend: flat check below the floor": (BLEND, "            if row.clears_floor and 100 * abs(", "            if 100 * abs("),
+    "blend: no guard on an airport with no counted flight": (BLEND, "    if not airport.total.flights:\n        return None\n", ""),
+    "blend: no guard on a direction with none flown": (BLEND, "    if not airport.delay[direction].flights:\n        return None\n", ""),
+    "backtest: the week holds a day not closed": (BACKTEST, "    last = edge.date() - timedelta(days=1)\n", "    last = edge.date()\n"),
+    "backtest: counts not cut": (BACKTEST, "before=_start(first))", "before=None)"),
+    "backtest: scored on the 3-hour row": (BACKTEST, "ROW = 24  #", "ROW = 3  #"),
+    "backtest: flights outside the 24-hour row": (BACKTEST, "if first <= f.day <= last and f.key in row]", 'if first <= f.day <= last and f.closed and f.result != "unknown"]'),
+    "backtest: top tenth rounded down": (BACKTEST, "    n = (len(ranked) + 9) // 10\n", "    n = len(ranked) // 10\n"),
+    "backtest: double flag at twice": (BACKTEST, "(every.expected_cancelled > 2 * every.cancelled,", "(every.expected_cancelled >= 2 * every.cancelled,"),
+    "backtest: half flag off": (BACKTEST, "             2 * every.expected_cancelled < every.cancelled,\n", "             False,\n"),
+    "backtest: top-tenth flag reversed": (BACKTEST, "top.cancelled * rest.flights <= rest.cancelled * top.flights)", "top.cancelled * rest.flights >= rest.cancelled * top.flights)"),
+    "backtest: ties broken against the flight key": (BACKTEST, "key=lambda i: (-chance(i), i.key))", "key=lambda i: (chance(i), i.key), reverse=True)"),
+    "backtest: a flight with no delay chance not counted": (BACKTEST, "no_delay_chance=sum(i.flew and i.delay is None for i in items))", "no_delay_chance=0)"),
+    "backtest: scored on the first number, not the lead": (BACKTEST, "        lead = blend.lead(f, by_id)\n", "        lead = by_id[f.numbers[0]]\n"),
+    "backtest: the week's last day left out": (BACKTEST, "f.day <= last and", "f.day < last and"),
+    "names: an airline no flight is grouped under needed": (NAME_LIST, 'if code in records.airlines else [])', "if code in counted else [])"),
+    "names: the floor of 100 read only for a grouping airline": (NAME_LIST, "        if reasons:\n", "        if reasons and code in records.airlines:\n"),
+    "names: a missing name exits 0": (NAME_LIST, "    return 1 if missing else 0\n", "    return 0\n"),
+    "names: the floor of 100 flights exclusive": (NAME_LIST, "if counted[code] >= FLOOR", "if counted[code] > FLOOR"),
+    "names: an unknown result counted": (NAME_LIST, 'if f.result != "unknown":', "if True:"),
+    "names: a grouping airline with few flights left out": (NAME_LIST, 'if code in records.airlines else [])', "if code in records.airlines and counted[code] >= FLOOR else [])"),
+    "names: the printed count without separators": (NAME_LIST, "{flights_n:,}", "{flights_n}"),
+    "names: one flight printed in the plural": (NAME_LIST, "'flight' if flights_n == 1 else 'flights'", "'flights'"),
+    "names: no model exits 0": (NAME_LIST, "        return 2\n", "        return 0\n"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
