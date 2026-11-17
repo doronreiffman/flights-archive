@@ -725,6 +725,7 @@ COLLECTOR_MUTATIONS = {
     "names: the printed count without separators": (NAME_LIST, "{flights_n:,}", "{flights_n}"),
     "names: one flight printed in the plural": (NAME_LIST, "'flight' if flights_n == 1 else 'flights'", "'flights'"),
     "names: no model exits 0": (NAME_LIST, "        return 2\n", "        return 0\n"),
+    "names: the header does not say the count is not the pages' figure": (NAME_LIST, " (not the figure on the pages)", ""),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

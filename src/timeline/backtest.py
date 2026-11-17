@@ -148,8 +148,8 @@ def text(r: Report) -> str:
         "(Israel days)",
         f"Scored: the week's closed flights with a known result in the {ROW}-hour row, each by its lead number.",
         "The counts are cut at the week's start.",
-        "A flight scheduled before it counts with its result as known at the last update, even one decided after the "
-        "week began.",
+        "A flight scheduled before the start counts with its result as known at the last update, even one decided "
+        "after the week began.",
         f"Not scored, with no chance worked out: {r.no_chance} for cancelling, {r.no_delay_chance} of those that "
         "flew for a delay of an hour or more.",
         "",

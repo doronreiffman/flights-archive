@@ -59,7 +59,10 @@ def test_main_exit_codes(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(names, "load", lambda folder: (archive()[1], [], board(LAST)))
     assert names.main(["--model", str(empty)]) == 1  # AA and DD have no spoken name
     out = capsys.readouterr().out
-    assert out.splitlines()[0].startswith("code  published name  flights with a known result")
+    # the header says what the count counts, and that it is not the pages' figure
+    assert out.splitlines()[0] == ("code  published name  flights with a known result, closed or not, counted for "
+                                   "every airline with a number on the flight (not the figure on the pages)  why  "
+                                   "spoken name")
     assert "AA  AIRLINE A  100 flights  100 or more flights and a grouping airline  missing" in out
     assert "LY  EL AL ISRAEL AIRLINES  3 flights  a grouping airline  El Al" in out
     monkeypatch.setattr(names, "SPOKEN_NAMES", {"AA": "A", "DD": "D", "LY": "El Al"})
