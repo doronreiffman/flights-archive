@@ -918,3 +918,13 @@ def test_no_text_trips_the_upload_check():
     assert len(texts) > 60  # the cases above, not an empty list
     phrases = (*check.BANNED, "minutes late", "hours late")
     assert [(t, p) for t in texts for p in phrases if p in t.lower()] == []
+
+
+@pytest.mark.parametrize("name, possessive", [
+    ("British Airways", "British Airways' history"), ("Smartwings", "Smartwings' history"),
+    ("Lufthansa", "Lufthansa's history"), ("SAS", "SAS's history"), ("El Al", "El Al's history")])
+def test_a_name_ending_in_a_lowercase_s_takes_a_bare_apostrophe(name, possessive):
+    assert possessive in words.worked_out(LO155, LOT, name, True, True).text
+    assert words.partner("LY 9255", "LO 155", name).endswith(f"worked out from {possessive}.")
+    assert words.worked_out(LO155, LOT, name, True, True, lambda s: s.replace("'", "’"),
+                            lambda s: f"<{s}>").text.count(f"<{name}>" + possessive.removeprefix(name).replace("'", "’")) == 1

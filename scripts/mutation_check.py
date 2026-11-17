@@ -636,6 +636,8 @@ COLLECTOR_MUTATIONS = {
     "views: the final note under the first list that quotes them": (VIEWS, "final = next((r for r in quoting if r.label == words.CANCELLED), quoting[0] if quoting else None)", "final = quoting[0] if quoting else None"),
     "views: support in every day": (VIEWS, "    if top:\n", "    if True:\n"),
     "flights: a twin with no news yet read as still on": (FLIGHTS, 'words.NO_NEWS_YET: "has no news yet"}', 'words.NO_NEWS_YET: "is still listed"}'),
+    "words: every name takes 's": (WORDS, 'return "\'" if name.endswith("s") else "\'s"', 'return "\'s"'),
+    "words: every name takes a bare apostrophe": (WORDS, 'return "\'" if name.endswith("s") else "\'s"', 'return "\'"'),
     "words: removed under an hour early reads 0 hours": (WORDS, 'how = "less than an hour" if early < 1 else hours(early)', "how = hours(early)"),
     # the blend: a number's, an airline's and the airport's records, and the two chances (docs/flight-lookup.md, "The blend")
     "blend: number weight 13": (BLEND, "NUMBER_WEIGHT = 14", "NUMBER_WEIGHT = 13"),
