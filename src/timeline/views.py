@@ -52,6 +52,7 @@ def layout(title: str, body: str, root: str, head_extra: str = "", top: str | No
         f"<main>\n{body}\n</main>\n"
         "<footer>\n"
         f"<p>{e(words.SOURCE_SHORT)} {e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\n"
+        f'<p>{e(words.ESTIMATES)} <a href="{root}how-it-works.html#{words.MEANS_ANCHOR}">{e(words.MEANS)}</a></p>\n'
         f'<p><a href="{root}how-it-works.html">How this works</a> · '
         f'<a href="{e(words.CODE_URL)}">Code on GitHub</a> · Built by {e(words.BUILT_BY)}</p>\n'
         "</footer>\n</body>\n</html>\n")

@@ -14,11 +14,11 @@ named "US-BANGLA AIRLINES" must not stop an upload. Attributes hold the airport'
 so they are not read for words; a script or a style sheet has no attributes and is also read as written. A page
 built before a footer change lacks the current wording and fails.
 
-Four rules for rates (docs/flight-lookup.md, "Tests and checks"): no odds word (chance, odds, probability, likely,
-risk, forecast, predict and their forms) outside how-it-works.html, no percent sign in a page's text, every "1 in N"
-followed at once by "(between 1 in A and 1 in B)", and the past-flights line on a page that holds a rate. Only the
-odds words skip the airport's data (DATA); the rate, record-line and percent rules read the whole page, data spans
-and search JSON included.
+Rules for chances (docs/flight-lookup.md, "Tests and checks"): "chance" and "chances" and a percent sign are
+allowed; every other odds word (odds, probability, likely, risk, forecast, predict and their forms) is refused
+outside how-it-works.html, after the airport's data (DATA) is skipped; a page under flight/ whose text holds "Chance
+it's cancelled" or "Chance its next flight is cancelled" must hold a "Worked out from" line (one per page, not per
+chance); and the footer's estimates line is required on every page.
 
 Exit 0 clean, 1 on a hit or a missing line, 2 when there are no pages to check.
 """
@@ -28,27 +28,25 @@ import sys
 from pathlib import Path
 
 from model.report import ATTRIBUTION
-from timeline.words import BUILT_BY, PAST_ONLY, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
+from timeline.words import BUILT_BY, ESTIMATES, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
 
 BANNED = ("cancelled at", "canceled at", "delayed by", "operated by", "took off", "minutes late", "hours late",
           "pause in our collection")
 SCANNED = {".html", ".css", ".js"}  # every file type scripts/publish.sh uploads
 EXPLAINER = "how-it-works.html"  # the one page that may say "I" and name how the data is collected
-NOTICES = {"source line": SOURCE_SHORT, "unofficial line": UNOFFICIAL}  # on every page
+NOTICES = {"source line": SOURCE_SHORT, "unofficial line": UNOFFICIAL, "estimates line": ESTIMATES}  # every page
 EXPLAINER_NOTICES = {"full source line": ATTRIBUTION}  # on EXPLAINER only
 
 PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)  # every file
 I_WORD = re.compile(r"\bI\b")  # pages other than EXPLAINER, outside the built-by line
 # pages other than EXPLAINER, the built-by line included
 COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|receipt|receipts)\b", re.I)
-# pages other than EXPLAINER, after the DATA mask (docs/flight-lookup.md, "Words": a rate is never a chance)
-ODDS_WORDS = re.compile(r"\b(?:chances?|odds|probability|probable|likely|unlikely|risks?|risky"
+# pages other than EXPLAINER, after the DATA mask; "chance" and "chances" are allowed (docs/flight-lookup.md, "Tests")
+ODDS_WORDS = re.compile(r"\b(?:odds|probability|probable|likely|unlikely|risks?|risky"
                         r"|forecasts?|forecasting|predicts?|predicted|prediction)\b", re.I)
-_ONE_IN = r"(?<!\d)1 in \d+(?:,\d{3})*"
-_RANGE = rf"\(between {_ONE_IN} and {_ONE_IN}\)"
-RANGED_RATE = re.compile(rf"{_ONE_IN} {_RANGE}")
-BARE_RANGE = re.compile(_RANGE)
-ONE_IN = re.compile(_ONE_IN)
+# a flight page's chance headline, read on flatten(strip_tags(page)): it needs the "Worked out from" line
+CHANCE = re.compile(r"\bchance (?:it's|its next flight is) (?:cancelled|delayed)\b")
+FLIGHT_DIR = "flight/"
 # The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside), the front page's
 # search data (every "<" escaped) and each page's <title> (escaped; a flight page's title is the airline code, number
 # and city with a few fixed words). A span with markup inside, or any other element, is read like the site's text.
@@ -74,14 +72,6 @@ def strip_tags(text: str) -> str:
     return re.sub(r"<[^>]*>", " ", text)
 
 
-def rate_hits(text: str) -> list[str]:
-    """Every "1 in N" in the page text that lacks its "(between 1 in A and 1 in B)". Case kept: "1 in N" is matched as
-    written. The ranged rates go first, then any bare range, so what is left has no range."""
-    text = plain(strip_tags(text))
-    text = BARE_RANGE.sub(" ", RANGED_RATE.sub(" ", text))
-    return ONE_IN.findall(text)
-
-
 def _without_built_by(text: str) -> str:
     """The text with every copy of the built-by line's wording taken out ("I" is allowed there). The page escapes
     the wording and the text being read is unescaped, so only its whitespace is collapsed here."""
@@ -102,8 +92,6 @@ def _word_hits(name: str, raw: str) -> list[str]:
         hits += ["I"] if I_WORD.search(_without_built_by(text)) else []
         hits += _found(COLLECTION, texts)
         hits += _found(ODDS_WORDS, texts)
-    if name.endswith(".html"):
-        hits += ["%"] if "%" in plain(strip_tags(raw)) else []
     return hits
 
 
@@ -119,8 +107,6 @@ def scan(site: Path) -> list[tuple[str, str]]:
         if any(flatten(PLACEHOLDER) in v for v in versions):
             hits.append((name, "built-by placeholder"))
         hits += [(name, word) for word in _word_hits(name, raw)]
-        if name.endswith(".html"):
-            hits += [(name, rate) for rate in rate_hits(raw)]
     return hits
 
 
@@ -134,8 +120,8 @@ def missing_notices(site: Path) -> list[tuple[str, str]]:
         text = flatten(strip_tags(path.read_text(encoding="utf-8")))
         wanted = NOTICES | (EXPLAINER_NOTICES if name == EXPLAINER else {})
         missing += [(name, which) for which, notice in wanted.items() if flatten(notice) not in text]
-        if ONE_IN.search(text) and flatten(PAST_ONLY) not in text:
-            missing.append((name, "record line"))
+        if name.startswith(FLIGHT_DIR) and CHANCE.search(text) and "worked out " not in text:
+            missing.append((name, "worked-out line"))
     return missing
 
 

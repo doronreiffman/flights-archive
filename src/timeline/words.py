@@ -18,10 +18,13 @@ if TYPE_CHECKING:  # display imports this module's label names, so the type is f
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 
-UNOFFICIAL = ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, "
+UNOFFICIAL = ("This site is unofficial: it isn't run by, connected to or approved by the Israel Airports Authority, "
               "data.gov.il or the State of Israel.")
 SOURCE_SHORT = "Flight data: Israel Airports Authority, published on data.gov.il."
-TIMES_NOTE = "Times are Israel time."
+TIMES_NOTE = "All times are Israel time."
+ESTIMATES = "The chances on this site are estimates from past flights, not promises."
+MEANS = "What the numbers mean"  # the footer's link to that section of how-it-works.html
+MEANS_ANCHOR = "what-the-numbers-mean"
 PLACEHOLDER = "[owner's wording]"  # the upload check refuses a site that still contains it
 BUILT_BY = "Doron Reiffman (linkedin.com/in/doronreiffman)"
 CODE_URL = "https://github.com/doronreiffman/flights-archive"

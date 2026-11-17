@@ -123,6 +123,9 @@ def test_layout_footer():
     page = views.layout("t", "", "../")
     footer = page[page.index("<footer>"):page.index("</footer>")]
     assert (f"{words.SOURCE_SHORT} {words.UNOFFICIAL} {words.TIMES_NOTE}") in text(footer)
+    assert f"{words.ESTIMATES} {words.MEANS}" in text(footer)
+    assert f'<a href="../how-it-works.html#{words.MEANS_ANCHOR}">{words.MEANS}</a>' in footer
+    assert footer.count("<p>") == 3
     assert '<a href="../how-it-works.html">How this works</a>' in footer
     assert f'<a href="{words.CODE_URL}">Code on GitHub</a>' in footer
     assert f"Built by {words.BUILT_BY}" in text(footer)
@@ -401,7 +404,6 @@ def test_a_pair_below_the_floor_is_left_out():
     bounds (the 48-hour pair still covers 24 to 48 hours), and every rate on the page keeps its range."""
     page = page_of(upcoming(), summary=below_at(24))
     assert pair_items(page) == expected_pairs(24) and len(pair_items(page)) == 5
-    assert check.rate_hits(page) == []
 
 
 def test_the_block_carries_its_top_bound_whatever_pairs_are_present():
@@ -1063,7 +1065,6 @@ def test_a_model_below_the_floor_everywhere():
     assert [row[3] for row in table_cells(page)[1:]] == [words.TOO_FEW] * 6
     assert "Too few so far to say." in text(page)
     assert "At least" not in text(page) and "None" not in text(page)
-    assert check.rate_hits(page) == []
 
 
 def test_the_story_box():

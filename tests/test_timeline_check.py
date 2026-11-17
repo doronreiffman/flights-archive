@@ -9,10 +9,10 @@ import pytest
 
 from model.report import ATTRIBUTION
 from timeline import check, record, views, words
-from timeline.words import PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
+from timeline.words import ESTIMATES, PLACEHOLDER, SOURCE_SHORT, UNOFFICIAL
 
 SRC = Path(__file__).parent.parent / "src"
-FOOTER = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p></footer>"
+FOOTER = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p><p>{ESTIMATES}</p></footer>"
 
 
 def make(tmp_path, files):
@@ -278,10 +278,18 @@ def test_main_returns_zero_one_or_two_and_names_hits(tmp_path, capsys):
 
 def test_a_page_without_the_source_or_the_unofficial_line_is_named(tmp_path):
     site = make(tmp_path, {"index.html": "<p>ok</p>" + FOOTER,
-                           "day/a.html": f"<footer><p>{SOURCE_SHORT}</p></footer>",
-                           "day/b.html": f"<footer><p>{UNOFFICIAL}</p></footer>",
+                           "day/a.html": f"<footer><p>{SOURCE_SHORT}</p><p>{ESTIMATES}</p></footer>",
+                           "day/b.html": f"<footer><p>{UNOFFICIAL}</p><p>{ESTIMATES}</p></footer>",
                            "style.css": "p{}"})
     assert check.missing_notices(site) == [("day/a.html", "unofficial line"), ("day/b.html", "source line")]
+
+
+def test_the_footers_second_line_is_required_on_every_page(tmp_path):
+    bare = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p></footer>"
+    site = make(tmp_path, {"index.html": bare, "day/a.html": bare, "how-it-works.html": f"<p>{ATTRIBUTION}</p>" + bare,
+                           "ok.html": FOOTER})
+    assert check.missing_notices(site) == [("day/a.html", "estimates line"), ("how-it-works.html", "estimates line"),
+                                           ("index.html", "estimates line")]
 
 
 def test_the_full_attribution_is_required_on_how_it_works_only(tmp_path):
@@ -295,38 +303,56 @@ def test_the_full_attribution_is_required_on_how_it_works_only(tmp_path):
 def test_the_full_attribution_does_not_stand_in_for_the_footer_lines(tmp_path):
     site = make(tmp_path, {"how-it-works.html": f"<p>{ATTRIBUTION}</p>"})
     assert check.missing_notices(site) == [("how-it-works.html", "source line"),
-                                           ("how-it-works.html", "unofficial line")]
+                                           ("how-it-works.html", "unofficial line"),
+                                           ("how-it-works.html", "estimates line")]
 
 
 def test_a_page_with_the_old_footer_does_not_pass(tmp_path):
     old = "Unofficial; not affiliated with the Israel Airports Authority."
-    site = make(tmp_path, {"index.html": f"<footer><p>{SOURCE_SHORT}</p><p>{old}</p></footer>"})
+    site = make(tmp_path, {"index.html": f"<footer><p>{SOURCE_SHORT}</p><p>{old}</p><p>{ESTIMATES}</p></footer>"})
+    assert check.missing_notices(site) == [("index.html", "unofficial line")]
+
+
+def test_the_2026_10_30_unofficial_line_fails(tmp_path):
+    old = ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State "
+           "of Israel.")
+    site = make(tmp_path, {"index.html": f"<footer><p>{SOURCE_SHORT} {old}</p><p>{ESTIMATES}</p></footer>"})
     assert check.missing_notices(site) == [("index.html", "unofficial line")]
 
 
 def test_the_notices_count_when_markup_or_a_line_break_splits_them(tmp_path):
-    split = UNOFFICIAL.replace("endorsed by", "endorsed\n  <b>by</b>")
+    split = UNOFFICIAL.replace("approved by", "approved\n  <b>by</b>")
     source = SOURCE_SHORT.replace("published on", "published\n<a href='x'>on</a>")
-    site = make(tmp_path, {"index.html": f"<p>{source}</p><p>{split}</p>"})
+    site = make(tmp_path, {"index.html": f"<p>{source}</p><p>{split}</p><p>{ESTIMATES}</p>"})
     assert check.missing_notices(site) == []
 
 
 def test_the_cli_fails_on_a_missing_notice_and_names_it(tmp_path, capsys):
-    site = make(tmp_path, {"index.html": f"<footer><p>{SOURCE_SHORT}</p></footer>"})
+    site = make(tmp_path, {"index.html": f"<footer><p>{SOURCE_SHORT}</p><p>{ESTIMATES}</p></footer>"})
     assert check.main([str(site)]) == 1
     assert "index.html: missing the unofficial line" in capsys.readouterr().err
 
 
-# --- odds words, rates, percent signs, the past-flights line (docs/flight-lookup.md, "Tests and checks") -----
+# --- odds words, percent signs, the worked-out line (docs/flight-lookup.md, "Tests and checks") ------------------
 
-ODDS = ("chance", "chances", "odds", "probability", "likely", "unlikely", "risk", "forecast", "forecasts", "predict",
-        "predicts", "prediction", "risks", "risky", "predicted", "probable", "forecasting")
+REFUSED_ODDS = ("odds", "probability", "likely", "unlikely", "risk", "forecast", "forecasts", "predict", "predicts",
+                "prediction", "risks", "risky", "predicted", "probable", "forecasting")
 
 
-@pytest.mark.parametrize("word", ODDS)
-def test_an_odds_word_is_refused_outside_how_it_works(tmp_path, word):
+def test_chance_and_chances_pass_on_a_travellers_page(tmp_path):
+    site = make(tmp_path, {"index.html": "<p>Chance it's cancelled</p><p>The chances on this site</p>"})
+    assert check.scan(site) == []
+
+
+@pytest.mark.parametrize("word", REFUSED_ODDS)
+def test_the_other_odds_words_are_still_refused(tmp_path, word):
     site = make(tmp_path, {"index.html": f"<p>A {word.upper()} here.</p>", "how-it-works.html": f"<p>A {word}.</p>"})
     assert check.scan(site) == [("index.html", word)]
+
+
+def test_how_it_works_stays_exempt_from_the_odds_words(tmp_path):
+    site = make(tmp_path, {"how-it-works.html": "<p>Odds, likely, a forecast, risk and a chance.</p>"})
+    assert check.scan(site) == []
 
 
 def test_words_that_only_contain_an_odds_word_pass(tmp_path):
@@ -339,72 +365,52 @@ def test_an_odds_word_inside_an_airlines_data_span_passes(tmp_path):
     assert check.scan(site) == []
 
 
-def test_a_percent_sign_in_a_style_sheet_passes(tmp_path):
-    site = make(tmp_path, {"index.html": "<p>ok</p>", "style.css": "p { width: 100%; }"})
+def test_a_percent_sign_passes(tmp_path):
+    site = make(tmp_path, {"index.html": "<p>about 1.7%</p>", "day/x.html": "<p>2&#37;</p>",
+                           "style.css": "p { width: 100%; }"})
     assert check.scan(site) == []
 
 
-def test_a_percent_sign_in_an_attribute_passes(tmp_path):
-    site = make(tmp_path, {"index.html": '<svg><rect width="72%"/></svg><p>ok</p>'})
+@pytest.mark.parametrize("headline", ["Chance it's cancelled", "Chance its next flight is cancelled"])
+def test_a_chance_on_a_flight_page_needs_the_worked_out_line(tmp_path, headline):
+    site = make(tmp_path, {"flight/a.html": f"<p>{headline}: about 15%</p>" + FOOTER})
+    assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
+
+
+@pytest.mark.parametrize("line", ["Worked out from this flight's record.", "Worked out mostly from the airline."])
+def test_a_flight_page_with_the_worked_out_line_passes(tmp_path, line):
+    site = make(tmp_path, {"flight/a.html": f"<p>Chance it's cancelled: about 15%</p><p>{line}</p>" + FOOTER})
+    assert check.missing_notices(site) == []
+
+
+def test_a_later_days_chances_beside_one_line_pass(tmp_path):
+    page = ("<p>Chance it's cancelled: about 15%</p><p>Worked out from this flight's record.</p>"
+            "<p>Tomorrow: chance it's cancelled: under 1%</p>")
+    site = make(tmp_path, {"flight/a.html": page + FOOTER})
+    assert check.missing_notices(site) == []
+
+
+def test_the_front_pages_column_head_needs_no_worked_out_line(tmp_path):
+    site = make(tmp_path, {"index.html": "<th>Chance it's cancelled</th>" + FOOTER})
+    assert check.missing_notices(site) == []
+
+
+def test_a_flight_page_without_a_chance_needs_no_line(tmp_path):
+    site = make(tmp_path, {"flight/a.html": "<p>Nothing to say yet.</p>" + FOOTER})
+    assert check.missing_notices(site) == []
+
+
+def test_only_a_worked_out_line_counts(tmp_path):
+    site = make(tmp_path, {"flight/a.html": "<p>Chance it's cancelled: about 15%</p><p>Worked a lot out.</p>" + FOOTER})
+    assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
+
+
+def test_lines_near_a_banned_phrase_pass(tmp_path):
+    site = make(tmp_path, {"index.html": "<p>CANCELLED</p><p>Cancelled with at least 21 hours' notice.</p>",
+                           "day/x.html": "<p>LH 695 (LH 0691A: cancelled)</p><p>to Athens</p>"})
     assert check.scan(site) == []
-
-
-def test_the_designs_cancelled_bracket_does_not_trip_the_cancelled_at_rule(tmp_path):
-    site = make(tmp_path, {"index.html": "<p>LH 695 (LH 0691A is listed as cancelled) Athens</p>"})
-    assert check.scan(site) == []
-
-
-@pytest.mark.parametrize("text, hits", [
-    ("1 in 100 (between 1 in 45 and 1 in 200)", []),
-    ("1 in 1,100 (between 1 in 900 and 1 in 1,400)", []),
-    ("1 in 100", ["1 in 100"]),
-    ("1 in 100 (between 1 in 45)", ["1 in 100", "1 in 45"]),
-    ("1 in 100 <small> (between 1 in 45 and 1 in 200)</small>", []),
-    ("(between 1 in 45 and 1 in 200)", []),
-    ("1 in 1,100 (between 1 in 900 and 1 in 1,400) and 1 in 7", ["1 in 7"]),
-])
-def test_rates_pass_only_with_their_range(text, hits):
-    assert check.rate_hits(text) == hits
-
-
-def test_the_front_pages_tile_passes_rate_hits():
-    tile = "<dd>1 in 60<small> (between 1 in 35 and 1 in 95)</small></dd>"
-    assert check.rate_hits(tile) == []
-
-
-def test_a_rate_without_its_range_on_a_page_is_refused(tmp_path):
-    site = make(tmp_path, {"index.html": "<p>1 in 100</p>", "day/x.html": "<p>1 in 100 (between 1 in 45 and 1 in 200)</p>"})
-    assert check.scan(site) == [("index.html", "1 in 100")]
-
-
-def test_a_percent_sign_in_page_text_is_refused(tmp_path):
-    site = make(tmp_path, {"index.html": "<p>2%</p>", "day/x.html": "<p>2&#37;</p>", "ok.html": "<p>none</p>"})
-    assert check.scan(site) == [("day/x.html", "%"), ("index.html", "%")]
-
-
-def test_a_page_with_a_rate_needs_the_record_line(tmp_path):
-    rate = "<p>1 in 100 (between 1 in 45 and 1 in 200)</p>"
-    footer = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p></footer>"
-    site = make(tmp_path, {"index.html": rate + footer, "day/x.html": rate + f"<p>{words.PAST_ONLY}</p>" + footer,
-                           "y.html": "<p>no rate</p>" + footer})
-    assert check.missing_notices(site) == [("index.html", "record line")]
 
 
 def test_a_whole_odds_word_inside_an_airlines_data_span_passes(tmp_path):
-    site = make(tmp_path, {"index.html": '<p><span class="d">RISK AIR</span> <span class="d">CHANCE AIRLINES</span></p>'})
+    site = make(tmp_path, {"index.html": '<p><span class="d">RISK AIR</span> <span class="d">ODDS AIRLINES</span></p>'})
     assert check.scan(site) == []
-
-
-def test_a_percent_sign_inside_an_airlines_data_span_is_a_hit(tmp_path):
-    """The plan (docs/flight-lookup-plan.md, "What this plan decided"): only the odds words skip the airport's data."""
-    site = make(tmp_path, {"index.html": '<p><span class="d">100% AIR</span></p>'})
-    assert check.scan(site) == [("index.html", "%")]
-
-
-def test_a_range_must_follow_its_rate_after_one_space():
-    assert check.rate_hits("1 in 100(between 1 in 45 and 1 in 200)") == ["1 in 100"]
-
-
-@pytest.mark.parametrize("text, hits", [("11 in 20", []), ("1 in 100, then", ["1 in 100"])])
-def test_a_rate_is_read_whole_and_without_its_trailing_comma(text, hits):
-    assert check.rate_hits(text) == hits

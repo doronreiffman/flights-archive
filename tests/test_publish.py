@@ -9,7 +9,7 @@ import shutil
 
 import pytest
 
-from timeline.words import SOURCE_SHORT, UNOFFICIAL
+from timeline.words import ESTIMATES, SOURCE_SHORT, UNOFFICIAL
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "publish.sh"
 OURS = "arn:aws:iam::137953273942:user/doron-admin"
@@ -22,7 +22,7 @@ def make_site(tmp_path, page="<p>So far, 2 of 40 flights with a known outcome we
               marker=True, name="site"):
     site = tmp_path / name
     (site / "day").mkdir(parents=True)
-    footer = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p></footer>"
+    footer = f"<footer><p>{SOURCE_SHORT} {UNOFFICIAL}</p><p>{ESTIMATES}</p></footer>"
     (site / "index.html").write_text("<p>index</p>" + footer)
     (site / "day" / "2026-10-28.html").write_text(page + footer)
     (site / "style.css").write_text("p{}")

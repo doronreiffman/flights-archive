@@ -23,10 +23,12 @@ def israeli_machine(monkeypatch):
 # --- constants -------------------------------------------------------------------------------------
 
 def test_fixed_texts_are_the_specs_words():
-    assert words.UNOFFICIAL == ("Unofficial; not affiliated with or endorsed by the Israel Airports Authority, "
-                                "data.gov.il or the State of Israel.")
+    assert words.UNOFFICIAL == ("This site is unofficial: it isn't run by, connected to or approved by the Israel "
+                                "Airports Authority, data.gov.il or the State of Israel.")
     assert words.SOURCE_SHORT == "Flight data: Israel Airports Authority, published on data.gov.il."
-    assert words.TIMES_NOTE == "Times are Israel time."
+    assert words.TIMES_NOTE == "All times are Israel time."
+    assert words.ESTIMATES == "The chances on this site are estimates from past flights, not promises."
+    assert (words.MEANS, words.MEANS_ANCHOR) == ("What the numbers mean", "what-the-numbers-mean")
     assert words.PLACEHOLDER == "[owner's wording]"
     assert words.CODE_URL == "https://github.com/doronreiffman/flights-archive"
     assert words.DELAY_SENTENCE == (
