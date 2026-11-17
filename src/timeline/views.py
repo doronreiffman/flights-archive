@@ -394,7 +394,7 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
         words.History(records.published[airline], theirs.flights, theirs.cancelled, theirs.delayed,
                       blend.bad_week(theirs)),
         spoken, lead, words.headline(next_flight, delay, False) if chances else None, bool(ahead), bool(carries),
-        last is None or any(r.sched_utc_final > last for r in rows), records.airport, latest.direction, updated)
+        last is None or any(r.sched_utc_final > last and r.last_seen_at > last for r in rows), records.airport, latest.direction, updated)
 
     def day(r: Row, is_ahead: bool, top: bool = False) -> str:
         prepared = _chances(r, updated, top, cancel, delay) if r.flight_id in carries else ""
