@@ -3,6 +3,7 @@
 import html
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -89,9 +90,10 @@ def test_the_built_by_placeholder_is_refused_anywhere(tmp_path, name, text):
 def real_pages(tmp_path, monkeypatch, built_by):
     for module in (words, check):
         monkeypatch.setattr(module, "BUILT_BY", built_by)
-    return make(tmp_path, {"index.html": views.layout("Flights", "<p>ok</p>", ""),
+    updated = datetime(2026, 11, 17, 7, 46)
+    return make(tmp_path, {"index.html": views.layout("Flights", "<p>ok</p>", "", updated, front=True),
                            "how-it-works.html": views.how_it_works_page(ATTRIBUTION, [], record.TAG,
-                                                                        record.COUNTING_START)})
+                                                                        record.COUNTING_START, updated)})
 
 
 def test_pages_from_the_real_layout_trip_only_the_placeholder(tmp_path, monkeypatch):

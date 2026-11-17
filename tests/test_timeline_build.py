@@ -72,7 +72,11 @@ def chart_counts(index: str, day: str) -> str:
 
 
 def day_count_line(page: str) -> str:
-    return re.search(r'<p class="count">([^<]*)</p>', page).group(1)
+    """A day page's counts as the chart prints them ("4 flights · 1 cancelled · 1 unknown"): the flights and the
+    cancelled from its title, the unknown from its unknown line; a zero is left out of both."""
+    parts = text(re.search(r"<h1>([^<]*)</h1>", page).group(1)).split(" · ")[1:]
+    unknown = re.search(r"For ([\d,]+) of these flights, there's no record of how", text(page))
+    return " · ".join(parts + ([f"{unknown.group(1)} unknown"] if unknown else []))
 
 
 def day_counts(page: str) -> tuple[int, int, int]:
@@ -119,8 +123,7 @@ def test_the_site_is_the_redesigned_pages_and_nothing_of_v1(site):
 
 
 def test_fromhere_js_is_written(site):
-    """The second script, written whether or not a page loads it: a flight page gets a block only once a pair clears
-    the floor, and then loads ../fromhere.js."""
+    """The second script, which every page loads."""
     assert read(site, "fromhere.js") == (build.STATIC / "fromhere.js").read_text(encoding="utf-8")
 
 
@@ -162,6 +165,48 @@ def test_every_page_carries_the_footer_notices_and_stays_out_of_search_engines(s
         for notice in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE, words.ESTIMATES, words.MEANS):
             assert notice in text(page), (name, notice)
     assert ATTRIBUTION in text(pages["how-it-works.html"])
+
+
+# --- every page's top line (docs/site-redesign.md, "Every page") ------------------------------------
+
+def test_the_top_line(site):
+    """Every page opens with the site's name, linked to the front page from the page's own folder and the page's <h1>
+    on the front page only, then "Tel Aviv airport"."""
+    pages = all_pages(site)
+    assert len(pages) == 8
+    for name, page in pages.items():
+        tag, root = ("h1" if name == "index.html" else "p"), "../" * name.count("/")
+        assert (f'<body>\n<header class="mast">\n<{tag} class="wordmark"><a href="{root}index.html">Will It Fly?</a>'
+                f'</{tag}>\n<p class="where">Tel Aviv airport</p>\n<p class="updated" ') in page, name
+        assert page.count('class="wordmark"') == 1 and page.count('<h1 class="wordmark">') == (name == "index.html")
+
+
+UPDATED_LINE = re.compile(r'<p class="updated" data-updated="([^"]*)">([^<]*)</p>')
+
+
+def test_every_page_says_when_it_was_updated(tmp_path, israeli_machine):
+    """The last sighting, 22:30 UTC on 27 October, is 00:30 on 28 October in Israel. Every page's top line carries it
+    as the UTC instant it is, which fromhere.js reads to write the page's age, and as the date and time in Israel time,
+    the line that stands without scripts (docs/flight-lookup.md, "Pages", fromhere.js items 3 and 4)."""
+    site = make_site(tmp_path, [(at(21), [LY1]), (at(22, 30), [LY1])])
+    _, _, snaps = build.load(tmp_path / "model")
+    assert counting.last_sighting(snaps) == at(22, 30)
+    pages = all_pages(site)
+    assert sorted(pages) == ["cancellations.html", "day/2026-10-28.html", "flight/LY001-D.html", "how-it-works.html",
+                             "index.html"]
+    for name, page in pages.items():
+        assert UPDATED_LINE.findall(page) == [("2026-10-27T22:30:00Z", "Updated 28 Oct at 00:30")], name
+
+
+def test_every_page_loads_fromhere_js(site):
+    """fromhere.js writes the page's age on every page (docs/flight-lookup.md, "Pages", fromhere.js item 3): each page
+    loads it once, deferred, in its head, by a path from its own folder."""
+    pages = all_pages(site)
+    assert len(pages) == 8
+    for name, page in pages.items():
+        found = re.findall(r'<script src="([^"]*fromhere\.js)" defer></script>', page[:page.index("</head>")])
+        assert [posixpath.normpath(posixpath.join(posixpath.dirname(name), src)) for src in found] == ["fromhere.js"], name
+        assert page.count("fromhere.js") == 1, name
 
 
 def test_no_page_uses_a_banned_phrase(site):
@@ -277,14 +322,14 @@ def test_two_numbers_on_one_page_stop_the_build():
 def test_a_cancellation_reads_the_same_on_the_front_page_and_its_flight_page(site):
     index = read(site, "index.html")
     recent = re.search(r'<tr><td>[^<]*</td><td><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">.*?</tr>', index)
-    assert recent.group(0).endswith("<td>25+ hours</td></tr>")
+    assert recent.group(0).endswith('<td><span class="pre">Notice given: </span>25+ hours</td></tr>')
     page = read(site, "flight/IZ991-D.html")
     assert '<p class="warn">Cancelled with at least 25 hours&#x27; notice.</p>' in page  # rule 8; the text is escaped
     assert "Between 27 Oct 08:00 and 27 Oct 08:15 Cancelled" in text(page)
     assert '<h2><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in index  # the story box
     # IZ 991 is due on 28 October, after the last record: not closed (C4), so not counted yet
     assert "So far, 0 of 0 flights with a known outcome were listed as cancelled." in text(index)
-    assert "<td>25+ hours</td>" in read(site, "cancellations.html")
+    assert '<td><span class="pre">Notice given: </span>25+ hours</td>' in read(site, "cancellations.html")
 
 
 def test_the_total_counts_closed_flights(tmp_path):
@@ -488,7 +533,7 @@ def test_a_pause_of_three_hours(tmp_path):
     site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-28T10:00:00"),
                                          row(flight_no="002", sched_local="2026-10-28T11:00:00")]),
                                 (at(9), [row(flight_no="002", sched_local="2026-10-28T11:00:00")])])
-    assert '<p class="note">No known outcome for 1 of these flights.</p>' in read(site, "day/2026-10-28.html")
+    assert "For 1 of these flights, there's no record of how it ended." in text(read(site, "day/2026-10-28.html"))
     assert ("There are no records from 27 October 08:00 to 27 October 11:00."
             in text(read(site, "how-it-works.html")))
 
@@ -500,9 +545,9 @@ def test_days_at_the_edges_of_the_records_are_incomplete(tmp_path):
     index = read(site, "index.html")
     for day in ("2026-10-26", "2026-10-31"):  # records start too late for the first, end too early for the last
         assert "incomplete" in text(chart_day(index, day))
-        assert "Incomplete: some of this day's flights may be missing" in read(site, f"day/{day}.html")
+        assert words.PART_MISSING in text(read(site, f"day/{day}.html"))
     assert "incomplete" not in text(chart_day(index, "2026-10-28"))
-    assert "Incomplete" not in read(site, "day/2026-10-28.html")
+    assert "may be missing" not in read(site, "day/2026-10-28.html")
 
 
 def test_the_chart_shows_the_last_14_days_with_flights_and_every_later_day(tmp_path):
@@ -520,7 +565,7 @@ def test_times_are_israel_time_from_the_first_and_last_records(tmp_path, israeli
     """The first record, 22:30 UTC on 26 October, is 00:30 on 27 October in Israel; the last, 08:15 on 27 October."""
     site = make_site(tmp_path, [(at(22, 30, day=26), [LY1]), (at(6, 15), [LY1])])
     assert "Since 27 October: one upcoming." in text(read(site, "flight/LY001-D.html"))
-    assert "Last updated 27 Oct 2026, 08:15" in text(read(site, "index.html"))
+    assert "Updated 27 Oct at 08:15" in text(read(site, "index.html"))
 
 
 def test_text_from_the_airport_is_escaped(tmp_path):
@@ -601,4 +646,4 @@ def test_the_gap_sentence_and_last_updated_follow_the_receipts(tmp_path):
     build.build(model, site)
     upload_check(site)
     assert "There are no records from 27 October 09:00 to 27 October 10:15." in text(read(site, "how-it-works.html"))
-    assert "Last updated 27 Oct 2026, 10:45" in text(read(site, "index.html"))
+    assert "Updated 27 Oct at 10:45" in text(read(site, "index.html"))

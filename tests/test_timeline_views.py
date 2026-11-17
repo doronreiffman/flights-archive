@@ -85,7 +85,17 @@ def to3459_page():
     return page_of(*fs, obs=obs)
 
 
-WORDMARK = '<header class="band">\n<p class="wordmark"><a href="{root}index.html">Cancelled flights at Tel Aviv airport</a></p>'
+# LAST_FETCH, 22:02:45 UTC on 29 October, is 00:02 on 30 October in Israel: the instant as itself, the text in
+# Israel time
+UPDATED = '<p class="updated" data-updated="2026-10-29T22:02:45Z">Updated 30 Oct at 00:02</p>'
+
+
+def top_line(root: str, front: bool = False, updated: str = UPDATED) -> str:
+    """docs/site-redesign.md, "Every page": the site's name linked to the front page (the page's <h1> on the front
+    page only), "Tel Aviv airport", and when the page was updated."""
+    tag = "h1" if front else "p"
+    return (f'<header class="mast">\n<{tag} class="wordmark"><a href="{root}index.html">Will It Fly?</a></{tag}>\n'
+            f'<p class="where">Tel Aviv airport</p>\n{updated}\n</header>')
 
 
 def tiles(page: str) -> list[tuple[str, str]]:
@@ -96,7 +106,7 @@ def tiles(page: str) -> list[tuple[str, str]]:
 # --- layout ----------------------------------------------------------------------------------------
 
 def test_layout_head():
-    page = views.layout("A <b> & 'c'", "<p>body</p>", "../")
+    page = views.layout("A <b> & 'c'", "<p>body</p>", "../", LAST_FETCH)
     assert page.startswith('<!doctype html>\n<html lang="en">\n')
     assert '<meta name="robots" content="noindex">' in page
     assert "<title>A &lt;b&gt; &amp; &#x27;c&#x27;</title>" in page
@@ -105,22 +115,51 @@ def test_layout_head():
 
 
 @pytest.mark.parametrize("root", ["", "../"])
-def test_layout_header_band_links_home(root):
-    """Every page opens with the band: the site's name, linked to the front page from the page's own folder (it
-    replaces the back link)."""
-    page = views.layout("t", "<p>body</p>", root)
-    assert WORDMARK.format(root=root) in page
-    assert page.index("<body>") < page.index('<header class="band">') < page.index("</header>") < page.index("<main>")
-    assert "←" not in page
+@pytest.mark.parametrize("front", [False, True])
+def test_layout_top_line(root, front):
+    """Every page opens with the top line: the site's name, linked to the front page from the page's own folder, the
+    page's <h1> only on the front page; "Tel Aviv airport"; and "Updated" with the last sighting."""
+    page = views.layout("t", "<p>body</p>", root, LAST_FETCH, front=front)
+    assert top_line(root, front) in page
+    assert page.index("<body>") < page.index('<header class="mast">') < page.index("</header>") < page.index("<main>")
+    assert page.count("<h1") == front and page.count("<header") == 1
+    assert "←" not in page and "Cancelled flights at Tel Aviv airport" not in page
+
+
+def test_layout_updated_in_israel_time(israeli_machine):
+    """The design's example: 07:46 UTC on 17 November is 09:46 in Israel. Without scripts the line reads the date and
+    time in Israel time; fromhere.js reads the instant, the model's naive UTC written as the UTC instant it is."""
+    page = views.layout("t", "", "", datetime(2026, 11, 17, 7, 46, 12))
+    assert '<p class="updated" data-updated="2026-11-17T07:46:12Z">Updated 17 Nov at 09:46</p>' in page
+    assert page.count("data-updated") == 1
+
+
+@pytest.mark.parametrize("root", ["", "../"])
+def test_layout_loads_fromhere_js(root):
+    """fromhere.js writes the page's age on every page (docs/flight-lookup.md, "Pages", fromhere.js item 3): every page
+    loads it, once, deferred, from the page's own folder, in the head."""
+    page = views.layout("t", "", root, LAST_FETCH)
+    script = f'<script src="{root}fromhere.js" defer></script>'
+    assert page.count(script) == 1 and page.index(script) < page.index("</head>")
+    assert page.count("<script") == 1
 
 
 def test_layout_head_extra_goes_in_the_head():
-    page = views.layout("t", "", "", head_extra='<meta name="description" content="x">')
+    page = views.layout("t", "", "", LAST_FETCH, head_extra='<meta name="description" content="x">')
     assert page.index('<meta name="description" content="x">') < page.index("</head>")
 
 
+@pytest.mark.parametrize("page, title", [
+    ("day", "Monday 16 November"), ("cancellations", "Cancelled flights"), ("how it works", "How this works")])
+def test_each_pages_tab_title(page, title):
+    """docs/site-redesign.md, "Every page": the browser tab shows the page's own title."""
+    built = {"day": lambda: views.day_page(DayInfo(date(2026, 11, 16), 357, 3, 6, "past", False), [], LAST_FETCH),
+             "cancellations": lambda: views.cancellations_page([], LAST_FETCH), "how it works": how}[page]()
+    assert re.findall(r"<title>(.*?)</title>", built) == [title]
+
+
 def test_layout_footer():
-    page = views.layout("t", "", "../")
+    page = views.layout("t", "", "../", LAST_FETCH)
     footer = page[page.index("<footer>"):page.index("</footer>")]
     assert (f"{words.SOURCE_SHORT} {words.UNOFFICIAL} {words.TIMES_NOTE}") in text(footer)
     assert f"{words.ESTIMATES} {words.MEANS}" in text(footer)
@@ -143,7 +182,7 @@ def test_flight_page_head():
     page = to3459_page()
     assert "<title>TO 3459 · Tel Aviv to Paris</title>" in page
     assert '<h1><span class="d">TO 3459 · Tel Aviv to Paris</span></h1>' in page
-    assert WORDMARK.format(root="../") in page
+    assert top_line("../") in page
     assert '<span class="d">TRANSAVIA FRANCE</span> (as the airport lists it)' in page
     assert "TRANSAVIA FRANCE (as the airport lists it) · lands at Paris (ORY) · פריז" in text(page)
     assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in page
@@ -322,7 +361,8 @@ def test_delayed_beside_the_main_label():
 
 def test_airport_data_is_escaped():
     page = page_of(flight("x", airline_name="<B>&CO", city_en="<SCRIPT>", city_he="<i>"))
-    assert "<script" not in page.lower() and "<b>" not in page.lower()
+    assert page.count(SCRIPT) == 1  # the page's own script, which every page loads
+    assert "<script" not in page.replace(SCRIPT, "").lower() and "<b>" not in page.lower()
     assert '<span class="d">&lt;B&gt;&amp;CO</span>' in page
     assert '<span class="d">&lt;script&gt;</span>' in page  # string.capwords leaves "<script>" as it is
     assert '<span lang="he" dir="rtl"><span class="d">&lt;i&gt;</span></span>' in page
@@ -430,9 +470,9 @@ def test_the_block_carries_its_top_bound_whatever_pairs_are_present():
 
 def test_no_block_when_no_pair_clears_the_floor():
     """Review Focus 3: a fresh archive clears the floor nowhere, so an upcoming row gets no block at all: no pair, no
-    condition or record line, no "has passed" line, no rate, and no fromhere.js."""
+    condition or record line, no "has passed" line and no rate."""
     page = page_of(upcoming(), summary=BELOW)
-    assert 'class="pairs"' not in page and 'class="passed"' not in page and "fromhere.js" not in page
+    assert 'class="pairs"' not in page and 'class="passed"' not in page
     assert words.PAST_ONLY not in text(page) and "cannot say what the list shows now" not in text(page)
     assert not re.search(r"1 in \d", text(page))
     assert "Since 27 October: one upcoming." in text(page)
@@ -491,15 +531,13 @@ def test_the_partner_sentence_names_only_time_terminal_and_desks_partners():
     assert "the flight probably landed as OS 083." in text(page_of(*fs, only="os1083"))
 
 
-def test_fromhere_js_only_on_pages_with_a_block():
-    """The script loads in the head of a page with a block, once, and on no other page: one without an upcoming row,
-    or one whose upcoming row has no block because no pair clears the floor."""
-    page = page_of(upcoming())
-    assert page.count(SCRIPT) == 1 and page.index(SCRIPT) < page.index("</head>")
-    assert "<script" not in page.replace(SCRIPT, "")
-    for other in (page_of(*summary_rows(["departed", "cancelled", "no final update", "unknown"])),
-                  page_of(upcoming(), summary=BELOW)):
-        assert "<script" not in other
+def test_every_flight_page_loads_fromhere_js_once():
+    """The script writes the page's age on every page, so it loads, once, on a flight page with a block and on one
+    without: one without an upcoming row, or one whose upcoming row has no block because no pair clears the floor."""
+    for page in (page_of(upcoming()), page_of(*summary_rows(["departed", "cancelled", "no final update", "unknown"])),
+                 page_of(upcoming(), summary=BELOW)):
+        assert page.count(SCRIPT) == 1 and page.index(SCRIPT) < page.index("</head>")
+        assert "<script" not in page.replace(SCRIPT, "")
 
 
 FROMHERE_JS = Path(views.__file__).parent / "static" / "fromhere.js"
@@ -583,57 +621,69 @@ def day_flights():
     return lists(*fs)
 
 
-def day_page(total=418, cancelled=7, unknown=190, partial=True):
-    return views.day_page(DayInfo(DAY, total, cancelled, unknown, "past", partial), day_flights())
+def day_page(total=418, cancelled=7, unknown=190, partial=True, day=DAY, flights_=None):
+    return views.day_page(DayInfo(day, total, cancelled, unknown, "past", partial),
+                          day_flights() if flights_ is None else flights_, LAST_FETCH)
+
+
+MONDAY = date(2026, 11, 16)  # the design's day
+PART_MISSING = "Some flights from this day may be missing: the records don't cover the whole day."
 
 
 def test_day_page_head():
+    """docs/site-redesign.md, "Day page", top to bottom: the title with its counts, the partial-day line and the
+    unknown line, each under the one before; the date alone in the browser tab."""
     page = day_page()
-    assert "<title>Thursday 29 October 2026</title>" in page
-    assert "<h1>Thursday 29 October 2026</h1>" in page
-    assert WORDMARK.format(root="../") in page
-    assert '<p class="count">418 flights · 7 cancelled · 190 unknown</p>' in page
-    assert "Incomplete: some of this day's flights may be missing from the records." in text(page)
-    assert '<p class="note">No known outcome for 190 of these flights.</p>' in page
+    assert "<title>Thursday 29 October</title>" in page
+    assert top_line("../") in page
+    lines = [text(inner) for inner in re.findall(r"<(?:h1|p)[^>]*>(.*?)</(?:h1|p)>", section(page, "<main>", "<h2>"))]
+    assert lines == ["Thursday 29 October · 418 flights · 7 cancelled", PART_MISSING,
+                     "For 190 of these flights, there's no record of how they ended."]
+    assert f'<p class="note">{html.escape(PART_MISSING)}</p>' in page
     assert '<link rel="stylesheet" href="../style.css">' in page
+    assert "<dl" not in page and 'class="count"' not in page  # the title carries the counts
 
 
-@pytest.mark.parametrize("total, cancelled, unknown, line", [
-    (418, 0, 190, "418 flights · 190 unknown"),
-    (418, 7, 0, "418 flights · 7 cancelled"),
-    (1, 0, 0, "1 flight"),
+@pytest.mark.parametrize("total, cancelled, title", [
+    (357, 3, "Monday 16 November · 357 flights · 3 cancelled"),
+    (357, 0, "Monday 16 November · 357 flights"),
+    (1, 1, "Monday 16 November · 1 flight · 1 cancelled"),  # Question 6f
+    (1, 0, "Monday 16 November · 1 flight"),
 ])
-def test_day_count_line_leaves_out_zeros(total, cancelled, unknown, line):
-    assert f'<p class="count">{line}</p>' in day_page(total, cancelled, unknown)
+def test_the_day_title_leaves_out_a_zero(total, cancelled, title):
+    page = day_page(total, cancelled, day=MONDAY)
+    assert f"<h1>{title}</h1>" in page
+    assert re.findall(r"<title>(.*?)</title>", page) == ["Monday 16 November"]
 
 
-def test_day_page_tiles_show_the_count_line():
-    """The count line's figures as tiles above it, in its order; the line itself stays."""
-    page = day_page()
-    assert tiles(page) == [("flights", "418"), ("cancelled", "7"), ("unknown", "190")]
-    assert '<div class="stat cancel"><dt>cancelled</dt> <dd>7</dd></div>' in page
-    assert page.index('<dl class="stats">') < page.index('<p class="count">')
-
-
-@pytest.mark.parametrize("total, cancelled, unknown, shown", [
-    (418, 0, 190, [("flights", "418"), ("unknown", "190")]),
-    (418, 7, 0, [("flights", "418"), ("cancelled", "7")]),
-    (1, 0, 0, [("flight", "1")]),
+@pytest.mark.parametrize("unknown, line", [
+    (6, "For 6 of these flights, there's no record of how they ended."),
+    (1, "For 1 of these flights, there's no record of how it ended."),  # Question 6f
 ])
-def test_day_tiles_leave_out_zeros_like_the_line(total, cancelled, unknown, shown):
-    assert tiles(day_page(total, cancelled, unknown)) == shown
-
-
-def test_day_page_unknown_line_for_one_flight():
-    """Vanished and dropped flights have records of leaving, so the line says only that the outcome is unknown;
-    each flight page gives the reason."""
-    assert '<p class="note">No known outcome for 1 of these flights.</p>' in day_page(unknown=1)
+def test_the_unknown_line(unknown, line):
+    """"Unknown" counts the UNKNOWN label only; each flight page's label note gives its reason."""
+    assert f'<p class="note">{html.escape(line)}</p>' in day_page(unknown=unknown)
 
 
 def test_day_page_without_partial_or_unknown_lines():
+    """A count of 0 leaves its line out (Question 6f), and a whole day has no partial-day line."""
     page = text(day_page(unknown=0, partial=False))
-    assert "418 flights · 7 cancelled" in page and "TO 3459" in page
-    assert "Incomplete" not in page and "No known outcome" not in page
+    assert "Thursday 29 October · 418 flights · 7 cancelled" in page and "TO 3459" in page
+    assert "may be missing" not in page and "no record of how" not in page
+
+
+def test_the_empty_lists():
+    """A direction with no flight that day says so under its heading."""
+    only_arrivals = text(day_page(1, 0, 0, False, flights_=lists(
+        flight("in", local(29, 5, 0), flight_no="002", direction="A", outcome="landed"))))
+    assert "Departures No departures recorded. Arrivals 05:00 LY 002 from New York (JFK) LANDED" in only_arrivals
+    assert "No arrivals recorded." not in only_arrivals
+    only_departures = text(day_page(1, 0, 0, False, flights_=lists(flight("out", local(29, 20, 0), flight_no="003"))))
+    assert "Departures 20:00 LY 003 to New York (JFK) DEPARTED Arrivals No arrivals recorded." in only_departures
+    assert "No departures recorded." not in only_departures
+    page = day_page(0, 0, 0, False, flights_=[])
+    assert ('<h2>Departures</h2>\n<p>No departures recorded.</p>\n<h2>Arrivals</h2>\n<p>No arrivals recorded.</p>'
+            in page)
 
 
 def test_day_page_departures_then_arrivals_in_scheduled_order():
@@ -665,7 +715,7 @@ def bracket_day():
     fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh0693a", local(29, 9, 0), "0693A", "canceled"),
           lh("lh695", local(29, 9, 0), "695"), lh("lh697", local(29, 9, 0), "697"),
           lh("lh0691a-11", local(29, 11, 0), "0691A", "canceled"), lh("lh695-11", local(29, 11, 0), "695")]
-    return views.day_page(DayInfo(DAY, 2, 0, 0, "past", False), lists(*fs))
+    return views.day_page(DayInfo(DAY, 2, 0, 0, "past", False), lists(*fs), LAST_FETCH)
 
 
 def test_the_bracket_in_a_list_row():
@@ -708,20 +758,64 @@ def cancellations_page():
           flight("ly", local(28, 9, 0), airline="LY", flight_no="9614", group="g", **CLEAN),
           lh("lh0691a", local(29, 20, 0), "0691A", "canceled"), lh("lh695", local(29, 20, 0), "695"),
           lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open")]
-    return views.cancellations_page(lists(*fs))
+    return views.cancellations_page(lists(*fs), LAST_FETCH)
+
+
+CANCELLED_UNDER = ("“Notice given” is how long before the scheduled time the airport marked the flight cancelled. "
+                   "Airlines may tell passengers sooner.")
+
+
+def test_the_cancelled_flights_page_head():
+    """docs/site-redesign.md, "Cancelled flights": the title, the introduction and the line under it, then the table."""
+    page = cancellations_page()
+    assert "<title>Cancelled flights</title>" in page and top_line("") in page
+    lines = [text(inner) for inner in re.findall(r"<(?:h1|p)[^>]*>(.*?)</(?:h1|p)>",
+                                                 section(page, "<main>", '<div class="table-card">'))]
+    assert lines == ["Cancelled flights", "Every cancelled flight since 27 October, newest first.", CANCELLED_UNDER]
+    assert f'<p class="note">{html.escape(CANCELLED_UNDER)}</p>' in page
 
 
 def test_cancellations_newest_first():
-    """Only the flights labelled CANCELLED: neither LH flight, though each is newer than TO 3459."""
+    """Only the flights labelled CANCELLED: neither LH flight, though each is newer than TO 3459. The columns are
+    Date · Flight · Route · Notice given, and each notice is the list form, led on a phone by "Notice given: "."""
     page = cancellations_page()
-    assert "<title>All cancellations</title>" in page and "<h1>All cancellations</h1>" in page
     assert cells(page) == [
         ["Date", "Flight", "Route", "Notice given"],
-        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "23+ hours"],
-        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "none"],
-        ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00", "6+ hours"],
+        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "Notice given: 23+ hours"],
+        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "Notice given: none"],
+        ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00",
+         "Notice given: 6+ hours"],
     ]
     assert "LH 0691A" not in text(page) and "LH 695" not in text(page)
+
+
+def test_the_route_and_the_phone_prefix():
+    """The design's row: WZ 016, cancelled with no notice. The phone prefix stands in its own span, so the sheet can
+    show it only where the table stacks and its column heads are hidden."""
+    wz = flight("wz", datetime(2026, 11, 17, 5, 35), airline="WZ", flight_no="016", airport="ZIA", city_en="MOSCOW",
+                **TO_CANCELLED)
+    page = views.cancellations_page(lists(wz), LAST_FETCH)
+    assert cells(page)[1] == ["Tue 17 Nov", "WZ 016", "Tel Aviv to Moscow (ZIA), scheduled to leave at 05:35",
+                              "Notice given: none"]
+    assert '<td><span class="pre">Notice given: </span>none</td></tr>' in page
+
+
+@pytest.mark.parametrize("lead, short", [
+    (dict(cancel_lead_min=1400.95, cancel_lead_max_min=None, cancel_lead_censored=None), "23+ hours"),  # rule 1
+    (dict(cancel_lead_min=30.0, cancel_lead_max_min=None, cancel_lead_censored=None), "unknown"),  # rule 2
+    (dict(cancel_lead_min=-142.75, cancel_lead_max_min=-126.75, cancel_lead_censored=False), "none"),  # rule 3
+    (dict(cancel_lead_min=420.0, cancel_lead_max_min=2995.0, cancel_lead_censored=True), "7 to 50 hours"),  # rule 5
+    (dict(cancel_lead_min=30.0, cancel_lead_max_min=290.0, cancel_lead_censored=True), "up to 5 hours"),  # rule 6
+    (dict(cancel_lead_min=60.0, cancel_lead_max_min=76.0, cancel_lead_censored=False), "1+ hours"),  # rule 8
+    (dict(cancel_lead_min=10.0, cancel_lead_max_min=26.0, cancel_lead_censored=False), "under an hour"),  # rule 9
+    (dict(cancel_lead_min=50.0, cancel_lead_max_min=66.0, cancel_lead_censored=False), "about an hour"),  # rule 10
+    (dict(cancel_lead_min=-5.0, cancel_lead_max_min=11.0, cancel_lead_censored=False), "almost none"),  # rule 11
+])
+def test_the_list_forms_of_the_notice(lead, short):
+    """docs/site-redesign.md, "Notice": under "Notice given" a list shows the short form, never the sentence."""
+    page = views.cancellations_page(lists(flight("c", local(29, 9, 0), outcome="canceled", **lead)), LAST_FETCH)
+    assert cells(page)[1][-1] == f"Notice given: {short}"
+    assert f'<span class="pre">Notice given: </span>{html.escape(short)}</td>' in page
 
 
 def test_cancellations_link_each_number_to_its_row():
@@ -733,17 +827,18 @@ def test_cancellations_link_each_number_to_its_row():
 
 
 def test_no_cancellations_yet():
-    page = views.cancellations_page(lists(flight("departed")))
-    assert "<table" not in page and "No flights listed as cancelled so far." in text(page)
+    page = views.cancellations_page(lists(flight("departed")), LAST_FETCH)
+    assert "<table" not in page and '<p>No cancelled flights so far.</p>' in page
 
 
 def test_cancellations_show_c9s_notice():
     """EY 607 and LY 9614, one cancelled flight (C1): LY 9614 was listed as cancelled first, so the lists show its
     notice, 23+ hours, not that of EY 607, the first row (6+ hours)."""
     fl = lists(*ey_ly())
-    assert cells(views.cancellations_page(fl))[1] == [
-        "Thu 29 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00", "23+ hours"]
-    day = views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), fl)
+    assert cells(views.cancellations_page(fl, LAST_FETCH))[1] == [
+        "Thu 29 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00",
+        "Notice given: 23+ hours"]
+    day = views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), fl, LAST_FETCH)
     assert "09:00 EY 607, LY 9614 to New York (JFK) CANCELLED Cancelled with at least 23 hours' notice." in text(day)
 
 
@@ -800,7 +895,7 @@ COUNTING_START = datetime(2026, 11, 15, 22)  # naive UTC: 00:00 on 16 November i
 
 
 def how(gaps=(GAP,)) -> str:
-    return views.how_it_works_page(ATTRIBUTION, list(gaps), TAG, COUNTING_START)
+    return views.how_it_works_page(ATTRIBUTION, list(gaps), TAG, COUNTING_START, LAST_FETCH)
 
 
 def appendix_text(gap_sentences: str) -> str:
@@ -965,14 +1060,12 @@ def test_description_ends_with_one_full_stop_whatever_the_built_by_line_ends_wit
         assert meta(head, attribute).endswith("there was. Built by Doron Reiffman."), attribute
 
 
-def test_front_page_title_and_lede():
-    """The band holds the title as the wordmark, the lede and the last-updated line; no other band on the page."""
+def test_front_page_top_line_and_lede():
+    """The top line holds the site's name as the page's one <h1>; the lede opens the main column."""
     page = front()
-    band = section(page, '<header class="band">', "</header>")
-    assert '<h1 class="wordmark"><a href="index.html">Cancelled flights at Tel Aviv airport</a></h1>' in band
-    assert ('<p class="lede">A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, and '
-            "which ones were cancelled.</p>") in band
-    assert '<p class="updated">Last updated 30 Oct 2026, 00:02</p>' in band
+    assert top_line("", front=True) in page
+    assert ('<main>\n<p class="lede">A record of flights in and out of Ben Gurion Airport, kept since 27 October 2026, '
+            "and which ones were cancelled.</p>") in page
     assert page.count("<header") == 1 and page.count("<h1") == 1
 
 
@@ -1129,8 +1222,8 @@ def test_recent_cancellations():
     table = section(page, '<table class="cancellations">', "</table>")
     assert cells(table) == [
         ["Date", "Flight", "Route", "Notice given"],
-        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "23+ hours"],
-        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "none"],
+        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "Notice given: 23+ hours"],
+        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "Notice given: none"],
     ]
     assert '<a href="flight/IZ992-A.html#2026-10-30-1350-JFK">' in table
     assert '<a href="flight/TO3459-D.html#2026-10-29-1710-ORY">' in table
@@ -1159,10 +1252,19 @@ def test_chart_counts_beside_each_bar():
     assert "Sat 31 Oct 161 flights" in text(chart_day(chart, "2026-10-31"))
 
 
+def day_page_counts(page: str) -> str:
+    """A day page's counts as the chart prints them: the flights and the cancelled from its title, the unknown from
+    its unknown line ("370 flights · 8 cancelled · 190 unknown"); a zero is left out of both."""
+    parts = text(re.search(r"<h1>(.*?)</h1>", page).group(1)).split(" · ")[1:]
+    unknown = re.search(r"For ([\d,]+) of these flights, there's no record of how", text(page))
+    return " · ".join(parts + ([f"{unknown.group(1)} unknown"] if unknown else []))
+
+
 def test_chart_counts_equal_the_day_pages():
     chart = views.chart_svg(CHART_DAYS)
     for info in CHART_DAYS:
-        line = re.search(r'<p class="count">(.*?)</p>', views.day_page(info, [])).group(1)
+        line = day_page_counts(views.day_page(info, [], LAST_FETCH))
+        assert line.startswith(f"{info.total} flights")
         assert line in text(chart_day(chart, f"{info.day:%Y-%m-%d}"))
 
 
@@ -1212,8 +1314,10 @@ def test_front_page_draws_the_chart_days_and_lists_every_day():
     assert '<a href="day/2026-10-26.html">Mon 26 Oct</a>' in days
 
 
-def test_last_updated_in_israel_time():
-    assert '<p class="updated">Last updated 30 Oct 2026, 00:02</p>' in front(last=datetime(2026, 10, 29, 22, 2, 45))
+def test_the_front_page_is_updated_at_the_last_record(israeli_machine):
+    """The front page's top line says when the last record is, not the default of these tests."""
+    page = front(last=datetime(2026, 11, 17, 7, 46, 12))
+    assert '<p class="updated" data-updated="2026-11-17T07:46:12Z">Updated 17 Nov at 09:46</p>' in page
 
 
 def test_built_by_line():
@@ -1225,15 +1329,15 @@ def test_built_by_line():
 
 
 def test_front_page_order():
-    """docs/flight-lookup.md, "Pages", Front page: the band, the search box (moved up), the block, the total's tiles
+    """docs/flight-lookup.md, "Pages", Front page: the top line, the search box (moved up), the block, the total's tiles
     and sentence, the story, recent cancellations, the chart, the day list and the built-by line; the search data
     last in the main column."""
     page = front()
-    order = ['<h1 class="wordmark">', 'class="lede"', 'class="updated"', "</header>", '<input id="search"',
-             'id="search-results"', "<h2>From here to the scheduled time</h2>", '<table class="fromhere">',
-             'class="stats"', 'class="total"', 'class="story"', "Recent cancellations", 'href="cancellations.html"',
-             "Flights each day", '<svg class="chart"', 'class="days"', 'class="built"', 'id="flights-data"', "</main>",
-             "<footer>"]
+    order = ['<h1 class="wordmark">', 'class="where"', 'class="updated"', "</header>", 'class="lede"',
+             '<input id="search"', 'id="search-results"', "<h2>From here to the scheduled time</h2>",
+             '<table class="fromhere">', 'class="stats"', 'class="total"', 'class="story"', "Recent cancellations",
+             'href="cancellations.html"', "Flights each day", '<svg class="chart"', 'class="days"', 'class="built"',
+             'id="flights-data"', "</main>", "<footer>"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
 
 
@@ -1255,9 +1359,9 @@ def test_front_page_without_cancellations():
     assert '<table class="fromhere">' in page and "So far, 0 of 900 flights" in text(page)
     assert '<input id="search"' in page and '<ul id="search-results" hidden></ul>' in page
     assert 'id="flights-data"' in page and '<svg class="chart"' in page and '<p class="days">' in page
-    assert "<h2>Recent cancellations</h2>" in page and "No flights listed as cancelled so far." in text(page)
+    assert "<h2>Recent cancellations</h2>" in page and "<p>No cancelled flights so far.</p>" in page
     assert 'class="cancellations"' not in page
-    assert "Last updated 30 Oct 2026, 00:02" in text(page)
+    assert UPDATED in page
     assert all(t in text(page) for t in (words.SOURCE_SHORT, words.UNOFFICIAL, words.TIMES_NOTE))
 
 
@@ -1267,7 +1371,7 @@ def test_front_page_whose_only_cancellation_has_an_unknown_warning():
     assert "So far, 1 of 900 flights with a known outcome were listed as cancelled." in text(page)
     box = section(page, '<section class="story">', "</section>")
     assert "Already on the list on 27 Oct at 20:04 already cancelled, terminal 3" in text(box)
-    assert cells(section(page, '<table class="cancellations">', "</table>"))[1][-1] == "unknown"
+    assert cells(section(page, '<table class="cancellations">', "</table>"))[1][-1] == "Notice given: unknown"
 
 
 # --- the upload check's phrases on every page these tests build ------------------------------------
@@ -1275,7 +1379,8 @@ def test_front_page_whose_only_cancellation_has_an_unknown_warning():
 def every_page() -> dict[str, str]:
     to, to_obs = to3459()
     return {
-        "layout": views.layout("t", "", ""),
+        "layout": views.layout("t", "", "", LAST_FETCH),
+        "layout, the front page's top line": views.layout("t", "", "", LAST_FETCH, front=True),
         "TO 3459": to3459_page(),
         "arrival": page_of(flight("in", local(29, 5, 0), flight_no="002", direction="A")),
         "two cities": page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
@@ -1290,10 +1395,12 @@ def every_page() -> dict[str, str]:
         "day": day_page(),
         "day, a cancellation at least 23 hours ahead": views.day_page(
             DayInfo(date(2026, 10, 30), 1, 1, 0, "today", False),
-            lists(flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", **AT_LEAST_23))),
+            lists(flight("iz", local(30, 13, 50), airline="IZ", flight_no="992", **AT_LEAST_23)), LAST_FETCH),
+        "day, no flights, every line": day_page(0, 0, 1, True, flights_=[]),
         "cancellations": cancellations_page(),
         "how it works": how([GAP, LATER_GAP]),
-        "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), lists(to[1], obs=to_obs)),
+        "TO 3459 rows on a day": views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), lists(to[1], obs=to_obs),
+                                                LAST_FETCH),
         "front page": front(),
         "front page, ten cancellations": front(recent=twelve_cancelled()),
         "front page, no cancellations": views.front_page(NONE_YET, None, [], CHART_DAYS, ALL_DAYS, entries(),
@@ -1313,7 +1420,8 @@ def every_page() -> dict[str, str]:
                                                       lh("lh695-31", local(31, 9, 0), "695", "open"),
                                                       only="lh0691a-31"),
         "day, numbers listed as cancelled in a flight that departed": bracket_day(),
-        "cancellations, a warning by C9": views.cancellations_page(lists(*ey_ly())),
+        "cancellations, a warning by C9": views.cancellations_page(lists(*ey_ly()), LAST_FETCH),
+        "cancellations, none": views.cancellations_page([], LAST_FETCH),
     }
 
 

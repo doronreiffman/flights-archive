@@ -612,6 +612,45 @@ def updated_at(t: datetime) -> str:
     return f"Updated {local.day} {local:%b} at {local:%H:%M}"
 
 
+# --- every page's top line, the day page and the cancelled-flights page (docs/site-redesign.md, "Pages") ---------
+
+NAME = "Will It Fly?"  # the site's name, linked to the front page on every page
+WHERE = "Tel Aviv airport"  # beside the name
+
+
+def long_date(day: date) -> str:
+    """A date written out, as on a flight page and a day page: "Monday 16 November"."""
+    return f"{day:%A} {_day_month(day)}"
+
+
+def day_title(day: date, total: int, cancelled: int) -> str:
+    """"Monday 16 November · 357 flights · 3 cancelled": a count of 0 leaves its part out (Question 6f)."""
+    counts = [(total, _flights(total)), (cancelled, f"{_n(cancelled)} cancelled")]
+    return " · ".join([long_date(day), *(part for n, part in counts if n)])
+
+
+PART_MISSING = "Some flights from this day may be missing: the records don't cover the whole day."
+
+
+def unknown_line(n: int) -> str | None:
+    """The day page's line for its flights labelled UNKNOWN; none at 0 (Question 6f)."""
+    if n == 0:
+        return None
+    if n == 1:
+        return "For 1 of these flights, there's no record of how it ended."
+    return f"For {_n(n)} of these flights, there's no record of how they ended."
+
+
+NO_DEPARTURES = "No departures recorded."
+NO_ARRIVALS = "No arrivals recorded."
+CANCELLED_TITLE = "Cancelled flights"
+CANCELLED_INTRO = "Every cancelled flight since 27 October, newest first."
+CANCELLED_UNDER = ("“Notice given” is how long before the scheduled time the airport marked the flight cancelled. "
+                   "Airlines may tell passengers sooner.")
+CANCELLED_COLUMNS = ("Date", "Flight", "Route", NOTICE_GIVEN)
+NONE_CANCELLED = "No cancelled flights so far."  # the cancelled-flights page and the front page's recent list
+
+
 FRESH_REST = "Things may have changed, so check with your airline."
 MORE_THAN_3_DAYS = ("Your flight is more than 3 days away. Flights show up on the airport's list about 3 days "
                     "ahead, so check back closer to the date.")

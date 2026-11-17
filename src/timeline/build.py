@@ -67,13 +67,14 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     files = {"index.html": views.front_page(summary, flights.featured(flights_, censored),
                                             flights.recent_cancellations(flights_), chart_days, infos,
                                             flights.search_entries(rows), last_check)}
-    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps, record.TAG, record.COUNTING_START)
-    files["cancellations.html"] = views.cancellations_page(flights_)
+    files["how-it-works.html"] = views.how_it_works_page(ATTRIBUTION, gaps, record.TAG, record.COUNTING_START,
+                                                         last_check)
+    files["cancellations.html"] = views.cancellations_page(flights_, last_check)
     by_day: dict[date, list[flights.ListFlight]] = {}
     for fl in flights_:
         by_day.setdefault(fl.day, []).append(fl)
     for info in infos:
-        files[f"day/{info.day:%Y-%m-%d}.html"] = views.day_page(info, by_day[info.day])
+        files[f"day/{info.day:%Y-%m-%d}.html"] = views.day_page(info, by_day[info.day], last_check)
     by_page: dict[str, list[flights.Row]] = {}
     for r in rows:
         by_page.setdefault(r.page, []).append(r)
