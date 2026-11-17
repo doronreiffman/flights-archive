@@ -18,7 +18,7 @@ MORE = "more: type more of the number or city"
 def entry(airline: str, number: str, city: str, airport: str) -> dict:
     """A search entry as flights.search_entries writes it, for a departure to `city`."""
     return {"n": flights.number_keys(airline, number), "p": flights.place_keys(city, airport),
-            "t": f"{airline} {number}, Tel Aviv to {city}", "u": f"flight/{airline}{number}-D.html"}
+            "t": f"{airline} {number} · Tel Aviv to {city}", "u": f"flight/{airline}{number}-D.html"}
 
 
 # In search_entries' order: airline, then number.
@@ -45,26 +45,26 @@ def ranked(query: str, entries: list[dict] = ENTRIES) -> tuple[list[str], int]:
 
 
 def test_an_exact_flight_number_comes_before_numbers_starting_with_it():
-    assert ranked("ly 001") == (["LY 001, Tel Aviv to New York", "LY 0010, Tel Aviv to London"], 0)
+    assert ranked("ly 001") == (["LY 001 · Tel Aviv to New York", "LY 0010 · Tel Aviv to London"], 0)
     assert ranked("LY001") == ranked("ly 001") == ranked("  Ly  001 ")
 
 
 def test_a_bare_number_matches_exactly_before_by_prefix():
     # "1" is LY 001's number without its zeros; LY 0010 ("10") and 6H 0115A ("115a") only start with it.
-    assert ranked("1") == (["LY 001, Tel Aviv to New York", "6H 0115A, Tel Aviv to Eilat",
-                            "LY 0010, Tel Aviv to London"], 0)
-    assert ranked("991") == (["IZ 991, Tel Aviv to New York"], 0)
+    assert ranked("1") == (["LY 001 · Tel Aviv to New York", "6H 0115A · Tel Aviv to Eilat",
+                            "LY 0010 · Tel Aviv to London"], 0)
+    assert ranked("991") == (["IZ 991 · Tel Aviv to New York"], 0)
 
 
 def test_cities_and_airport_codes_match_by_prefix_ordered_by_airline_and_number():
-    new_york = ["IZ 991, Tel Aviv to New York", "LY 001, Tel Aviv to New York"]
+    new_york = ["IZ 991 · Tel Aviv to New York", "LY 001 · Tel Aviv to New York"]
     assert ranked("new york") == ranked("New York") == ranked("jfk") == ranked("ne") == (new_york, 0)
     assert ranked("york") == ([], 0)  # a key matches from its start, never from inside it
 
 
 def test_flight_numbers_come_before_places():
     # "e": EY 607's number starts with it; 6H 0115A only by its place (Eilat, ETM), though 6H sorts first.
-    assert ranked("e") == (["EY 607, Tel Aviv to Abu Dhabi", "6H 0115A, Tel Aviv to Eilat"], 0)
+    assert ranked("e") == (["EY 607 · Tel Aviv to Abu Dhabi", "6H 0115A · Tel Aviv to Eilat"], 0)
 
 
 def test_an_empty_query_shows_nothing():
@@ -74,14 +74,14 @@ def test_an_empty_query_shows_nothing():
 
 def test_ten_results_at_most_then_how_many_more():
     many = [entry("LY", f"{n:03d}", "London", "LHR") for n in range(1, 13)]
-    assert ranked("ly", many) == ([f"LY {n:03d}, Tel Aviv to London" for n in range(1, 11)], 2)
-    assert ranked("ly", many[:10]) == ([f"LY {n:03d}, Tel Aviv to London" for n in range(1, 11)], 0)
+    assert ranked("ly", many) == ([f"LY {n:03d} · Tel Aviv to London" for n in range(1, 11)], 2)
+    assert ranked("ly", many[:10]) == ([f"LY {n:03d} · Tel Aviv to London" for n in range(1, 11)], 0)
 
 
 @pytest.mark.parametrize("query", ["LY+1", "(", "\\", "[", "*", ".", "^", "$", "?", "|"])
 def test_pattern_characters_are_matched_as_typed(query):
     assert ranked(query) == ([], 0)
-    assert ranked(query, [entry("ZZ", query, "Nowhere", "NOW")]) == ([f"ZZ {query}, Tel Aviv to Nowhere"], 0)
+    assert ranked(query, [entry("ZZ", query, "Nowhere", "NOW")]) == ([f"ZZ {query} · Tel Aviv to Nowhere"], 0)
 
 
 # A stand-in for the front page: the three elements the script uses, built like the real ones, and an innerHTML that

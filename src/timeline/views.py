@@ -74,13 +74,12 @@ def _link(r: Row, root: str) -> str:
 
 
 def _numbers(fl: ListFlight, root: str) -> str:
-    """The flight's numbers, linked; a number listed as cancelled in a flight that is not (flights.others) comes after
-    the rest, in brackets, one each: "LH 695 (LH 0691A is listed as cancelled)" (docs/flight-lookup.md, "Words";
-    Question 4b). The bracket also keeps a place name from following "cancelled"."""
+    """The flight's numbers, linked; a number marked cancelled in a flight that is not (flights.others) comes after
+    the rest, in brackets, one each: "LH 695 (LH 0691A: cancelled)" (docs/flight-lookup.md, "In lists"). The bracket
+    also keeps a place name from following "cancelled"."""
     apart = flights.others([fl])
     named = [_link(r, root) for r in fl.rows if r.flight_id not in apart]
-    return " ".join([", ".join(named), *(f"({_link(r, root)} {e(words.BRACKET)})" for r in fl.rows
-                                        if r.flight_id in apart)])
+    return " ".join([", ".join(named), *(f"({_link(r, root)}: cancelled)" for r in fl.rows if r.flight_id in apart)])
 
 
 def _place(r: Row) -> str:
@@ -225,12 +224,12 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool, other: tup
         out.append(f'<p class="warn">{e(r.notice.sentence)}</p>')
     if r.changed_back:
         out.append(f'<p class="note">{e(r.changed_back)}</p>')
-    if other:
-        verb, named = other
-        out.append(f'<p class="note">{e(words.another_number(verb))} {_names([_link(p, "../") for p in named])}.</p>')
-    if partners:
-        out.append(f'<p class="note">Probably the same flight as {_names([_link(p, "../") for p in partners])} '
-                   "(same time, terminal and check-in desks).</p>")
+    if other:  # the twin line: "This number was cancelled, but the flight probably left as LH 695."
+        before, after = words.twin(other[0])
+        out.append(f'<p class="note">{e(before)} {_names([_link(p, "../") for p in other[1]])}{e(after)}</p>')
+    if partners:  # "Also sold as LY 9252 and LY 9255 (probably the same plane)."
+        out.append(f'<p class="note">{e(words.ALSO_SOLD)} {_names([_link(p, "../") for p in partners])} '
+                   f"{e(words.SAME_PLANE)}</p>")
     if _has_block(r, pairs):
         out += _block(r, pairs, updated)
     if r.lines:

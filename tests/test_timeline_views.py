@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from model.report import ATTRIBUTION
-from test_timeline_flights import CLEAN, LAST_FETCH, ey_ly, first, flight, lh, local, os_pair, then, utc
+from test_timeline_flights import CLEAN, LAST_FETCH, RESUMES, ey_ly, first, flight, lh, local, os_pair, then, utc
 from test_timeline_words import A35_ROWS, TO3459_OBS, TOTAL, rate
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
 from timeline import check, counting, display, flights, views, words
@@ -32,7 +32,7 @@ def text(page: str) -> str:
 
 def rows(*fs, obs=None):
     """Display rows for these flights; each has only its earliest record unless `obs` is given."""
-    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, LAST_FETCH, 1)
+    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, LAST_FETCH, 1, RESUMES)
 
 
 def lists(*fs, obs=None):
@@ -141,8 +141,8 @@ def test_d_escapes_and_marks_data():
 
 def test_flight_page_head():
     page = to3459_page()
-    assert "<title>TO 3459, Tel Aviv to Paris</title>" in page
-    assert '<h1><span class="d">TO 3459, Tel Aviv to Paris</span></h1>' in page
+    assert "<title>TO 3459 · Tel Aviv to Paris</title>" in page
+    assert '<h1><span class="d">TO 3459 · Tel Aviv to Paris</span></h1>' in page
     assert WORDMARK.format(root="../") in page
     assert '<span class="d">TRANSAVIA FRANCE</span> (as the airport lists it)' in page
     assert "TRANSAVIA FRANCE (as the airport lists it) · lands at Paris (ORY) · פריז" in text(page)
@@ -153,7 +153,7 @@ def test_flight_page_head():
 
 def test_an_arrival_leaves_from_its_airport():
     page = page_of(flight("in", local(29, 5, 0), flight_no="002", direction="A"))
-    assert "<title>LY 002, from New York to Tel Aviv</title>" in page
+    assert "<title>LY 002 · New York to Tel Aviv</title>" in page
     assert "leaves from New York (JFK)" in text(page)
     assert "lands at" not in page
 
@@ -170,7 +170,7 @@ def test_the_cancelled_row_is_open_with_its_notice_and_changes():
     assert text(row).startswith("Thu 29 Oct scheduled to leave at 17:10 CANCELLED")
     assert "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." in text(row)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
-        "Earliest record (27 Oct 20:04) on time, terminal 1",
+        "Already on the list on 27 Oct at 20:04 on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
         "17:32 Expected to leave at 17:38 instead",
         "18:32 Expected to leave at 18:45 instead",
@@ -251,10 +251,10 @@ def test_the_summary_line_starts_at_the_summarys_first_record():
 
 
 def test_a_number_with_two_cities():
-    """LY 5115 left at 16:30 on 28 October to Kutaisi and to Batumi: no city in the title, each row its own."""
+    """LY 5115 left at 16:30 on 28 October to Kutaisi and to Batumi: both cities in the title, each row its own."""
     page = page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
                    flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI"))
-    assert '<h1><span class="d">LY 5115, from Tel Aviv</span></h1>' in page
+    assert '<h1><span class="d">LY 5115 · Tel Aviv to Batumi or Kutaisi</span></h1>' in page
     assert "to Kutaisi (KUT)" in text(row_block(page, "2026-10-28-1630-KUT"))
     assert "to Batumi (BUS)" in text(row_block(page, "2026-10-28-1630-BUS"))
     assert 'lang="he"' not in page and "lands at" not in page
@@ -263,7 +263,7 @@ def test_a_number_with_two_cities():
 def test_one_city_through_two_airports_names_each_rows_airport():
     paris = dict(flight_no="002", city_en="PARIS", city_he="פריז")
     page = page_of(flight("orly", airport="ORY", **paris), flight("cdg", local(30, 16, 45), airport="CDG", **paris))
-    assert '<h1><span class="d">LY 002, Tel Aviv to Paris</span></h1>' in page
+    assert '<h1><span class="d">LY 002 · Tel Aviv to Paris</span></h1>' in page
     assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in page
     assert "to Paris (ORY)" in text(row_block(page, "2026-10-29-1645-ORY"))
     assert "to Paris (CDG)" in text(row_block(page, "2026-10-30-1645-CDG"))
@@ -275,25 +275,27 @@ def codeshare_page(*numbers):
     return page_of(*fs, only="ly")
 
 
-def test_codeshare_line_links_each_partner_to_its_row():
-    page = codeshare_page(("DL", "7426"), ("AM", "7895"))
-    assert ("Probably the same flight as DL 7426 and AM 7895 (same time, terminal and check-in desks)."
-            in text(page))
-    assert '<a href="../flight/DL7426-D.html#2026-10-29-1645-JFK"><span class="d">DL 7426</span></a>' in page
-    assert '<a href="../flight/AM7895-D.html#2026-10-29-1645-JFK"><span class="d">AM 7895</span></a>' in page
+LINK = '<a href="../flight/{page}#2026-10-29-1645-JFK"><span class="d">{number}</span></a>'
 
 
 @pytest.mark.parametrize("numbers, names", [
-    ([("DL", "7426")], "DL 7426"),
-    ([("DL", "7426"), ("AM", "7895"), ("AF", "8350")], "DL 7426, AM 7895 and AF 8350"),
+    ([("LY", "9255")], "LY 9255"),
+    ([("LY", "9252"), ("LY", "9255")], "LY 9252 and LY 9255"),
+    ([("LY", "9252"), ("LY", "9255"), ("DL", "7426")], "LY 9252, LY 9255 and DL 7426"),
 ])
-def test_codeshare_names(numbers, names):
-    assert f"Probably the same flight as {names} (same time" in text(codeshare_page(*numbers))
+def test_also_sold_as_with_one_two_and_three_numbers(numbers, names):
+    """docs/site-redesign.md, "Codeshares": one line among the day's lines, each partner linked to its own page at
+    that day's anchor, the reason left to "How this works"."""
+    page = codeshare_page(*numbers)
+    assert f"Also sold as {names} (probably the same plane)." in text(page)
+    links = [LINK.format(page=f"{a}{n}-D.html", number=f"{a} {n}") for a, n in numbers]
+    assert f'<p class="note">Also sold as {views._names(links)} (probably the same plane).</p>' in page
+    assert "Probably the same flight" not in page and "same time, terminal" not in page
 
 
 def test_no_codeshare_line_without_partners():
     page = to3459_page()
-    assert '<div class="row" id="2026-10-29-1710-ORY">' in page and "Probably" not in page
+    assert '<div class="row" id="2026-10-29-1710-ORY">' in page and "Also sold as" not in page
 
 
 def test_notes_under_a_row():
@@ -447,45 +449,45 @@ def test_the_passed_line_sits_outside_the_block(israeli_machine):
     assert row.index(block) < row.index(passed) < row.index("<details>")
 
 
-def test_another_number_line():
-    """A number listed as cancelled whose flight is not (C2, C10) names the flight's numbers that departed, landed or
-    are still listed, each linked to its row and joined as the partner sentence joins them (Question 4a). A number
-    that shares the time, terminal and desks keeps its partner sentence too (docs/flight-lookup-plan.md, "What this
-    plan decided"). The flight's other numbers, and a cancelled flight's, get no such line."""
+def test_the_twin_lines():
+    """docs/flight-lookup.md, "Flight page: other situations": a number marked cancelled whose flight is not (C2, C10)
+    names the flight's numbers that departed, landed or are still listed, each linked to its row and joined as "Also
+    sold as" joins them. A number that shares the time, terminal and desks keeps its "Also sold as" line too. The
+    flight's other numbers, and a cancelled flight's, get no such line."""
     fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695")]
     page = page_of(*fs, only="lh0691a")
-    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport departed: LH 695."
-            in text(page))
-    assert ('airport departed: <a href="../flight/LH695-D.html#2026-10-29-0900-FRA"><span class="d">LH 695</span></a>.'
-            "</p>") in page
-    assert "Probably the same flight as LH 695 (same time, terminal and check-in desks)." in text(page)
+    assert "This number was cancelled, but the flight probably left as LH 695." in text(page)
+    assert ('<p class="note">This number was cancelled, but the flight probably left as '
+            '<a href="../flight/LH695-D.html#2026-10-29-0900-FRA"><span class="d">LH 695</span></a>.</p>') in page
+    assert "Also sold as LH 695 (probably the same plane)." in text(page)
     two = page_of(*fs, lh("lh697", local(29, 9, 0), "697"), only="lh0691a")
-    assert "airport departed: LH 695 and LH 697." in text(two)
+    assert "but the flight probably left as LH 695 and LH 697." in text(two)
     landed = page_of(*os_pair(), only="os1083")
-    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport landed: OS 083."
-            in text(landed))
-    listed = page_of(lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"),
-                     lh("lh695-31", local(31, 9, 0), "695", "open"), only="lh0691a-31")
-    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport is still listed: "
-            "LH 695.") in text(listed)
-    assert "Another flight number" not in text(page_of(*fs, only="lh695"))
-    assert "Another flight number" not in text(page_of(*ey_ly(), only="ey"))
+    assert "This number was cancelled, but the flight probably landed as OS 083." in text(landed)
+    assert ('probably landed as <a href="../flight/OS083-A.html#2026-10-29-1400-VIE"><span class="d">OS 083</span>'
+            "</a>.</p>") in landed
+    ahead = page_of(lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"),
+                    lh("lh695-31", local(31, 9, 0), "695", "open"), only="lh0691a-31")
+    assert "This number is marked cancelled, but the flight is probably still on, as LH 695." in text(ahead)
+    assert ('still on, as <a href="../flight/LH695-D.html#2026-10-31-0900-FRA"><span class="d">LH 695</span></a>.'
+            "</p>") in ahead
+    for other in (page_of(*fs, only="lh695"), page_of(*ey_ly(), only="ey")):
+        assert "This number" not in text(other)
 
 
 def test_the_partner_sentence_names_only_time_terminal_and_desks_partners():
     """docs/flight-lookup.md, "Words": the partner sentence names the numbers that share the time, terminal and
     check-in desks, whatever their own label (AF 8350 left the list during a hole). OS 1083, joined to OS 083's flight
-    by airline alone (C1) at another expected time, is neither's partner: it gets the "Another flight number" line."""
+    by airline alone (C1) at another expected time, is neither's partner: it gets the twin line."""
     desks = dict(counters_final="78-99", group="g")
     fs = [*os_pair(), flight("ly003", local(29, 9, 0), flight_no="003", **desks),
           flight("dl", local(29, 9, 0), airline="DL", flight_no="7426", **desks),
           flight("am", local(29, 9, 0), airline="AM", flight_no="7895", **desks),
           flight("af", local(29, 9, 0), airline="AF", flight_no="8350", outcome="gap", **desks)]
-    assert ("Probably the same flight as DL 7426, AM 7895 and AF 8350 (same time, terminal and check-in desks)."
-            in text(page_of(*fs, only="ly003")))
+    assert "Also sold as DL 7426, AM 7895 and AF 8350 (probably the same plane)." in text(page_of(*fs, only="ly003"))
     for fid in ("os083", "os1083"):
-        assert "Probably the same flight" not in text(page_of(*fs, only=fid)), fid
-    assert "airport landed: OS 083." in text(page_of(*fs, only="os1083"))
+        assert "Also sold as" not in text(page_of(*fs, only=fid)), fid
+    assert "the flight probably landed as OS 083." in text(page_of(*fs, only="os1083"))
 
 
 def test_fromhere_js_only_on_pages_with_a_block():
@@ -652,7 +654,7 @@ def test_day_rows_link_each_number_to_its_row():
 def test_day_page_has_no_change_lines():
     page = day_page()
     assert "TO 3459" in text(page)
-    assert "Earliest record" not in page and "<details" not in page
+    assert "on the list" not in text(page) and "<details" not in page
 
 
 def bracket_day():
@@ -665,14 +667,17 @@ def bracket_day():
     return views.day_page(DayInfo(DAY, 2, 0, 0, "past", False), lists(*fs))
 
 
-def test_day_rows_name_every_number_with_the_bracket():
-    """docs/flight-lookup.md, "Words": a number whose own status differs is named in brackets with "is", one bracket
-    each, after the flight's other numbers and before the route; the row takes the flight's label, not its first
-    row's."""
+def test_the_bracket_in_a_list_row():
+    """docs/flight-lookup.md, "In lists": a number whose own status differs from its flight's is named in brackets,
+    "(LH 0691A: cancelled)", one bracket each, after the flight's other numbers and before the route; the row takes
+    the flight's label, not its first row's."""
     page = bracket_day()
-    assert "11:00 LH 695 (LH 0691A is listed as cancelled) to Frankfurt (FRA) DEPARTED" in text(page)
-    assert ("09:00 LH 695, LH 697 (LH 0691A is listed as cancelled) (LH 0693A is listed as cancelled) "
-            "to Frankfurt (FRA) DEPARTED") in text(page)
+    assert "11:00 LH 695 (LH 0691A: cancelled) to Frankfurt (FRA) DEPARTED" in text(page)
+    assert ("09:00 LH 695, LH 697 (LH 0691A: cancelled) (LH 0693A: cancelled) to Frankfurt (FRA) DEPARTED"
+            in text(page))
+    assert ('(<a href="../flight/LH0691A-D.html#2026-10-29-1100-FRA"><span class="d">LH 0691A</span></a>: cancelled)'
+            in page)
+    assert "is listed as cancelled" not in page
     assert "CANCELLED" not in text(page)
     for number in ("695", "697", "0691A", "0693A"):
         assert f'<a href="../flight/LH{number}-D.html#2026-10-29-0900-FRA"><span class="d">LH {number}</span></a>' in page
@@ -1079,11 +1084,11 @@ def test_a_model_below_the_floor_everywhere():
 
 def test_the_story_box():
     box = section(front(), '<section class="story">', "</section>")
-    assert ('<h2><a href="flight/TO3459-D.html#2026-10-29-1710-ORY"><span class="d">TO 3459, Tel Aviv to Paris'
+    assert ('<h2><a href="flight/TO3459-D.html#2026-10-29-1710-ORY"><span class="d">TO 3459 · Tel Aviv to Paris'
             "</span></a></h2>") in box
     assert "Thursday 29 October 2026, scheduled to leave at 17:10" in text(box)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", box)] == [
-        "Earliest record (27 Oct 20:04) on time, terminal 1",
+        "Already on the list on 27 Oct at 20:04 on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
         "17:32 Expected to leave at 17:38 instead",
         "18:32 Expected to leave at 18:45 instead",
@@ -1260,7 +1265,7 @@ def test_front_page_whose_only_cancellation_has_an_unknown_warning():
     page = unknown_only_front()
     assert "So far, 1 of 900 flights with a known outcome were listed as cancelled." in text(page)
     box = section(page, '<section class="story">', "</section>")
-    assert "Earliest record (27 Oct 20:04) already cancelled, terminal 3" in text(box)
+    assert "Already on the list on 27 Oct at 20:04 already cancelled, terminal 3" in text(box)
     assert cells(section(page, '<table class="cancellations">', "</table>"))[1][-1] == "unknown"
 
 

@@ -24,6 +24,7 @@ def utc(day, h, m, s=0):
 
 
 FIRST_RECORD = utc(27, 18, 4, 46)  # the earliest record's time
+RESUMES = frozenset({FIRST_RECORD})  # the records' first list, as build.render passes it: "Already on the list"
 
 
 def flight(fid, sched=local(29, 16, 45), *, airline="LY", flight_no="001", direction="D", airport="JFK",
@@ -58,9 +59,9 @@ def then(prev, observed_at, kind="change", **new):
                          "changed_fields": list(new)}
 
 
-def rows(*fs, obs=None, last_fetch=LAST_FETCH):
+def rows(*fs, obs=None, last_fetch=LAST_FETCH, resumes=RESUMES):
     """Display rows for these flights; each has only its earliest record unless `obs` is given."""
-    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, last_fetch, 1)
+    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, last_fetch, 1, resumes)
 
 
 def lists(*fs, obs=None, last_fetch=LAST_FETCH):
@@ -164,7 +165,17 @@ def test_a_row_ready_to_show():
         sched_final=local(29, 16, 45), sched_utc_final=utc(29, 14, 45), label="DEPARTED", delayed=False,
         notice=None, label_note=None, changed_back=None, est_final=local(29, 17, 9), last_seen_at=utc(29, 13, 45),
         page="flight/LY001-D.html", anchor="2026-10-29-1645-JFK", group_id="g1",
-        lines=(("Earliest record (27 Oct 20:04)", "on time, terminal 3"),))]
+        lines=(("Already on the list on 27 Oct at 20:04", "on time, terminal 3"),))]
+
+
+def test_a_rows_first_line_reads_the_resumes():
+    """make_rows hands its `resumes` to the change lines: a first record at one of them is "Already on the list"; one
+    at another time is "First on the list"."""
+    a, b = flight("a"), flight("b", flight_no="002")
+    got = rows(a, b, obs=[first(a), first(b, observed_at=utc(28, 7, 2, 45))])
+    assert [r.lines[0][0] for r in got] == ["Already on the list on 27 Oct at 20:04",
+                                            "First on the list on 28 Oct at 09:02"]
+    assert rows(a, resumes=frozenset())[0].lines[0][0] == "First on the list on 27 Oct at 20:04"
 
 
 def test_a_retimed_row_is_on_the_day_of_its_final_time_with_the_anchor_of_its_first():
@@ -175,7 +186,7 @@ def test_a_retimed_row_is_on_the_day_of_its_final_time_with_the_anchor_of_its_fi
     moved = then(start, utc(28, 20, 32, 45), kind="retime", sched_local=local(29, 0, 30), est_local=local(29, 0, 30))
     row = rows(f, obs=[moved, first(flight("other")), start])[0]
     assert (row.day, row.anchor) == (date(2026, 10, 29), "2026-10-28-2330-JFK")
-    assert row.lines == (("Earliest record (27 Oct 20:04)", "on time, terminal 3"),
+    assert row.lines == (("Already on the list on 27 Oct at 20:04", "on time, terminal 3"),
                          ("28 Oct 22:32", "Moved to a new scheduled time: 28 Oct 23:30 → 00:30"))
 
 
@@ -258,7 +269,7 @@ def test_no_news_yet_decided_in_utc(israeli_machine):
     Israel wall-clock value would call it UPCOMING."""
     f = flight("late", local(29, 23, 55), outcome="open")
     assert (f["sched_local_final"], f["sched_utc_final"]) == (local(29, 23, 55), utc(29, 21, 55))
-    got = flights.make_rows([f], [first(f)], LAST_FETCH, 1)[0]
+    got = flights.make_rows([f], [first(f)], LAST_FETCH, 1, RESUMES)[0]
     assert (got.label, got.label_note) == ("NO NEWS YET", "Its time has passed, and the airport hasn't said how it ended.")
 
 
@@ -426,6 +437,25 @@ def test_the_story_picks_among_c10_cancellations_through_c9():
     assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "ly"
 
 
+def test_the_story_skips_a_flight_first_listed_after_its_scheduled_time():
+    """docs/site-redesign.md, front page item 6 (the owner's decision, 2026-11-17): WZ 016, scheduled to leave at 05:35
+    and first on the list at 09:32, makes no story read aloud; the next cancellation is told instead. A flight first
+    listed exactly at its scheduled time is kept. Each list flight carries its first sighting and its slot's time."""
+    wz016 = flight("wz016", local(30, 5, 35), airline="WZ", flight_no="016", airport="VKO", city_en="MOSCOW",
+                   **CLEAN, first_seen_at=utc(30, 7, 32, 45))
+    older = flight("older", local(29, 9, 0), **CLEAN)
+    got = lists(wz016, older)
+    assert [(fl.first_seen, fl.sched_utc) for fl in got] == [(utc(30, 7, 32, 45), utc(30, 3, 35)),
+                                                              (FIRST_RECORD, utc(29, 7, 0))]
+    assert flights.featured(got, censored_map([wz016, older])).flight_id == "older"
+    assert flights.featured(lists(wz016), censored_map([wz016])) is None
+    # another airport: at WZ 016's airport it would be WZ 016's flight (C1)
+    on_time = flight("at its time", local(30, 5, 35), airline="WZ", flight_no="018", airport="DME", city_en="MOSCOW",
+                     **CLEAN, first_seen_at=utc(30, 3, 35))
+    fs = [wz016, on_time, older]
+    assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "at its time"
+
+
 def test_recent_cancellations_newest_first_at_most_n():
     fs = [flight(f"c{h}", local(29, h, 0), flight_no=f"{h:03}", **CLEAN) for h in range(8, 20)]  # 12, 08:00 to 19:00
     fs += [flight("IZ 991", local(29, 19, 0), airline="IZ", flight_no="991", airport="ATH", **CLEAN),
@@ -475,21 +505,58 @@ def test_search_entries_one_per_number_and_direction():
           flight("athens", local(29, 9, 0), airline="IZ", flight_no="991", direction="A", airport="ATH",
                  city_en="ATHENS")]
     assert flights.search_entries(rows(*fs)) == [
-        {"n": ["iz991", "991"], "p": ["ath", "athens"], "t": "IZ 991, from Athens to Tel Aviv",
+        {"n": ["iz991", "991"], "p": ["ath", "athens"], "t": "IZ 991 · Athens to Tel Aviv",
          "u": "flight/IZ991-A.html"},
-        {"n": ["ly001", "ly1", "001", "1"], "p": ["jfk", "newyork"], "t": "LY 001, from New York to Tel Aviv",
+        {"n": ["ly001", "ly1", "001", "1"], "p": ["jfk", "newyork"], "t": "LY 001 · New York to Tel Aviv",
          "u": "flight/LY001-A.html"},
-        {"n": ["ly001", "ly1", "001", "1"], "p": ["jfk", "newyork"], "t": "LY 001, Tel Aviv to New York",
+        {"n": ["ly001", "ly1", "001", "1"], "p": ["jfk", "newyork"], "t": "LY 001 · Tel Aviv to New York",
          "u": "flight/LY001-D.html"},
-        {"n": ["ly5115", "5115"], "p": ["batumi", "bus", "kut", "kutaisi"], "t": "LY 5115, from Tel Aviv",
+        {"n": ["ly5115", "5115"], "p": ["batumi", "bus", "kut", "kutaisi"],
+         "t": "LY 5115 · Tel Aviv to Kutaisi or Batumi",
          "u": "flight/LY5115-D.html"},
-        {"n": ["ly5116", "5116"], "p": ["batumi", "bus", "kut", "kutaisi"], "t": "LY 5116, to Tel Aviv",
+        {"n": ["ly5116", "5116"], "p": ["batumi", "bus", "kut", "kutaisi"],
+         "t": "LY 5116 · Batumi or Kutaisi to Tel Aviv",
          "u": "flight/LY5116-A.html"},
     ]
 
 
-def test_page_title_names_the_city_when_the_number_has_one():
-    """One city through two airports is still one city."""
-    fs = [flight("orly", flight_no="002", airport="ORY", city_en="PARIS"),
-          flight("cdg", local(30, 16, 45), flight_no="002", airport="CDG", city_en="PARIS")]
-    assert flights.page_title(rows(*fs)) == "LY 002, Tel Aviv to Paris"
+def one_a_day(flight_no, *cities, direction="D"):
+    """One row of this number a day for each (city, airport), the first city on the newest day (31 October)."""
+    return [flight(f"{flight_no}-{i}", local(31 - i, 10, 0), flight_no=flight_no, direction=direction, airport=airport,
+                   city_en=city) for i, (city, airport) in enumerate(cities)]
+
+
+def test_titles():
+    """docs/site-redesign.md, "Names": the number, then where it goes, the newest day's city first; two or three
+    cities joined with "or", more named two and counted; a city whose name begins another's named once, as the
+    shorter, at the place of the newer of the two; one city through two airports is one city. The search entries
+    carry the same titles."""
+    def title(*fs):
+        return flights.page_title(rows(*fs))
+
+    assert title(flight("lo", flight_no="155", airline="LO", direction="A", airport="WAW", city_en="WARSAW")) == (
+        "LO 155 · Warsaw to Tel Aviv")
+    assert title(flight("wz", flight_no="016", airline="WZ", airport="VKO", city_en="MOSCOW")) == (
+        "WZ 016 · Tel Aviv to Moscow")
+    assert title(flight("orly", flight_no="002", airport="ORY", city_en="PARIS"),
+                 flight("cdg", local(30, 16, 45), flight_no="002", airport="CDG", city_en="PARIS")) == (
+        "LY 002 · Tel Aviv to Paris")
+    two = one_a_day("697", ("ATHENS", "ATH"), ("FRANKFURT", "FRA"), ("ATHENS", "ATH"))
+    assert title(*two) == "LY 697 · Tel Aviv to Athens or Frankfurt"
+    assert title(*reversed(two)) == "LY 697 · Tel Aviv to Athens or Frankfurt"  # by date, not by row order
+    arrival = one_a_day("682", ("MUNICH", "MUC"), ("FRANKFURT", "FRA"), direction="A")
+    assert title(*arrival) == "LY 682 · Munich or Frankfurt to Tel Aviv"
+    three = one_a_day("699", ("ATHENS", "ATH"), ("LARNACA", "LCA"), ("MUNICH", "MUC"))
+    assert title(*three) == "LY 699 · Tel Aviv to Athens, Larnaca or Munich"
+    five = one_a_day("777", ("VITORIA", "VIT"), ("PRISTINA", "PRN"), ("ATHENS", "ATH"), ("LARNACA", "LCA"),
+                      ("MUNICH", "MUC"))
+    assert title(*five) == "LY 777 · Tel Aviv to Vitoria, Pristina or 3 other cities"
+    assert title(*five[:4]) == "LY 777 · Tel Aviv to Vitoria, Pristina or 2 other cities"
+    bucharest = one_a_day("238", ("BUCHAREST (BANE", "OTP"), ("ATHENS", "ATH"), ("BUCHAREST", "OTP"))
+    assert title(*bucharest) == "LY 238 · Tel Aviv to Bucharest or Athens"
+    assert title(*bucharest[1:]) == "LY 238 · Tel Aviv to Athens or Bucharest"
+    shorter_newer = one_a_day("239", ("BUCHAREST", "OTP"), ("ATHENS", "ATH"), ("BUCHAREST (BANE", "OTP"))
+    assert title(*shorter_newer) == "LY 239 · Tel Aviv to Bucharest or Athens"
+    assert [e["t"] for e in flights.search_entries(rows(*five, *bucharest, *arrival))] == [
+        "LY 238 · Tel Aviv to Bucharest or Athens", "LY 682 · Munich or Frankfurt to Tel Aviv",
+        "LY 777 · Tel Aviv to Vitoria, Pristina or 3 other cities"]

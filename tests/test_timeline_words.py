@@ -316,7 +316,6 @@ def test_constants_are_the_approved_words():
     assert words.MORE_THAN_3_DAYS == "More than 3 days to go: the airport's list does not show the flight yet."
     assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
                               12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
-    assert words.BRACKET == "is listed as cancelled"
     assert words.A_FLIGHT == (
         "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
         "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
@@ -436,10 +435,14 @@ def test_late_line():
     assert words.late_line(s) is None
 
 
-def test_another_number():
-    for verb in ("departed", "landed", "is still listed"):
-        assert words.another_number(verb) == (
-            f"Listed as cancelled. Another flight number with the same scheduled time and airport {verb}:")
+def test_also_sold_as_and_the_twin_lines_words():
+    """docs/flight-lookup.md, "Flight page: other situations": the words before and after the linked numbers."""
+    assert (words.ALSO_SOLD, words.SAME_PLANE) == ("Also sold as", "(probably the same plane).")
+    assert words.twin("departed") == ("This number was cancelled, but the flight probably left as", ".")
+    assert words.twin("landed") == ("This number was cancelled, but the flight probably landed as", ".")
+    assert words.twin("is still listed") == (
+        "This number is marked cancelled, but the flight is probably still on, as", ".")
+    assert not hasattr(words, "another_number") and not hasattr(words, "BRACKET")
 
 
 # --- what changed ----------------------------------------------------------------------------------
@@ -474,11 +477,14 @@ _to.append(then(_to[-1], utc(29, 15, 32, 45), utc(29, 15, 16, 45), est_local=loc
 _to.append(then(_to[-1], utc(29, 16, 32, 45), utc(29, 16, 16, 45), est_local=local(29, 18, 45)))
 _to.append(then(_to[-1], utc(29, 17, 32, 45), utc(29, 17, 16, 45), status="CANCELED", status_he="מבוטלת"))
 TO3459_OBS = _to
+# The records' first list (18:04Z on 27 October) and the end of the 42-hour hole (12:29Z on 29 October), as
+# build.render gives them: a first record at either reads "Already on the list".
+RESUMES = frozenset({utc(27, 18, 4, 46), utc(29, 12, 29, 3)})
 
 
 def test_to3459_lines():
-    assert words.change_lines(TO3459_OBS, "D", date(2026, 10, 29), 1) == [
-        ("Earliest record (27 Oct 20:04)", "on time, terminal 1"),
+    assert words.change_lines(TO3459_OBS, "D", date(2026, 10, 29), 1, RESUMES) == [
+        ("Already on the list on 27 Oct at 20:04", "on time, terminal 1"),
         ("Between 27 Oct 20:24 and 14:29", "Check-in desks 345-348, zone B"),
         ("17:32", "Expected to leave at 17:38 instead"),
         ("18:32", "Expected to leave at 18:45 instead"),
@@ -486,7 +492,7 @@ def test_to3459_lines():
     ]
 
 
-ON_TIME_LINE = ("Earliest record (27 Oct 20:04)", "on time, terminal 1")
+ON_TIME_LINE = ("First on the list on 27 Oct at 20:04", "on time, terminal 1")
 ON_TIME = first(utc(27, 18, 4, 46), local(29, 16, 45))
 INBOUND = first(utc(27, 18, 4, 46), local(29, 19, 30), terminal=3)
 RETIMED = first(utc(30, 18, 2, 45), local(30, 23, 30))
@@ -498,17 +504,17 @@ CHANGE_CASES = [
     # the earliest record with everything: status, expected time (it differs), terminal, desks, zone
     ([first(utc(27, 18, 4, 46), local(29, 16, 45), est=local(29, 17, 9), status="DEPARTED",
             counters="332-338", zone="C")], "D", DAY,
-     [("Earliest record (27 Oct 20:04)",
+     [("First on the list on 27 Oct at 20:04",
        "departed, expected to leave at 17:09, terminal 1, check-in desks 332-338, zone C")]),
     # empty desks and zone as the real model holds them (''), left out like None
     ([first(utc(27, 18, 4, 46), local(29, 16, 45), counters="", zone="")], "D", DAY, [ON_TIME_LINE]),
     # an unmapped status appears lower-cased
     ([first(utc(27, 18, 4, 46), local(29, 16, 45), status="GATE CLOSED")], "D", DAY,
-     [("Earliest record (27 Oct 20:04)", "gate closed, terminal 1")]),
+     [("First on the list on 27 Oct at 20:04", "gate closed, terminal 1")]),
     # one record changing the expected time and the status, an arrival
     ([INBOUND, then(INBOUND, utc(29, 14, 2, 44), utc(29, 13, 46, 44), est_local=local(29, 19, 36),
                     status="FINAL", status_he="סופי")], "A", DAY,
-     [("Earliest record (27 Oct 20:04)", "on time, terminal 3"),
+     [("First on the list on 27 Oct at 20:04", "on time, terminal 3"),
       ("16:02", "Expected to land at 19:36 instead, status “final”")]),
     # a cancellation seen within a minute of the previous record is still a range
     ([ON_TIME, then(ON_TIME, utc(29, 17, 32, 45), utc(29, 17, 31, 50), status="CANCELED", status_he="מבוטלת")],
@@ -520,32 +526,33 @@ CHANGE_CASES = [
      [ON_TIME_LINE, ("Between 16:32 and 17:32", "Terminal 3")]),
     # desks taken away, alone or with the zone, None or ''
     ([DESKED, then(DESKED, utc(29, 15, 32, 45), utc(29, 15, 16, 45), counters=None)], "D", DAY,
-     [("Earliest record (27 Oct 20:04)", "on time, terminal 1, check-in desks 332-338, zone C"),
+     [("First on the list on 27 Oct at 20:04", "on time, terminal 1, check-in desks 332-338, zone C"),
       ("17:32", "No check-in desks")]),
     ([ON_TIME, then(ON_TIME, utc(29, 15, 32, 45), utc(29, 15, 16, 45), counters="", zone="")], "D", DAY,
      [ON_TIME_LINE, ("17:32", "No check-in desks, no check-in zone")]),
     # no expected time or terminal (the model's casts can give NULL): left out, or said, never "None"
-    ([ON_TIME | {"est_local": None, "terminal": None}], "D", DAY, [("Earliest record (27 Oct 20:04)", "on time")]),
+    ([ON_TIME | {"est_local": None, "terminal": None}], "D", DAY,
+     [("First on the list on 27 Oct at 20:04", "on time")]),
     ([ON_TIME, then(ON_TIME, utc(29, 15, 32, 45), utc(29, 15, 16, 45), est_local=None, terminal=None)], "D", DAY,
      [ON_TIME_LINE, ("17:32", "No expected time, no terminal")]),
     # cancelled from the earliest record on: "already", so the time reads as the record's, not a cancellation's
     ([first(utc(27, 18, 4, 46), local(29, 16, 45), status="CANCELED", terminal=3)], "D", DAY,
-     [("Earliest record (27 Oct 20:04)", "already cancelled, terminal 3")]),
+     [("First on the list on 27 Oct at 20:04", "already cancelled, terminal 3")]),
     # a status changed back from cancelled is a plain status line
     ([CANCELLED_FIRST, then(CANCELLED_FIRST, utc(29, 15, 32, 45), utc(29, 15, 16, 45), status="NOT FINAL",
                             status_he="לא סופי")],
-     "D", DAY, [("Earliest record (27 Oct 20:04)", "already cancelled, terminal 1"),
+     "D", DAY, [("First on the list on 27 Oct at 20:04", "already cancelled, terminal 1"),
                 ("17:32", "Status “not final”")]),
     # a retime: the previous record's scheduled time to this one's; an expected time equal to the new
     # scheduled time adds nothing, one that differs is said, with the record's other changes
     ([RETIMED, then(RETIMED, utc(30, 20, 32, 45), utc(30, 20, 16, 45), kind="retime",
                     sched_local=local(31, 1, 10), est_local=local(31, 1, 10))], "D", date(2026, 10, 31),
-     [("Earliest record (30 Oct 20:02)", "on time, terminal 1"),
+     [("First on the list on 30 Oct at 20:02", "on time, terminal 1"),
       ("30 Oct 22:32", "Moved to a new scheduled time: 30 Oct 23:30 → 01:10")]),
     ([RETIMED, then(RETIMED, utc(30, 20, 32, 45), utc(30, 20, 16, 45), kind="retime",
                     sched_local=local(31, 1, 10), est_local=local(31, 1, 25), status="NOT FINAL",
                     status_he="לא סופי")], "D", date(2026, 10, 31),
-     [("Earliest record (30 Oct 20:02)", "on time, terminal 1"),
+     [("First on the list on 30 Oct at 20:02", "on time, terminal 1"),
       ("30 Oct 22:32",
        "Moved to a new scheduled time: 30 Oct 23:30 → 01:10, expected to leave at 01:25 instead, "
        "status “not final”")]),
@@ -554,7 +561,37 @@ CHANGE_CASES = [
 
 @pytest.mark.parametrize("obs, direction, page_date, lines", CHANGE_CASES)
 def test_change_lines(obs, direction, page_date, lines):
-    assert words.change_lines(obs, direction, page_date, 1) == lines
+    assert words.change_lines(obs, direction, page_date, 1, frozenset()) == lines
+
+
+def test_the_first_lines_four_forms(israeli_machine):
+    """docs/site-redesign.md, "What changed": the first line says when the flight was first on the list, with the date
+    when it is not the page's; "Already on the list" when its record is the records' first list or the first after a
+    hole (`resumes`), since the flight was on the airport's list before the records could see it; and "already
+    cancelled" in the status's place, so its time reads as the listing's."""
+    def nov(day, h, m, s=0):
+        return datetime(2026, 11, day, h, m, s)  # a model time or an airport time; Israel is UTC+2 in November
+
+    first_list, hole_end = utc(27, 18, 4, 46), utc(29, 12, 29, 3)
+    resumes = frozenset({first_list, hole_end})
+    wz016 = first(nov(17, 7, 32, 45), nov(17, 5, 35), terminal=3)  # WZ 016: first on the list at 09:32
+    assert words.change_lines([wz016], "D", date(2026, 11, 17), 1, resumes) == [
+        ("First on the list at 09:32", "on time, terminal 3")]
+    earlier = first(nov(14, 17, 46, 45), nov(17, 5, 35), status="NOT FINAL", terminal=3)
+    assert words.change_lines([earlier], "D", date(2026, 11, 17), 1, resumes) == [
+        ("First on the list on 14 Nov at 19:46", "“not final”, terminal 3")]
+    landed = first(first_list, local(27, 19, 30), est=local(27, 19, 18), status="LANDED", terminal=3)
+    assert words.change_lines([landed], "A", date(2026, 10, 27), 1, resumes) == [
+        ("Already on the list at 20:04", "landed, expected to land at 19:18, terminal 3")]
+    assert words.change_lines([first(first_list, local(29, 16, 45), terminal=3)], "D", DAY, 1, resumes) == [
+        ("Already on the list on 27 Oct at 20:04", "on time, terminal 3")]
+    assert words.change_lines([first(hole_end, local(29, 17, 10))], "D", DAY, 1, resumes) == [
+        ("Already on the list at 14:29", "on time, terminal 1")]
+    assert words.change_lines([first(hole_end + timedelta(seconds=1), local(29, 17, 10))], "D", DAY, 1, resumes) == [
+        ("First on the list at 14:29", "on time, terminal 1")]
+    cancelled = first(first_list, local(27, 22, 0), status="CANCELED", terminal=3)
+    assert words.change_lines([cancelled], "D", date(2026, 10, 27), 1, resumes) == [
+        ("Already on the list at 20:04", "already cancelled, terminal 3")]
 
 
 @pytest.mark.parametrize("changed", [
@@ -564,7 +601,7 @@ def test_change_lines(obs, direction, page_date, lines):
 def test_a_names_only_change_gives_no_line(changed):
     """Hebrew status and name spellings are the airport's own edits; the flight's story did not change."""
     obs = [ON_TIME, then(ON_TIME, utc(29, 15, 32, 45), utc(29, 15, 16, 45), **changed)]
-    assert words.change_lines(obs, "D", DAY, 1) == [ON_TIME_LINE]
+    assert words.change_lines(obs, "D", DAY, 1, frozenset()) == [ON_TIME_LINE]
 
 
 def test_status_words():
@@ -587,17 +624,18 @@ def site_texts() -> list[str]:
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
     texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
-              words.late_line(FakeSummary()), words.another_number("departed"), words.PAST_ONLY, words.A_FLIGHT,
+              words.late_line(FakeSummary()), words.PAST_ONLY, words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
               words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),
               words.condition(datetime(2026, 11, 12, 10, 16, 45)), words.has_passed(datetime(2026, 11, 12, 10, 16, 45)),
               words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
-              words.BRACKET, words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
-              words.another_number("landed"), words.another_number("is still listed")]
+              words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
+              *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())
     # a day's lines as the page reads them: left column and text, line after line, as one run
     for obs, direction, page_date in [(TO3459_OBS, "D", DAY), *((o, d, p) for o, d, p, _ in CHANGE_CASES)]:
-        texts.append(" ".join(f"{left} {text}" for left, text in words.change_lines(obs, direction, page_date, 1)))
+        texts.append(" ".join(f"{left} {text}" for left, text in words.change_lines(obs, direction, page_date, 1,
+                                                                                    RESUMES)))
     return [t for t in texts if t is not None]
 
 

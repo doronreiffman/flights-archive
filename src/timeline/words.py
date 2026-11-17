@@ -211,6 +211,15 @@ def _cancelled(o: dict) -> bool:
     return "status" in o["changed_fields"] and o["status"] == "CANCELED"
 
 
+def _listed(o: dict, page_date: date, resumes: frozenset[datetime]) -> str:
+    """The first line's left column: when the flight was first on the list, with the date when it is not the page's.
+    "Already on the list" when the record is in the records' first list or the first list after a hole (`resumes`):
+    the flight was on the airport's list before the records could see it, so "first on the list" would be untrue."""
+    local = il_time(o["observed_at"])
+    when = f"at {local:%H:%M}" if local.date() == page_date else f"on {local.day} {local:%b} at {local:%H:%M}"
+    return f"{'Already' if o['observed_at'] in resumes else 'First'} on the list {when}"
+
+
 def _earliest(o: dict, direction: str, page_date: date) -> str:
     """What the earliest record has; empty values left out (the model keeps empty desks and zone as '').
     "Already cancelled": the time beside it is when the record was made, never a cancellation time."""
@@ -253,16 +262,20 @@ def _change(o: dict, before: dict, direction: str, page_date: date) -> str | Non
     return text[0].upper() + text[1:]
 
 
-def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: float) -> list[tuple[str, str]]:
+def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: float,
+                 resumes: frozenset[datetime]) -> list[tuple[str, str]]:
     """What changed, oldest first: (left column, text) for the earliest record and each record that changed
-    something shown. The left column is the record's time when it came within `gap_hours` of the flight's
-    previous appearance (`prev_observed_at`: an appearance with no change is not a line, so this can be later
-    than the previous line), else "Between" that appearance and the record. A cancellation is always a range."""
+    something shown. The earliest record's left column says when the flight was first on the list, or "already"
+    on it when its time is one of `resumes` (the model's naive UTC: the records' first list and each hole's end,
+    as build.render gives them). Every other left column is the record's time when it came within `gap_hours` of
+    the flight's previous appearance (`prev_observed_at`: an appearance with no change is not a line, so this can
+    be later than the previous line), else "Between" that appearance and the record. A cancellation is always a
+    range."""
     lines = []
     for i, o in enumerate(obs):
         seen = clock(il_time(o["observed_at"]), page_date)
         if o["change_kind"] == "first":
-            lines.append((f"Earliest record ({seen})", _earliest(o, direction, page_date)))
+            lines.append((_listed(o, page_date, resumes), _earliest(o, direction, page_date)))
             continue
         text = _change(o, obs[i - 1], direction, page_date)
         if text is None:
@@ -299,7 +312,6 @@ A_FLIGHT = (
     "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
     "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when any "
     "of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
-BRACKET = "is listed as cancelled"
 
 
 def _n(x: int) -> str:
@@ -359,6 +371,16 @@ def has_passed(updated: datetime) -> str:
             f"{_updated(updated)}.")
 
 
-def another_number(verb: str) -> str:
-    """The sentence up to the colon; the view adds the linked names and the full stop."""
-    return f"Listed as cancelled. Another flight number with the same scheduled time and airport {verb}:"
+# --- other numbers of one flight (docs/flight-lookup.md, "Flight page: other situations") -----------------------
+
+ALSO_SOLD = "Also sold as"  # then the partners' numbers, linked, and SAME_PLANE
+SAME_PLANE = "(probably the same plane)."
+_TWIN = {"departed": ("This number was cancelled, but the flight probably left as", "."),
+         "landed": ("This number was cancelled, but the flight probably landed as", "."),
+         "is still listed": ("This number is marked cancelled, but the flight is probably still on, as", ".")}
+
+
+def twin(verb: str) -> tuple[str, str]:
+    """The twin line's words before and after the linked numbers, for what the flight's other numbers did
+    (flights.others: "departed", "landed" or "is still listed")."""
+    return _TWIN[verb]

@@ -52,6 +52,8 @@ class ListFlight:
     delayed: bool  # any of its numbers is delayed (the hour rule), unless the flight is CANCELLED or UNKNOWN
     lead: Row  # C9's number when the flight is cancelled (C2), else rows[0]
     day: date
+    first_seen: datetime  # the model's naive UTC: the earliest first sighting of its numbers (counting.Flight)
+    sched_utc: datetime  # the model's naive UTC: its slot's scheduled time (counting.Flight.key[2])
 
 
 @dataclass(frozen=True)
@@ -102,10 +104,12 @@ def check_unique(rows: list[Row]) -> None:
 
 # --- display rows ----------------------------------------------------------------------------------
 
-def make_rows(flights: list[dict], obs: list[dict], last_fetch: datetime, gap_hours: float) -> list[Row]:
+def make_rows(flights: list[dict], obs: list[dict], last_fetch: datetime, gap_hours: float,
+              resumes: frozenset[datetime]) -> list[Row]:
     """One Row per flights-table row, in the order given. Each row's change lines read its own records only, in
-    model order (snap_rn) from its earliest, written for the day of its final scheduled time. The label is decided
-    on the model's UTC times: the Israel wall-clock time would make 29 October's late-evening flights UPCOMING."""
+    model order (snap_rn) from its earliest, written for the day of its final scheduled time; `resumes` are the
+    times a first record reads "Already on the list" at (words.change_lines). The label is decided on the model's
+    UTC times: the Israel wall-clock time would make 29 October's late-evening flights UPCOMING."""
     by_flight: dict[str, list[dict]] = {}
     for o in obs:
         by_flight.setdefault(o["flight_id"], []).append(o)
@@ -126,19 +130,35 @@ def make_rows(flights: list[dict], obs: list[dict], last_fetch: datetime, gap_ho
             last_seen_at=f["last_seen_at"],
             page=page_address(f["airline"], f["flight_no"], f["direction"]),
             anchor=row_anchor(f["sched_local_first"], f["airport"]), group_id=f["codeshare_group_id"],
-            lines=tuple(words.change_lines(own, f["direction"], day, gap_hours))))
+            lines=tuple(words.change_lines(own, f["direction"], day, gap_hours, resumes))))
     return rows
 
 
+def _cities(rows: list[Row]) -> list[str]:
+    """A number's cities, the newest day's first. A city whose name begins another's (the airport's cut-short
+    "Bucharest (bane" beside "Bucharest") is named once, as the shorter, at the place of the newer of the two."""
+    names: list[str] = []
+    for r in _newest_first(rows):
+        same = [c for c in names if c.startswith(r.city) or r.city.startswith(c)]
+        if not same:
+            names.append(r.city)
+            continue
+        at = names.index(same[0])
+        names = [c for c in names if c not in same]
+        names.insert(at, min([*same, r.city], key=len))
+    return names
+
+
 def page_title(rows: list[Row]) -> str:
-    """The flight page's title, from the rows of one number and direction: "TO 3459, Tel Aviv to Paris",
-    "LY 002, from Paris to Tel Aviv". A number with more than one city names none: "LY 5115, from Tel Aviv",
-    "LY 5116, to Tel Aviv"."""
+    """The title of one number and direction, from its rows (docs/site-redesign.md, "Names"): "LO 155 · Warsaw to Tel
+    Aviv", "WZ 016 · Tel Aviv to Moscow"; two or three cities, "LH 697 · Tel Aviv to Athens or Frankfurt", "Tel Aviv
+    to Athens, Larnaca or Munich"; more, "Tel Aviv to Vitoria, Pristina or 3 other cities"."""
     r = rows[0]
-    number = f"{r.airline} {r.flight_no}"
-    if len({x.city for x in rows}) > 1:
-        return f"{number}, from Tel Aviv" if r.direction == "D" else f"{number}, to Tel Aviv"
-    return f"{number}, Tel Aviv to {r.city}" if r.direction == "D" else f"{number}, from {r.city} to Tel Aviv"
+    cities = _cities(rows)
+    if len(cities) > 3:
+        cities = [*cities[:2], f"{len(cities) - 2} other cities"]
+    where = cities[0] if len(cities) == 1 else f"{', '.join(cities[:-1])} or {cities[-1]}"
+    return f"{r.airline} {r.flight_no} · " + (f"Tel Aviv to {where}" if r.direction == "D" else f"{where} to Tel Aviv")
 
 
 # --- flights ---------------------------------------------------------------------------------------
@@ -159,7 +179,7 @@ def group_flights(rows: list[Row], table: list[dict], last_fetch: datetime) -> l
         lists.append(ListFlight(rows=tuple(members), label=label,
                                 delayed=any(r.delayed for r in members),  # a row is never delayed beside CANCELLED or UNKNOWN, so neither is its flight
                                 lead=next(r for r in members if r.flight_id == c9) if c9 else members[0],
-                                day=f.day))
+                                day=f.day, first_seen=f.first_seen, sched_utc=f.key[2]))
     return lists
 
 
@@ -220,8 +240,10 @@ def _newest_first(items: list, row: Callable[[object], Row] = lambda r: r) -> li
 def featured(flights_: list[ListFlight], censored: dict[str, bool]) -> Row | None:
     """The front page's story, among the flights labelled CANCELLED (C10), each told through C9's number: the most
     recent one whose warning is not censored (`censored` from the model's cancel_lead_censored; a missing flag counts
-    as censored); if none, the one with the most change lines, the most recent first on a tie."""
-    cancelled = [fl.lead for fl in flights_ if fl.label == words.CANCELLED]
+    as censored); if none, the one with the most change lines, the most recent first on a tie. A flight first listed
+    after its own scheduled time is skipped: its steps make no sense read aloud (the owner's decision, 2026-11-17)."""
+    told = [fl for fl in flights_ if fl.first_seen <= fl.sched_utc]
+    cancelled = [fl.lead for fl in told if fl.label == words.CANCELLED]
     clean = [r for r in cancelled if censored[r.flight_id] is False]
     if clean:
         return _newest_first(clean)[0]

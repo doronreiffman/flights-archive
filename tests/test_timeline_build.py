@@ -369,15 +369,42 @@ def test_a_number_listed_as_cancelled_in_a_flight_that_departed_names_the_number
     cancellations; IZ 991, listed as cancelled alone, is in both (D4, C10)."""
     site = make_site(tmp_path, closing_model())
     page = read(site, "flight/EY607-D.html")
-    assert ("Listed as cancelled. Another flight number with the same scheduled time and airport departed: LY 9614."
-            in text(page))
-    assert ('airport departed: <a href="../flight/LY9614-D.html#2026-10-26-1100-AUH"><span class="d">LY 9614</span></a>.'
+    assert "This number was cancelled, but the flight probably left as LY 9614." in text(page)
+    assert ('probably left as <a href="../flight/LY9614-D.html#2026-10-26-1100-AUH"><span class="d">LY 9614</span></a>.'
             "</p>") in page
-    assert "Another flight number" not in text(read(site, "flight/LY9614-D.html"))
+    assert "This number" not in text(read(site, "flight/LY9614-D.html"))
     index = read(site, "index.html")
     recent = text(index[index.index("<h2>Recent cancellations</h2>"):index.index('<a href="cancellations.html">')])
     for listed in (recent, text(read(site, "cancellations.html"))):
         assert "IZ 991" in listed and "EY 607" not in listed and "UA 090" not in listed, listed
+
+
+def first_line(page: str, anchor: str) -> str:
+    """A flight page row's first change line, as a reader sees it."""
+    row = page[page.index(f'<div class="row" id="{anchor}">'):]
+    return text(re.search(r"<li>(.*?)</li>", row).group(1))
+
+
+def test_the_records_first_list_reads_already_on_the_list(tmp_path, israeli_machine):
+    """docs/site-redesign.md, "What changed": LY 001 is in the records' first list (08:00 on 27 October in Israel), LY
+    002 first in the list after a hole of 2 hours 45 minutes (11:00), so both were on the airport's list before the
+    records could see them: "Already on the list". LY 003, first in the list at 08:15 with nothing missed before it,
+    is "First on the list". A model built through model.build: each first record's time is its snapshot's fetch time,
+    the first snapshot's or a hole's end (counting.holes), so the pages and the counting rule read the same lists."""
+    ly2 = row(flight_no="002", sched_local="2026-10-27T13:00:00")
+    ly3 = row(flight_no="003", sched_local="2026-10-28T09:00:00")
+    site = make_site(tmp_path, [(at(6), [LY1]), (at(6, 15), [LY1, ly3]), (at(9), [LY1, ly2, ly3])])
+    table, obs, snaps = build.load(tmp_path / "model")
+    seen = {f["flight_no"]: min(o["observed_at"] for o in obs if o["flight_id"] == f["flight_id"]) for f in table}
+    assert [s["fetched_at"] for s in snaps] == [at(6), at(6, 15), at(9)]
+    assert [end for _, end in counting.holes(snaps)] == [at(9)]
+    assert seen == {"001": snaps[0]["fetched_at"], "002": at(9), "003": snaps[1]["fetched_at"]}
+    assert first_line(read(site, "flight/LY001-D.html"), "2026-10-28-1000-JFK") == (
+        "Already on the list on 27 Oct at 08:00 on time, terminal 3, check-in desks 1-5, zone A")
+    assert first_line(read(site, "flight/LY002-D.html"), "2026-10-27-1300-JFK") == (
+        "Already on the list at 11:00 on time, terminal 3, check-in desks 1-5, zone A")
+    assert first_line(read(site, "flight/LY003-D.html"), "2026-10-28-0900-JFK") == (
+        "First on the list on 27 Oct at 08:15 on time, terminal 3, check-in desks 1-5, zone A")
 
 
 def test_how_it_works_names_the_frozen_tag_and_the_counting_start(tmp_path, israeli_machine):

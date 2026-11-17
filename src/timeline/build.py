@@ -47,7 +47,10 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
                          "every flight must land on a day page")
     first_check, last_check = snaps[0]["fetched_at"], counting.last_sighting(snaps)
     gaps = counting.holes(snaps)  # the counting rule's own holes, so the pages and the figures read the same gaps
-    rows = flights.make_rows(table, obs, last_check, GAP_HOURS)
+    # A first record in the records' first list or the first list after a hole reads "Already on the list": a record's
+    # observed_at is its snapshot's fetched_at, the time each of these is (tests/test_timeline_build.py).
+    resumes = frozenset({first_check} | {end for _, end in gaps})
+    rows = flights.make_rows(table, obs, last_check, GAP_HOURS, resumes)
     flights.check_unique(rows)
     flights_ = flights.group_flights(rows, table, last_check)
     infos = flights.day_infos(flights_, last_check, _partial_days({r.day for r in rows}, first_check, last_check))
