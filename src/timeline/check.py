@@ -46,6 +46,8 @@ ODDS_WORDS = re.compile(r"\b(?:odds|probability|probable|likely|unlikely|risks?|
                         r"|forecasts?|forecasting|predicts?|predicted|prediction)\b", re.I)
 # a flight page's chance headline, read on flatten(strip_tags(page)): it needs the "Worked out from" line
 CHANCE = re.compile(r"\bchance (?:it's|its next flight is) (?:cancelled|delayed)\b")
+# the line's own start, case kept: the partner line's "...worked out from LOT's history." must not count
+WORKED_OUT = re.compile(r"\bWorked out (?:mostly )?from\b")
 FLIGHT_DIR = "flight/"
 # The airport's data, which the word rules skip: views.d()'s spans (escaped, so no "<" inside), the front page's
 # search data (every "<" escaped) and each page's <title> (escaped; a flight page's title is the airline code, number
@@ -117,10 +119,11 @@ def missing_notices(site: Path) -> list[tuple[str, str]]:
     missing = []
     for path in pages:
         name = path.relative_to(site).as_posix()
-        text = flatten(strip_tags(path.read_text(encoding="utf-8")))
+        raw = path.read_text(encoding="utf-8")
+        text = flatten(strip_tags(raw))
         wanted = NOTICES | (EXPLAINER_NOTICES if name == EXPLAINER else {})
         missing += [(name, which) for which, notice in wanted.items() if flatten(notice) not in text]
-        if name.startswith(FLIGHT_DIR) and CHANCE.search(text) and "worked out " not in text:
+        if name.startswith(FLIGHT_DIR) and CHANCE.search(text) and not WORKED_OUT.search(plain(strip_tags(raw))):
             missing.append((name, "worked-out line"))
     return missing
 

@@ -371,7 +371,8 @@ def test_a_percent_sign_passes(tmp_path):
     assert check.scan(site) == []
 
 
-@pytest.mark.parametrize("headline", ["Chance it's cancelled", "Chance its next flight is cancelled"])
+@pytest.mark.parametrize("headline", ["Chance it's cancelled", "Chance its next flight is cancelled",
+                                      "Chance it's delayed an hour or more"])
 def test_a_chance_on_a_flight_page_needs_the_worked_out_line(tmp_path, headline):
     site = make(tmp_path, {"flight/a.html": f"<p>{headline}: about 15%</p>" + FOOTER})
     assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
@@ -398,6 +399,12 @@ def test_the_front_pages_column_head_needs_no_worked_out_line(tmp_path):
 def test_a_flight_page_without_a_chance_needs_no_line(tmp_path):
     site = make(tmp_path, {"flight/a.html": "<p>Nothing to say yet.</p>" + FOOTER})
     assert check.missing_notices(site) == []
+
+
+def test_the_partner_line_is_not_the_worked_out_line(tmp_path):
+    partner = "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history."
+    site = make(tmp_path, {"flight/a.html": f"<p>Chance it's cancelled: under 1%</p><p>{partner}</p>" + FOOTER})
+    assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
 
 
 def test_only_a_worked_out_line_counts(tmp_path):
