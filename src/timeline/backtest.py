@@ -122,7 +122,7 @@ def run(table: list[dict], obs: list[dict], snaps: list[dict]) -> Report:
         airline = records.airlines[f.airline]
         flew = f.result == "operated"
         items.append(_Scored(f.key, cancelled=f.result == "cancelled", flew=flew,
-                             delayed=flew and blend._delayed(f, by_id),  # the blend's one rule for a delay
+                             delayed=flew and blend.delayed(f, by_id),
                              cancel=blend.cancel_chance(number, airline, records.airport, ROW),
                              delay=blend.delay_chance(number, airline, records.airport, f.key[0])))
     top, rest = _top([i for i in items if i.cancel is not None], lambda i: i.cancel)
@@ -148,6 +148,8 @@ def text(r: Report) -> str:
         "(Israel days)",
         f"Scored: the week's closed flights with a known result in the {ROW}-hour row, each by its lead number.",
         "The counts are cut at the week's start.",
+        "A flight scheduled before it counts with its result as known at the last update, even one decided after the "
+        "week began.",
         f"Not scored, with no chance worked out: {r.no_chance} for cancelling, {r.no_delay_chance} of those that "
         "flew for a delay of an hour or more.",
         "",

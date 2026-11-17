@@ -129,6 +129,27 @@ def test_expected_and_actual(israeli_machine):
     assert (r.no_chance, r.no_delay_chance) == (0, 0)
 
 
+def test_a_flight_is_scored_through_its_lead_number(israeli_machine):
+    # LO 155 and LY 9255 are one flight (C1), its lead number LO 155 (C8: 155 before 9255), though LY 9255's
+    # flight_id sorts first. LO 155 has the history's 1 of 5 cancelled; LY 9255 3 of its own, none cancelled.
+    r = backtest.run(*archive(*history(),
+                              *(listed(f"ly9255-{d}", T(d, 14), flight_no="9255", airport="WAW") for d in (1, 2, 3)),
+                              listed("cs-a", T(18, 12), flight_no="9255", airport="WAW"),
+                              listed("cs-b", T(18, 12), airline="LO", flight_no="155", airport="WAW")))
+    lo = (1 + 100 * 3 / 28) / (5 + 100)  # LO's 1 of 5, pulled towards the airport's 3 of 28
+    assert (r.every.flights, r.every.expected_cancelled) == (1, approx((1 + 14 * lo) / (5 + 14)))
+
+
+def test_the_weeks_last_day_is_scored_and_the_next_is_not(israeli_machine):
+    r = backtest.run(*archive(*history(),
+                              listed("last", T(21, 21, 30)),  # 21 November 23:30 in Israel: the week's last day
+                              # 22 November 00:00 in Israel: closed at the last sighting (48 hours before it) and in
+                              # the row, but after the week
+                              listed("next", T(21, 22), airline="W6", flight_no="900")))
+    assert r.last_day == date(2026, 11, 21)
+    assert (r.every.flights, r.every.expected_cancelled) == (1, approx(CANCEL["a"]))
+
+
 def test_the_top_tenth_is_a_ceiling(israeli_machine):
     # LY 1 rated highest; ten numbers new to LY tied at LY's rate, the first by the flight key (the earliest) cancelled
     ties = [listed(f"t{i}", T(15, 8) + i * 12 * H, "canceled" if i == 0 else "departed", flight_no=str(100 + i))
@@ -184,6 +205,7 @@ TEXT = """\
 The back-test of the blend, on the week of 2026-11-15 to 2026-11-21 (Israel days)
 Scored: the week's closed flights with a known result in the 24-hour row, each by its lead number.
 The counts are cut at the week's start.
+A flight scheduled before it counts with its result as known at the last update, even one decided after the week began.
 Not scored, with no chance worked out: 0 for cancelling, 0 of those that flew for a delay of an hour or more.
 
 Cancelled: actual against expected
@@ -226,7 +248,7 @@ def test_the_report_text_and_exit_codes(israeli_machine, tmp_path, monkeypatch, 
         env = dict(os.environ, PYTHONHASHSEED=seed, TZ="Asia/Jerusalem",
                    PYTHONPATH=os.pathsep.join(["src", "tests"]))
         done = subprocess.run([sys.executable, "-c", code], env=env, cwd=Path(__file__).parent.parent,
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, timeout=60)
         assert done.returncode == 1, done.stderr
         assert (tmp_path / seed / "model-2026-11-23" / "report.txt").read_bytes() == TEXT.encode()
     monkeypatch.setattr(backtest, "run", lambda *model: replace(report, flags=()))

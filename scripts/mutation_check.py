@@ -618,6 +618,8 @@ COLLECTOR_MUTATIONS = {
     "backtest: top-tenth flag reversed": (BACKTEST, "top.cancelled * rest.flights <= rest.cancelled * top.flights)", "top.cancelled * rest.flights >= rest.cancelled * top.flights)"),
     "backtest: ties broken against the flight key": (BACKTEST, "key=lambda i: (-chance(i), i.key))", "key=lambda i: (chance(i), i.key), reverse=True)"),
     "backtest: a flight with no delay chance not counted": (BACKTEST, "no_delay_chance=sum(i.flew and i.delay is None for i in items))", "no_delay_chance=0)"),
+    "backtest: scored on the first number, not the lead": (BACKTEST, "        lead = blend.lead(f, by_id)\n", "        lead = by_id[f.numbers[0]]\n"),
+    "backtest: the week's last day left out": (BACKTEST, "f.day <= last and", "f.day < last and"),
     "names: an airline no flight is grouped under needed": (NAME_LIST, "        if reasons:\n", "        if reasons and code in records.airlines:\n"),
     "names: a missing name exits 0": (NAME_LIST, "    return 1 if missing else 0\n", "    return 0\n"),
     "names: the floor of 100 flights exclusive": (NAME_LIST, "if counted[code] >= FLOOR", "if counted[code] > FLOOR"),

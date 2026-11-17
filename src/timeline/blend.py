@@ -65,8 +65,9 @@ def known(label: str) -> bool:
     return label in (DEPARTED, LANDED, CANCELLED)
 
 
-def _delayed(f: counting.Flight, by_id: dict[str, dict]) -> bool:
-    """Delayed an hour or more, read from its numbers that departed or landed (the delay measurement's reading)."""
+def delayed(f: counting.Flight, by_id: dict[str, dict]) -> bool:
+    """Delayed an hour or more, read from its numbers that departed or landed (the delay measurement's reading); the
+    back-test counts the delays it scores by it too."""
     return any(display.delayed_an_hour(by_id[fid]) for fid in f.numbers
                if by_id[fid]["outcome"] in counting.OPERATED)
 
@@ -78,7 +79,7 @@ def _tally(flights_: Iterable[counting.Flight], by_id: dict[str, dict], last: da
     cancelled = [f for f, lab in ended if lab == CANCELLED]
     flew = [f for f, lab in ended if lab in (DEPARTED, LANDED)]
     return Tally(flights=len(ended), cancelled=len(cancelled), flew=len(flew),
-                 delayed=sum(_delayed(f, by_id) for f in flew),
+                 delayed=sum(delayed(f, by_id) for f in flew),
                  cancelled_days=tuple(sorted(f.day for f in cancelled)),
                  last_cancelled=max((f.key[2] for f in cancelled), default=None))
 
@@ -86,7 +87,7 @@ def _tally(flights_: Iterable[counting.Flight], by_id: dict[str, dict], last: da
 def _delay_rate(flights_: Iterable[counting.Flight], by_id: dict[str, dict], direction: str) -> rates.Rate:
     """The closed flights of `direction` with a known result that flew, as one rate whose k is a delay of an hour
     or more: C8's floor then reads the delayed flights."""
-    return rates.rate([rates.Counted(int(_delayed(f, by_id)), f.airline, f.day) for f in flights_
+    return rates.rate([rates.Counted(int(delayed(f, by_id)), f.airline, f.day) for f in flights_
                        if f.closed and f.result == "operated" and f.key[0] == direction])
 
 
