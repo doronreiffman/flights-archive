@@ -1120,6 +1120,13 @@ Implementer: transcription (Sonnet). Every claim is checked against the code as 
 
 Filled in by the main session after each run on the real model: the model, the week, the flights scored, the expected and actual cancelled and delayed flights, the top tenth against the rest, the flags, and the owner's choice. Not published on the site (D13).
 
+- Run 1 (2026-11-17, main session, Task 5 Step 8), branch q27-t4 at f48c343, model `data/model-2026-11-17` (last sighting 07:46:44Z): the week 8 to 14 November (Israel days), 2,226 flights scored in the 24-hour row, each by its lead number; none left unscored.
+  - Cancelled: 24 actual against 20.96 expected (1.15 times). The top tenth by the chance of cancelling: 9 of 223 (4.0%), expected 10.36. The rest: 15 of 2,003 (0.7%), expected 10.61.
+  - Delayed an hour or more, of those that flew: 143 of 2,202 against 127.17 expected. The top tenth: 32 of 221, expected 34.69. The rest: 111 of 1,981, expected 92.48.
+  - Flags: none ("Not flagged"); exit 0. 3.96 s, peak memory footprint 186 MB.
+  - Checked beside it: of the 24 flights counted as cancelled (C2), all 24 carry the CANCELLED label (C10); none is a number cancelled while another is still listed.
+  - The owner's choice: not flagged, so it ships (D13); reported to the owner on 2026-11-17.
+
 ## Deviations
 
 The executor appends here whenever reality forces a change from this plan: what changed, why, and the commit.
@@ -1134,4 +1141,5 @@ The executor appends here whenever reality forces a change from this plan: what 
   - Change to Task 7: the build also writes `fonts/LICENSE.txt`; `publish.sh` gets a fifth upload, `upload '*.txt' 'text/plain; charset=utf-8'`; the file-type test admits it.
 - Task 2 (2026-11-17, 7ea2fe8): `words.shows_expected` added, the one rule for the time line's "expected" form and for where the expected-times note stands; `style.css` changed for the renamed label (`.l-no-news-yet`) and the phone prefix "Notice given: " (design `docs/site-redesign.md:109`), needed by the renames; `ListFlight.delayed` has no separate CANCELLED or UNKNOWN guard, since under C10 such a flight's rows are never delayed (a comment says so; a guard would be an equivalent mutant); the entry "display: DELAYED from the airport's word" targets `flights.py`, where the status word was read. Still on the pages until later tasks: the flight page's summary "with no final update" (Task 10) and the "How this works" glossary's old labels and "How much warning" (Task 14).
 - Task 4, review (2026-11-17): the chance functions divided by zero on an airport with no counted flight, or a direction with none that flew; the build's tests run such small models. Both now return `None` there. A day whose chances are `None` carries no chances (Task 11, the structure of Question 1, so no new words), and the back-test leaves such a flight unscored (Task 5).
+- Task 6, Step 8 (2026-11-17, main session): `python -m timeline.names` on `data/model-2026-11-17` lists 60 airlines: the 54 grouping airlines (as Question 5 counted them) and 6 more with 100 or more flights under their numbers (Aeromexico, Aerolineas Argentinas, Iberia, SAS, TAP, Virgin Atlantic), whose flights are always grouped under another airline, so no sentence names them. 57 had no spoken name; the main session drafted all 57 (76729d3 on q27-t4), four marked "check" for the owner (One Click, Sky Up Nistru, the Royal Australian Air Force, Transaero).
 
