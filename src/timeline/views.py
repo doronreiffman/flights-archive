@@ -478,59 +478,186 @@ def _gap(start: datetime, end: datetime) -> str:
     return f"There are no records from {a.day} {a:%B %H:%M} to {b.day} {b:%B %H:%M}."
 
 
-def how_it_works_page(attribution: str, gaps: Sequence[tuple[datetime, datetime]], tag: str,
-                      counting_start: datetime, updated: datetime) -> str:
-    """Appendix A of docs/site-redesign-plan.md, with Appendix A of docs/flight-lookup-plan.md placed after "Probably
-    the same flight", verbatim; the only page that may say "I" and name how the data is collected. `gaps` are (start,
-    end) in the model's naive UTC. `tag` is the frozen code's tag (record.TAG), linked to its code; `counting_start`
-    (record.COUNTING_START, the model's naive UTC) is written as its Israel date, as the lede writes a date. `updated`
-    is the last sighting."""
+def _written(day: date) -> str:
+    """A date written out with its year, as the page writes a date: "27 October 2026"."""
+    return f"{day.day} {day:%B %Y}"
+
+
+def _shares(airport: blend.Airport) -> str:
+    """Section 3's two sentences on the first and the last row, each its share to one decimal, as the table writes it;
+    "" when either is below C8's floor, as the front page's first line is left out."""
+    first, last = airport.rows[70], airport.rows[3]
+    if not (first.clears_floor and last.clears_floor):
+        return ""
+    return (f" Of flights still on 3 days before, {_pct(first)} were cancelled later. Of flights still on 3 hours "
+            f"before, {_pct(last)}.")
+
+
+def _delays(airport: blend.Airport) -> str:
+    """Section 3's two sentences on delays of an hour or more over flights that flew, each direction "about" or
+    "under 1%" as the front page's delay line writes it; "" while a direction has no flight that flew, the one case
+    the front page leaves its line out (the line has no floor: docs/will-it-fly-plan.md, Deviations, Task 9's
+    review)."""
+    departures, arrivals = airport.delay["D"], airport.delay["A"]
+    if not (departures.flights and arrivals.flights):
+        return ""
+    return (f" Among departures that flew, {words.about(departures.cancelled / departures.flights)} were delayed an "
+            f"hour or more. Among arrivals, {words.about(arrivals.cancelled / arrivals.flights)}.")
+
+
+def _figures(airport: blend.Airport) -> tuple[str, list[str]]:
+    """Section 5: the sentence that reads the total's range ("" when it has none), and the list's lines. Each figure is
+    its percentage with its range (words.pct_range: one decimal, the ends outward); the total and a row with none, below
+    C8's floor, read "Not enough flights yet". The two delay lines stand only when both have a range."""
+    total = words.pct_range(airport.total)
+    reads = (f" For all flights it reads {total}: first the figure, then the low end and the high end of its range."
+             if total else "")
+    lines = [f"All flights: {words._n(airport.total.flights)} flights · {words._n(airport.total.cancelled)} cancelled "
+             f"· {total or words.NOT_ENOUGH}"]
+    for h, name in words.ROW_NAMES.items():
+        r = airport.rows[h]
+        lines.append(f"{name}: {words._n(r.flights)} flights still on then · {words._n(r.cancelled)} cancelled later "
+                     f"· {words.pct_range(r) or words.NOT_ENOUGH}")
+    departures, arrivals = words.pct_range(airport.delay["D"]), words.pct_range(airport.delay["A"])
+    if departures and arrivals:
+        lines += [f"Departures delayed an hour or more: {departures}", f"Arrivals delayed an hour or more: {arrivals}"]
+    return reads, lines
+
+
+def _items(tag: str, items: list[str]) -> str:
+    return "\n".join([f"<{tag}>", *(f"<li>{item}</li>" for item in items), f"</{tag}>"])
+
+
+def how_it_works_page(summary: Summary, airport: blend.Airport, attribution: str,
+                      gaps: Sequence[tuple[datetime, datetime]], tag: str, counting_start: datetime,
+                      updated: datetime) -> str:
+    """"How this works" (docs/site-redesign.md, "How this works"; docs/flight-lookup.md, "How this works"): the
+    approved opening, then ten sections. The first is "What the numbers mean" (words.WHAT_THE_NUMBERS_MEAN), at the
+    anchor every page's footer links to; sections 2 to 10 are as drafted for the owner's approval at the hand check,
+    with the front page's figures in their places: `summary` (display.summary: the left-out counts and the first
+    record's Israel date) and `airport` (blend.Airport: the frozen total and rows, and the delays). The only page that
+    may say "I" and name how the data is collected. `gaps` are (start, end) in the model's naive UTC. `tag` is the
+    frozen code's tag (record.TAG), linked to its code; `counting_start` (record.COUNTING_START, the model's naive
+    UTC) is written as its Israel date. `updated` is the last sighting. The quoted words take curly quotes."""
     gap_sentences = "".join(f" {_gap(a, b)}" for a, b in gaps)
     start = words.il_time(counting_start)
     tagged = f'<a href="{e(f"{words.CODE_URL}/tree/{tag}")}">{e(tag)}</a>'
+    since = _written(summary.first_record)
+    means = "\n".join("<p>" + " ".join(f"<b>{e(lead)}</b> {e(rest)}" for lead, rest in pairs) + "</p>"
+                      for pairs in words.WHAT_THE_NUMBERS_MEAN)
+    reads, figures = _figures(airport)
+    left_out = _items("ul", [
+        "Flights that dropped off the list during a gap in the records (see “Gaps in the records”, below): "
+        f"{words._n(summary.unknown_gap)}",
+        f"Flights that dropped off without the airport saying how they ended: {words._n(summary.unknown_no_final)}"])
+    labels = _items("ul", [
+        "DEPARTED and LANDED: the airport's final word on the flight.",
+        "CANCELLED: the airport's list marked the flight cancelled.",
+        "UPCOMING: still on the list, with its scheduled time still ahead when the page was last updated.",
+        "NO NEWS YET: its scheduled time has passed, and the airport hasn't said how it ended.",
+        "UNKNOWN: there's no record of how the flight ended. It dropped off the list during a gap in the records, or "
+        "the airport removed it without saying why."])
+    gate = _items("ol", [
+        "The count. Take the counted flights of the 24-hour row in the order of the scheduled time they showed at the "
+        "checkpoint. The gate is reached at the first such time that is at least 60 days after the counting start and "
+        "by which 200 of those flights were later listed as cancelled. The days and the count are taken over every "
+        "counted flight in the row.",
+        "The sign has passed its test, read on the counted flights scheduled up to that time."])
     body = f"""<h1>How this works</h1>
-<h2>Where the data comes from</h2>
-<p>The Israel Airports Authority publishes Ben Gurion Airport's list of departures and arrivals on data.gov.il, the Israeli government's open-data site. The list shows each flight from about three days before it is scheduled until about a day after. I built a small program that checks the list every 2 minutes and saves each new version, so a flight's history stays after it drops off the list.</p>
+<p>{e(words.HOW_OPENING)}</p>
+<section id="{words.MEANS_ANCHOR}">
+<h2>{e(words.MEANS)}</h2>
+{means}
+</section>
+<section>
+<h2>Where the information comes from</h2>
+<p>The airport's list of departures and arrivals is published by the Israel Airports Authority, on data.gov.il.</p>
+<p>A flight shows up on that list about 3 days before its scheduled time. About a day after, it drops off, and the list no longer says what happened to it.</p>
+<p>That is why this site keeps its own copies. Each new version of the list is saved, so a flight's history is still there after the flight drops off. Everything on this site is worked out from those saved versions.</p>
+<p>The terms of data.gov.il ask anyone who uses its information to say where it came from. Here is the source in full:</p>
 <p>{e(attribution)}</p>
+<p>The part in brackets is the list's own name and ID on data.gov.il, for anyone who wants to look it up.</p>
+<p>Airline names are spelled the way the airport's list spells them, even where the spelling looks odd. Inside a sentence, some airlines go by their everyday names, like {d("El Al")} or {d("Lufthansa")}.</p>
+</section>
+<section>
+<h2>How a flight's chance is worked out</h2>
+<p>The short version is in “What the numbers mean”, above. This is the longer one.</p>
+<p><b>It only counts what the airport's list has shown.</b> A flight's chance comes from three histories: the flight number's own, its airline's, and all flights at Ben Gurion. Each is a count of flights that flew and flights that were marked cancelled. The site doesn't look at the weather or the news.</p>
+<p><b>The flight's own history comes first.</b> But a flight number with only a few flights can't say much on its own. So the site pretends that every flight number has 14 more flights behind it, cancelled as often as its airline's figure says. A flight number with a long history mostly speaks for itself. One with fewer than 14 flights gets most of its chance from its airline's figure. The “Worked out from” line on its page then says the chance was worked out mostly from its airline or, when its airline has few flights too, mostly from all airlines.</p>
+<p><b>The airline's figure is worked out the same way.</b> The site pretends that every airline has 100 more flights, cancelled as often as all flights at Ben Gurion. A big airline's own flights easily outweigh those 100. An airline with fewer than 100 flights leans mostly on the figure for all airlines.</p>
+<p><b>Why 14 and 100.</b> 14 is two weeks of a daily flight, so every day of the week is in it twice. And once an airline has 100 flights, a single flight can't move its figure by more than one point: from 5% to 6%, say. Both numbers are a starting choice. They haven't been tested yet.</p>
+<p><b>Then, how soon the flight leaves.</b> The closer a flight gets, the fewer cancellations are still to come.{_shares(airport)} So a flight's chance is adjusted for the time it has left. If flights this close to leaving are cancelled half as often as flights in general, the flight's chance is halved. When the time left falls between two rows of the front page's table, the site uses the row with more time to go: with 10 hours left, the “12 hours away” row. A page with no flight ahead uses the “3 days away” row.</p>
+<p><b>A chance is never zero.</b> Even a flight number with no cancelled flight takes a share of its airline's figure. Below 1%, a chance reads “under 1%”. A flight number with a clean history can still show a higher chance, when its airline cancels often. A flight number with no flights yet gets its airline's figure, and an airline with none gets the figure for all flights.</p>
+<p><b>The chance of a delay is worked out the same way,</b> counting flights delayed an hour or more in place of cancelled flights. Three things differ. It counts only flights that flew. It starts from all departures or all arrivals at Ben Gurion, whichever the flight is. And it isn't adjusted for how soon the flight leaves, because the chance of a delay is about the same however soon you fly.{_delays(airport)}</p>
+<p><b>What this can't do yet.</b> This is a simple first version, and the record only goes back to {since}. One bad week can move a short history a long way. That is why a flight's page gives the dates when one bad week is behind its figures. The adjustment for how soon a flight leaves is the same for every airline and every flight. And so far the record holds no really bad day at the airport. A storm, a strike or a security closure is when you'd most want this site, and it's when these numbers are most wrong. A tested version is planned to take this one's place.</p>
+</section>
+<section>
+<h2>The table for all flights, and who is counted</h2>
+<p><b>What the table shows.</b> The table on the front page looks at six moments before a flight's scheduled time: 3 days, 2 days, 1 day, 12 hours, 6 hours and 3 hours. For each one it takes every flight that was still on then, and gives the share that were cancelled later.</p>
+<p><b>“Still on”</b> means on the list with any status but cancelled. A delayed flight counts as still on. <b>“Cancelled later”</b> means any time after that moment, however late, even after the scheduled time. The time left is measured from the scheduled time the list showed at that moment, because that is the only time a traveller has.</p>
+<p><b>The same table on a flight's page.</b> A flight's page has a line such as “All airlines at Ben Gurion, 6 to 12 hours before a flight”. The cancelled share in that line is the table's figure for 12 hours before. It means that this share of the flights still on 12 hours before were cancelled some time after that. It doesn't mean they were cancelled during those six hours.</p>
+<p><b>Why it starts at 3 days.</b> The airport's list shows a flight only for its last 3 days, so there is nothing to count before that. The first row, “3 days away”, is really 70 hours before, a little short of 3 days, so that every flight that showed up on the list at the usual time is in it. A flight further off isn't on the list yet. That says nothing about whether it will fly. A flight that is already cancelled when it first shows up is almost never seen, so the table is about flights that reached the list normally.</p>
+<p><b>Who is counted.</b> For the table and the total, a flight is counted two days after its scheduled time. That way, all the flights of one hour are counted at the same moment, whether they flew or were cancelled. A flight's own page doesn't wait. Its counts, for the flight number and for its airline, take in every flight whose ending is known: one that departed or landed, and one that is marked cancelled, even when its scheduled time is still ahead. So a flight cancelled ahead of time is counted at once, while flights due at the same time are counted only once they have flown. For up to 3 days, that can make an airline's figure too high.</p>
+<p><b>Who is left out.</b> Flights with no record of how they ended are left out of every figure: {words._n(summary.unknown)} so far. They are of two kinds:</p>
+{left_out}
+<p>A flight of the second kind may have been cancelled, or moved to another time. The list doesn't say. If some were cancelled, the true share of cancelled flights is higher than the figures here.</p>
+<p><b>One flight, several numbers.</b> Airlines sell seats on each other's flights, so one plane can be on the list under several flight numbers. The list never says which numbers belong together, so the site works it out. Numbers with the same scheduled time and the same airport count as one flight when the list shows the same expected time, terminal and check-in desks for them. A flight's page then says “Also sold as”, with the words “probably the same plane”, because this is worked out and not stated. An arrival with no check-in desks listed can now and then be joined to another flight by mistake.</p>
+<p><b>When a number is cancelled and the plane still flies.</b> Sometimes one number is marked cancelled while the flight goes ahead under another. A number that never departed or landed is counted together with another number at the same time and airport when the two share an airline or check-in desks. The flight counts as flown when any of its numbers departed or landed. It counts as cancelled only when none did and at least one ended up marked cancelled. On the cancelled number's own page, that day keeps its cancelled mark, with a line saying the flight probably left or landed under the other number. In that number's counts and in its chance, the day counts as flown. If the two numbers were really two planes, one cancellation goes uncounted. The list can't settle that.</p>
+<p><b>Whose history counts.</b> The list doesn't say which airline flies a plane that is sold under several numbers. The site files such a flight under one airline: the one with the lowest flight number. The flight's chance leans on that airline's history, and the page says so. It says nothing about who flies the plane.</p>
+<p><b>A flight that is cancelled and then put back on</b> counts as whatever it ended as.</p>
+<p><b>Why the later rows hold more flights.</b> A flight is in a row only when the records show it on the list at that moment. Flights already on the list when the records began, or that were on it during a gap in the records, are missing from the earlier rows. So are flights that the airport added to the list late. That is why the “3 days away” row holds {words._n(airport.rows[70].flights)} flights and the “3 hours away” row holds {words._n(airport.rows[3].flights)}. Every row's counts are in the next section.</p>
+</section>
+<section>
+<h2>How sure the numbers are</h2>
+<p><b>The figures for all flights each have a range.</b> A percentage worked out from past flights is never exact. Its range shows how far luck alone could have moved it.{reads} The other pages show only the first figure, to keep them simple. Here they all are:</p>
+{_items("ul", figures)}
+<p><b>Why the ranges are wide.</b> Cancellations come in bunches: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each range is worked out twice, once allowing for an airline's bad week and once for a bad day at the airport, and the wider of the two is used.</p>
+<p><b>When there are too few flights.</b> The total and each row of the table get a percentage only when they rest on at least 10 cancelled flights, from at least 5 airlines and at least 5 days. The delay figures are held to the same rule, with 10 delayed flights. A row with too few reads “Not enough flights yet”.</p>
+<p><b>Why a flight's own chance has no range.</b> The chance on a flight's page isn't a measured figure like the ones above. It's a mix of three histories, using the numbers 14 and 100, which haven't been tested yet. A flight number's own history is often short: one with 6 flights and none cancelled could be a flight that is never cancelled, or one that is cancelled a third of the time. In place of a range, the “Worked out from” line at the top of a flight's page says what the chance rests on: whose history, how many flights, and the dates of a bad week. The lines below it give plain counts, so you can see how much, or how little, is behind the chance.</p>
+</section>
+<section>
+<h2>What “cancelled”, “delayed” and “notice” mean</h2>
+<p><b>“Cancelled”</b> means the airport's list marked the flight cancelled. The record knows when the list changed, not when the airline decided. Some flights are only marked cancelled after their scheduled time has passed.</p>
+<p><b>A cancellation never gets an exact time.</b> The program sees the list as it was before the change and as it was after. So a list of changes reads “Between 19:16 and 19:32 · Cancelled”, and never names one exact minute.</p>
+<p><b>“Notice given”</b> is how long before its scheduled time a flight was marked cancelled. It's given in whole hours: “Cancelled with at least 21 hours' notice.” The 21 is rounded down, so it doesn't claim more notice than there was. Where there's a gap in the records, it's a range: “Cancelled between 7 and 50 hours before its scheduled time.” When a flight was already cancelled the first time it appeared in the records, the page says so, and the notice may have been much longer. “No notice” means the flight was only marked cancelled after its scheduled time. The airline may have told its passengers earlier than the list showed.</p>
+<p><b>“Delayed”</b> means the airport's own expected time was an hour or more after the scheduled time. The time used is the last expected time the airport gave.</p>
+<p><b>Why only an hour or more.</b> The airport doesn't say whether its expected time means leaving the gate or taking off. Most departures show an expected time 15 to 59 minutes after the scheduled time. That looks like the way the airport writes its times, not like real lateness. So nothing under an hour is counted as a delay, or labelled as one.</p>
+<p><b>The chance of a delay counts only flights that flew.</b> A cancelled flight isn't counted as delayed. So the two chances answer two different questions. Will the flight be cancelled? And if it flies, will it be an hour or more behind schedule?</p>
+<p><b>When the airport moves a flight to a new scheduled time,</b> the delay is measured from the new time. So moving a flight to a later time doesn't by itself count as a delay.</p>
+</section>
+<section>
 <h2>What the labels mean</h2>
-<ul>
-<li>DEPARTED and LANDED: the airport's final word on the flight.</li>
-<li>CANCELLED: the airport's list showed the flight as cancelled.</li>
-<li>UPCOMING: still on the list; its scheduled time hasn't come yet.</li>
-<li>NO FINAL UPDATE: its scheduled time has passed, and the list hasn't given a final status yet.</li>
-<li>UNKNOWN: it left the list without a final status, or while records are missing.</li>
-<li>DELAYED: shown beside another label when the airport's list said "delayed" at some point.</li>
-</ul>
-<h2>How much warning</h2>
-<p>For a cancelled flight, the warning is how long before its scheduled time the list already showed it as cancelled. The list refreshes about every 15 minutes, so the change is usually known to within that window, and always to within an hour. For the same reason, the time of a cancellation is always given as a range. Where records are missing, the warning is a range ("between 7 and 50 hours"). When a flight was already cancelled the first time it appeared in the records, only a lower limit is known ("at least 23 hours"); "at least" is also used when the change was seen an hour or more ahead, rounded down. The airline may have told passengers earlier than the list showed.</p>
-<h2>Why there are no delay figures</h2>
-<p>The list gives an expected time for each flight. It doesn't say whether that is when the plane leaves the gate or when it takes off. Until that is settled, this site shows the airport's times as they are and doesn't turn them into delay figures.</p>
-<h2>"Final" and "not final"</h2>
-<p>The airport also uses the words "final" and "not final". It doesn't publish what they mean, so this site quotes them as they are.</p>
-<h2>Probably the same flight</h2>
-<p>Airlines often sell seats on one flight under several flight numbers. When numbers share the same time, terminal and check-in desks, this site lists them as probably the same flight. The list doesn't say so itself, and arrivals with no check-in desks can occasionally be grouped by mistake.</p>
-<h2>A flight</h2>
-<p>{e(words.A_FLIGHT)}</p>
-<h2>What is counted</h2>
-<p>A flight is counted two days after its scheduled time, so that all the flights of one hour are counted together, whatever happened to them. A flight that left the list with no final status, or while nothing was recorded, has no known outcome. It is left out of every figure, and how many there are is given beside the figures.</p>
-<h2>Why every figure is a range</h2>
-<p>Cancellations come in runs: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each figure comes with a range wide enough to allow for both. A figure is shown only when it rests on at least 10 cancelled flights, from at least 5 airlines and 5 days; below that, the page gives the counts and says there are too few so far to say.</p>
-<h2>Why three days</h2>
-<p>The airport's list shows a flight from about three days before its scheduled time, so the table starts at 70 hours to go. A flight that is already listed as cancelled when it first appears is almost never seen, so every figure is about flights that reached the list normally.</p>
-<h2>Why the later rows hold more flights</h2>
-<p>Flights whose first days on the list fell before the records began, or in the gap from 27 to 29 October, were seen only in their last hours. They are in the later rows of the table and not in the earlier ones.</p>
-<h2>Signs under test</h2>
-<p>No figure is given for one flight yet. I am testing four signs that might go with a later cancellation: a flight of the same airline from the same airport, scheduled to land 30 minutes to 12 hours before a departure, listed as cancelled; the same flight number's previous flight listed as cancelled; another flight of the same airline, scheduled within a day either side, listed as cancelled; and a flight number first listed less than two days before its scheduled time. The rules were fixed beforehand, in the code tagged {tagged}. The counted flights are those first listed from {start.day} {start:%B %Y}, the counting start; the 24-hour row is the table's row for 24 hours to go, and its checkpoint is that moment.</p>
-<p>A sign may change what this site shows only when both of these hold:</p>
-<ol>
-<li>The count. Take the counted flights of the 24-hour row in the order of the scheduled time they showed at the checkpoint. The gate is reached at the first such time that is at least 60 days after the counting start and by which 200 of those flights were later listed as cancelled. The days and the count are taken over every counted flight in the row.</li>
-<li>The sign has passed its test, read on the counted flights scheduled up to that time.</li>
-</ol>
-<p>The lift is the rate with the sign over the rate without it. Its range is 2.5 standard errors of its logarithm either side, grouped as the ranges above are. 2.5, not 2, because four signs are tested at once. A sign passes when it clears the floor (10 cancelled flights with the sign, from 5 airlines and 5 days) and the whole range lies above 1. A sign that fails stays failed for this version.</p>
+<p>Each flight on each day has one main label:</p>
+{labels}
+<p>A second label can stand beside the first, as in “LANDED · DELAYED”. DELAYED means the airport's expected time was an hour or more after the scheduled time.</p>
+<p>In a list of flights, a flight sold under several numbers gets one label. It's DEPARTED or LANDED when any of its numbers departed or landed. It's CANCELLED only when none of its numbers is still on. Each number keeps its own label on its own page.</p>
+<p>A flight's list of changes shows the airport's own words, in small letters: on time, delayed, landing, landed, departed, cancelled, early. There, “delayed” is the airport's own word, shown whenever its list used it. Only the label DELAYED means an hour or more.</p>
+<p>{e(words.FINAL_NOTE)}</p>
+</section>
+<section>
 <h2>Gaps in the records</h2>
-<p>Records start on the evening of 27 October 2026.{gap_sentences} A flight that left the list during a gap is marked UNKNOWN.</p>
+<p>Records start on the evening of {since}.{gap_sentences} A flight that left the list during a gap is marked UNKNOWN.</p>
+<p>A gap also blurs anything that changed during it. Such a change can only be placed between the last saved version before the gap and the first one after it. So its line in a list of changes starts “Between”. A cancellation's notice may then be a wide range, or unknown, with the words “(There's a gap in the records then.)”. A day that the records don't fully cover is marked “some flights missing”.</p>
+</section>
+<section>
+<h2>What is being tested next</h2>
+<p>A sign is an early clue: something the airport's list shows about a flight that might go with a later cancellation. Four signs are being tested. The chances on this site don't use any of them yet. None will be used until it passes the test below, and the result will be reported here whether the signs pass or fail.</p>
+<p>The rest of this section gives the test in its exact words, for readers who want them. In it, “the 24-hour row” is the row the front page calls “1 day away”, and “listed as cancelled” means marked cancelled on the airport's list.</p>
+<p>I am testing four signs that might go with a later cancellation: a flight of the same airline from the same airport, scheduled to land 30 minutes to 12 hours before a departure, listed as cancelled; the same flight number's previous flight listed as cancelled; another flight of the same airline, scheduled within a day either side, listed as cancelled; and a flight number first listed less than two days before its scheduled time. The rules were fixed beforehand, in the code tagged {tagged}. The counted flights are those first listed from {_written(start)}, the counting start; the 24-hour row is the table's row for 24 hours to go, and its checkpoint is that moment.</p>
+<p>A sign may change what this site shows only when both of these hold:</p>
+{gate}
+<p>The lift is the rate with the sign over the rate without it. Its range is 2.5 standard errors of its logarithm either side, grouped as the ranges above are. 2.5, not 2, because four signs are tested at once. A sign passes when it clears the floor (10 cancelled flights with the sign, from 5 airlines and 5 days) and the whole range lies above 1. A sign that fails stays failed for this version.</p>
+</section>
+<section>
 <h2>How it's built</h2>
-<p>The program runs on AWS Lambda and saves each version once, to storage where it is locked for ten years. A Python data model turns the saved versions into one history per flight, and this site is generated from that model. Every rule has tests, and the tests are themselves checked by breaking the code on purpose and confirming that a test fails. The code is <a href="{e(words.CODE_URL)}">on GitHub</a>.</p>"""
+<p><b>Collecting.</b> The program runs on AWS Lambda and saves each version once, to storage where it is locked for ten years. The lock is S3 Object Lock in governance mode, set on each saved version for 3,650 days from the moment it is saved. The saved versions aren't published. This site shows only what is worked out from them.</p>
+<p><b>From saved versions to pages.</b> A Python data model turns the saved versions into one history per flight, and this site is generated from that model. The model is kept as Parquet files, and the site's build reads them with DuckDB. The same data always gives the same pages, byte for byte: the build uses no clock and no random numbers.</p>
+<p><b>The pages</b> are plain HTML and CSS with two small scripts. One runs the search box. The other works out how old the page is, and how long is left before a flight, from the clock on your own device. Every page can still be read with scripts turned off, and nothing is loaded from any other site. I upload the pages by hand. Before each upload, a check reads every page and refuses the upload if it finds wording that claims more than the airport's list showed.</p>
+<p><b>The ranges</b> are two standard errors either side of a figure on the logit scale, so they never fall below zero. The standard error is the larger of two grouped ones: flights grouped by airline and week, and by day.</p>
+<p><b>Tests.</b> Every rule has tests, and the tests are themselves checked by breaking the code on purpose and confirming that a test fails.</p>
+<p><b>What is frozen.</b> The counting rules and the sign test are fixed in the code tagged {tagged}. The mix behind a flight's chance is separate code and no part of that freeze.</p>
+<p>The code is <a href="{e(words.CODE_URL)}">on GitHub</a>.</p>
+</section>"""
     return layout("How this works", body, "", updated)
 
 

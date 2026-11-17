@@ -287,8 +287,6 @@ def test_every_link_and_search_address_leads_to_a_written_page_and_an_existing_a
     for name, href in relative:
         path, _, anchor = href.partition("#")
         target = posixpath.normpath(posixpath.join(posixpath.dirname(name), path)) if path else name
-        if href.endswith(f"#{words.MEANS_ANCHOR}") and target == "how-it-works.html":
-            continue  # the footer's link; the section it names is written by a later q27 task, which removes this skip
         if target not in written or (anchor and anchor not in ids.get(target, set())):
             broken.append((name, href))
     assert broken == []
@@ -621,7 +619,7 @@ def test_no_page_prints_0_percent():
     On a model with no cancelled flight the blend gives exactly zero, which reads "under 1%"."""
     files = build.render(*delay_model(0))
     pages = {name: text(page) for name, page in files.items() if name.endswith(".html")}
-    assert [(name, m) for name, page in pages.items() for m in re.findall(r"\S*\b0%", page)] == []
+    assert [(name, m) for name, page in pages.items() for m in re.findall(r"(?<![\d.])0(?:\.0+)?%", page)] == []
     assert "Chance its next flight is cancelled: under 1%" in pages["flight/AB100-D.html"]
 
 
@@ -651,6 +649,29 @@ def test_a_partner_airline_with_no_spoken_name_stops_the_build():
     assert "is also sold as" not in text(files["flight/LY9003-D.html"])
     assert "Worked out mostly from all airlines at Ben Gurion, because QQ 5 has only 1 flight so far and its airline " \
            "only 1." in text(files["flight/QQ5-D.html"])
+
+
+def test_how_it_works_reads_the_figures_the_front_page_reads():
+    """build.render hands "How this works" the front page's figures (docs/flight-lookup.md, "How this works"): on the
+    delay model, 200 closed flights that flew, none cancelled and none left out, each first listed 30 hours before its
+    time, so in the rows from 24 hours down; one in ten of each direction an hour late, which clears the floor; the
+    records' one list made at 02:00 on 10 November in Israel."""
+    model = delay_model(0)
+    page = text(build.render(*model)["how-it-works.html"])
+    delay = blend.records(*model).airport.delay
+    assert ("Among departures that flew, about 10% were delayed an hour or more. Among arrivals, about 10%. "
+            "What this can't do yet. This is a simple first version, and the record only goes back to 10 November "
+            "2026.") in page
+    assert "left out of every figure: 0 so far." in page
+    assert "the “3 days away” row holds 0 flights and the “3 hours away” row holds 200." in page
+    assert ("Here they all are: All flights: 200 flights · 0 cancelled · Not enough flights yet 3 days away: 0 flights "
+            "still on then · 0 cancelled later · Not enough flights yet 2 days away: 0 flights still on then · 0 "
+            "cancelled later · Not enough flights yet 1 day away: 200 flights still on then · 0 cancelled later · Not "
+            "enough flights yet 12 hours away: 200 flights") in page
+    assert words.pct_range(delay["D"]).startswith("10.0% (between ")
+    assert (f"Departures delayed an hour or more: {words.pct_range(delay['D'])} Arrivals delayed an hour or more: "
+            f"{words.pct_range(delay['A'])} Why the ranges are wide.") in page
+    assert "Records start on the evening of 10 November 2026. A flight that left the list" in page
 
 
 def test_a_pause_of_three_hours(tmp_path):

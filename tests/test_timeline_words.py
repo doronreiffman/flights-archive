@@ -291,12 +291,6 @@ def rate(cancelled, flights, one_in, lo, hi, floor=True):
                 one_in_from=lo, one_in_to=hi, se_airline_week=None, se_day=None)
 
 
-def test_a_flight_is_the_approved_words():
-    assert words.A_FLIGHT == (
-        "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
-        "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
-        "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when "
-        "any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
 
 
 def test_also_sold_as_and_the_twin_lines_words():
@@ -831,7 +825,7 @@ def site_texts() -> list[str]:
     texts += [words.label_note(f, label, ahead) for f, label, ahead, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
-    texts += [words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
+    texts += [words.ALSO_SOLD, words.SAME_PLANE,
               *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed", "has no news yet"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())
