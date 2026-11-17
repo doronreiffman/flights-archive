@@ -15,6 +15,10 @@ from .load import load
 
 STATIC = Path(__file__).parent / "static"
 MARKER = ".timeline-site"
+# The four faces the style sheet names, and their licence, served beside them (docs/site-redesign.md, "Look A"): copied
+# byte for byte, since the faces are binary and the licence keeps its own line ends.
+FONT_FILES = ("sans-cond-300.woff2", "sans-cond-400.woff2", "sans-cond-600.woff2", "hebrew-sans-400.woff2",
+              "LICENSE.txt")
 # The board keeps a past flight at least this long and lists a flight this far ahead (measured on 61 boards, 12 to 27 October 2026).
 BOARD_KEEPS = timedelta(hours=22)
 BOARD_AHEAD = timedelta(hours=72)
@@ -38,9 +42,10 @@ def _partial_days(days: set[date], first_check: datetime, last_check: datetime) 
     return out
 
 
-def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, str]:
-    """Every page of the site, by path, from the model's flights table, observations and snapshots as `load`
-    returns them. Pure: the same rows give the same text."""
+def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, str | bytes]:
+    """Every file of the site, by path, from the model's flights table, observations and snapshots as `load`
+    returns them: the pages, scripts and style sheet as text, the fonts and their licence as bytes. Pure: the same
+    rows give the same files."""
     undated = [f"{f['airline']} {f['flight_no']}" for f in table if f["sched_local_final"] is None]
     if undated:
         raise ValueError(f"{len(undated)} flights have no final scheduled time ({undated[:10]}); "
@@ -77,6 +82,8 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
         files[page] = views.flight_page(page_rows, partners, others, summary, last_check)
     for name in ("search.js", "fromhere.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
+    for name in FONT_FILES:
+        files[f"fonts/{name}"] = (STATIC / "fonts" / name).read_bytes()
     return files
 
 
@@ -92,7 +99,7 @@ def refuse_foreign(out_dir: Path) -> None:
             raise SystemExit(f"{folder} exists and was not made by timeline.build (no {MARKER}); refusing to replace it")
 
 
-def write_site(files: dict[str, str], out_dir: Path) -> None:
+def write_site(files: dict[str, str | bytes], out_dir: Path) -> None:
     """Build beside out_dir, then swap: the old site moves aside, then the new one moves in. A crash leaves the
     old site, the new one, or (only between the two renames) neither; every leftover carries the marker, and
     the next build clears it."""
@@ -103,10 +110,13 @@ def write_site(files: dict[str, str], out_dir: Path) -> None:
             shutil.rmtree(leftover)
     tmp.mkdir(parents=True)
     (tmp / MARKER).write_text("Made by timeline.build; replaced whole on every build.\n", encoding="utf-8")
-    for rel, text in files.items():
+    for rel, content in files.items():
         path = tmp / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8", newline="\n")
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8", newline="\n")
     if out_dir.exists():
         out_dir.rename(old)
     tmp.rename(out_dir)

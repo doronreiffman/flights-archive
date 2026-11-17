@@ -58,8 +58,9 @@ if [ -z "$distribution" ] || [ "$distribution" = None ]; then
 fi
 
 # One allowlisted sync per file type, content type set rather than guessed (the response headers
-# send nosniff). The marker and anything else in the folder stay local. Browsers keep a page five
-# minutes, so an upload shows within minutes of the invalidation.
+# send nosniff): the pages, the style sheet, the scripts, the four fonts and their licence. The
+# marker and anything else in the folder stay local. Browsers keep a file five minutes, so an
+# upload shows within minutes of the invalidation.
 upload() {
   aws s3 sync "$SITE/" "s3://$bucket/" --delete --exclude '*' --include "$1" --content-type "$2" \
     --cache-control 'max-age=300' --profile "$PROFILE" --region "$REGION"
@@ -67,6 +68,8 @@ upload() {
 upload '*.html' 'text/html; charset=utf-8'
 upload '*.css' 'text/css; charset=utf-8'
 upload '*.js' 'text/javascript; charset=utf-8'
+upload '*.woff2' 'font/woff2'
+upload '*.txt' 'text/plain; charset=utf-8'
 aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*' \
   --profile "$PROFILE" --query Invalidation.Id --output text
 echo "published: https://$(output SiteDomainName)/"

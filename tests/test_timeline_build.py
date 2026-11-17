@@ -106,11 +106,16 @@ def site(tmp_path):
 
 # --- the file set ----------------------------------------------------------------------------------
 
+# The four faces and the licence served beside them (docs/site-redesign.md, "Look A"; the owner, 2026-11-17).
+FONT_FILES = ("fonts/sans-cond-300.woff2", "fonts/sans-cond-400.woff2", "fonts/sans-cond-600.woff2",
+              "fonts/hebrew-sans-400.woff2", "fonts/LICENSE.txt")
+
+
 def test_the_site_is_the_redesigned_pages_and_nothing_of_v1(site):
     files = {p.relative_to(site).as_posix() for p in site.rglob("*") if p.is_file()}
     assert files == {build.MARKER, "index.html", "how-it-works.html", "cancellations.html", "day/2026-10-28.html",
                      "flight/EY607-D.html", "flight/IZ991-D.html", "flight/LY001-D.html", "flight/LY9614-D.html",
-                     "search.js", "fromhere.js", "style.css"}
+                     "search.js", "fromhere.js", "style.css", *FONT_FILES}
 
 
 def test_fromhere_js_is_written(site):
@@ -119,10 +124,33 @@ def test_fromhere_js_is_written(site):
     assert read(site, "fromhere.js") == (build.STATIC / "fromhere.js").read_text(encoding="utf-8")
 
 
-def test_only_html_css_and_js_besides_the_marker(site):
-    odd = [p.name for p in site.rglob("*") if p.is_file() and p.name != build.MARKER
+def test_only_html_css_js_the_four_fonts_and_their_licence_besides_the_marker(site):
+    odd = [p.relative_to(site).as_posix() for p in site.rglob("*") if p.is_file() and p.name != build.MARKER
            and p.suffix not in {".html", ".css", ".js"}]
-    assert odd == []
+    assert sorted(odd) == sorted(FONT_FILES)
+
+
+def test_the_font_files_and_their_licence_are_written_byte_for_byte(site):
+    """The faces are binary and the licence keeps its own line ends (CRLF): neither may go through text."""
+    for rel in FONT_FILES:
+        assert (site / rel).read_bytes() == (build.STATIC / rel).read_bytes(), rel
+
+
+PRELOAD = re.compile(r'<link rel="preload" href="([^"]*)" as="font" type="font/woff2" crossorigin>')
+
+
+def test_every_page_preloads_the_regular_and_semibold_files(site):
+    """docs/site-redesign.md, "Look A", Loading: every page asks early for the two files most of its text needs, by a
+    path from its own folder; the Light file waits for the style sheet, and the Hebrew one for a page with Hebrew on
+    it."""
+    pages = all_pages(site)
+    assert len(pages) == 8
+    for name, page in pages.items():
+        head = page[:page.index("</head>")]
+        hrefs = PRELOAD.findall(head)
+        assert [posixpath.normpath(posixpath.join(posixpath.dirname(name), h)) for h in hrefs] == [
+            "fonts/sans-cond-400.woff2", "fonts/sans-cond-600.woff2"], name
+        assert page.count('rel="preload"') == 2, name
 
 
 def test_every_page_carries_the_footer_notices_and_stays_out_of_search_engines(site):
@@ -525,7 +553,7 @@ def test_the_same_model_gives_the_same_bytes_in_separate_processes(tmp_path, sit
         subprocess.run([sys.executable, "-m", "timeline.build", "--model", str(model), "--out", str(out)],
                        check=True, env=env, cwd=Path(__file__).parent.parent, capture_output=True)
         outs.append({p.relative_to(out).as_posix(): p.read_bytes() for p in sorted(out.rglob("*")) if p.is_file()})
-    assert outs[0] == outs[1] and len(outs[0]) == 12
+    assert outs[0] == outs[1] and len(outs[0]) == 17
 
 
 def test_cli_builds_the_site_and_refuses_a_missing_model(tmp_path, site, capsys):
