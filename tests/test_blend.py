@@ -107,6 +107,26 @@ def test_a_clean_history_gives_a_chance_above_zero():
     assert delay_chance(LO155, clean, AP, "D") > 0 and delay_chance(LO155, clean, AP, "A") > 0
 
 
+def test_no_chance_of_cancelling_on_an_airport_with_no_counted_flight():
+    bare = Airport(total=rates.rate([]), rows=dict.fromkeys(counting.CHECKPOINTS, rates.rate([])), delay=AP.delay)
+    assert cancel_chance(LH694, LH, bare, 70) is None and cancel_chance(EMPTY, EMPTY, bare, 3) is None
+    # a small model: its one flight departed a day before the last sighting, so none is closed yet
+    r = counted(number("a", T(5, 0)))
+    assert r.airport.total.flights == 0 and r.numbers[("LY", "1", "D")] == Tally(1, 0, 1, 0, (), None)
+    assert cancel_chance(r.numbers[("LY", "1", "D")], r.airlines["LY"], r.airport, 70) is None
+
+
+def test_no_chance_of_a_delay_when_none_of_the_directions_flights_flew():
+    no_departures = replace(AP, delay={"D": rates.rate([]), "A": AP.delay["A"]})
+    assert delay_chance(LH697, LH, no_departures, "D") is None
+    assert delay_chance(EMPTY, EMPTY, no_departures, "D") is None
+    assert delay_chance(LH694, LH, no_departures, "A") == approx(0.025562)  # arrivals still have theirs
+    # a small model: its one closed departure was cancelled, so no closed departure flew
+    r = counted(number("a", CLOSED, "canceled"))
+    assert (r.airport.total.cancelled, r.airport.total.flights, r.airport.delay["D"].flights) == (1, 1, 0)
+    assert delay_chance(r.numbers[("LY", "1", "D")], r.airlines["LY"], r.airport, "D") is None
+
+
 def test_row_for_each_stretch():
     found = [blend.row_for(h) for h in (72, 48.0001, 48, 24, 12, 6, 3, 0.5, None)]
     assert found == [70, 70, 48, 24, 12, 6, 3, 3, 70]
@@ -160,14 +180,16 @@ def test_which_flights_are_counted():
         number("e", past - 2 * H, "open", flight_no="5"),  # NO NEWS YET
         # LY 6 marked cancelled while its partner LY 7 is still listed: the flight's ending is not known
         number("f", past - 3 * H, "canceled", flight_no="6"), number("g", past - 3 * H, "open", flight_no="7"),
-        # LY 8 marked cancelled, and LY 10 gone with no final word, beside a partner that departed (Question 4)
+        # LY 8 marked cancelled, LY 10 gone with no final word and LY 12 still listed, each beside a partner that
+        # departed (Question 4)
         number("h", past - 4 * H, "canceled", flight_no="8"), number("i", past - 4 * H, flight_no="9"),
-        number("j", past - 5 * H, "vanished", flight_no="10"), number("k", past - 5 * H, flight_no="11"))
+        number("j", past - 5 * H, "vanished", flight_no="10"), number("k", past - 5 * H, flight_no="11"),
+        number("l", past - 6 * H, "open", flight_no="12"), number("m", past - 6 * H, flight_no="13"))
     flew, cancelled = Tally(1, 0, 1, 0, (), None), Tally(1, 1, 0, 0, (date(2026, 11, 6),), ahead)
-    by_no = {no: r.numbers[("LY", no, "D")] for no in map(str, range(1, 12))}
+    by_no = {no: r.numbers[("LY", no, "D")] for no in map(str, range(1, 14))}
     assert by_no == {"1": flew, "2": cancelled, "3": EMPTY, "4": EMPTY, "5": EMPTY, "6": EMPTY, "7": EMPTY,
-                     "8": flew, "9": flew, "10": flew, "11": flew}
-    assert r.airlines["LY"] == Tally(4, 1, 3, 0, (date(2026, 11, 6),), ahead)
+                     "8": flew, "9": flew, "10": flew, "11": flew, "12": flew, "13": flew}
+    assert r.airlines["LY"] == Tally(5, 1, 4, 0, (date(2026, 11, 6),), ahead)
 
 
 def test_a_number_is_counted_per_direction():

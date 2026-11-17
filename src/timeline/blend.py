@@ -60,7 +60,8 @@ EMPTY = Tally(0, 0, 0, 0, (), None)
 
 def known(label: str) -> bool:
     """A flight whose ending is known: C10's label DEPARTED, LANDED or CANCELLED. A flight with a number still
-    listed is not, even with another marked cancelled (C10's rule 2), nor one that left with no final word."""
+    listed, with none departed or landed, is not, even with another marked cancelled (C10's rule 2), nor one that
+    left with no final word."""
     return label in (DEPARTED, LANDED, CANCELLED)
 
 
@@ -155,19 +156,24 @@ def scaling(airport: Airport, h: int) -> float | None:
     return None
 
 
-def cancel_chance(number: Tally, airline: Tally, airport: Airport, h: int) -> float:
+def cancel_chance(number: Tally, airline: Tally, airport: Airport, h: int) -> float | None:
     """The rule's four steps: the airport's rate; the airline's, pulled towards it; the number's, pulled towards
-    the airline's; scaled by checkpoint h's factor. Above zero while the airport has a cancelled flight."""
+    the airline's; scaled by checkpoint h's factor. Above zero while the airport has a cancelled flight. None when
+    the airport has no counted flight (no closed flight with a known result): there is no rate to start from."""
+    if not airport.total.flights:
+        return None
     airline_rate = pull(airline.cancelled, airline.flights, _share(airport.total), AIRLINE_WEIGHT)
     chance = pull(number.cancelled, number.flights, airline_rate, NUMBER_WEIGHT)
     factor = scaling(airport, h)
     return chance if factor is None else chance * factor
 
 
-def delay_chance(number: Tally, airline: Tally, airport: Airport, direction: str) -> float:
+def delay_chance(number: Tally, airline: Tally, airport: Airport, direction: str) -> float | None:
     """Steps 1 to 3 for a delay of an hour or more, over flights that flew: the airport's rate is the direction's
     own, and the airline's counts cover both directions. Not scaled: delays are flat across the time left
-    (`flat_delays`)."""
+    (`flat_delays`). None when none of the direction's closed flights with a known result flew."""
+    if not airport.delay[direction].flights:
+        return None
     airline_rate = pull(airline.delayed, airline.flew, _share(airport.delay[direction]), AIRLINE_WEIGHT)
     return pull(number.delayed, number.flew, airline_rate, NUMBER_WEIGHT)
 

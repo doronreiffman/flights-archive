@@ -604,6 +604,8 @@ COLLECTOR_MUTATIONS = {
     "blend: bad week at 7 days": (BLEND, "BAD_WEEK_DAYS = 6", "BAD_WEEK_DAYS = 7"),
     "blend: airline of the number's own": (BLEND, "            per_airline[f.airline][f.key] = f\n", '            per_airline.setdefault(r["airline"], {})[f.key] = f\n'),
     "blend: flat check below the floor": (BLEND, "            if row.clears_floor and 100 * abs(", "            if 100 * abs("),
+    "blend: no guard on an airport with no counted flight": (BLEND, "    if not airport.total.flights:\n        return None\n", ""),
+    "blend: no guard on a direction with none flown": (BLEND, "    if not airport.delay[direction].flights:\n        return None\n", ""),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
