@@ -114,7 +114,7 @@ def _kind(label: str) -> str:
 
 
 def _labels(label: str, delayed: bool) -> str:
-    """The main label, and DELAYED beside it when the airport showed it: "LANDED · DELAYED"."""
+    """The main label, and DELAYED beside it by the hour rule (display.delayed_an_hour): "LANDED · DELAYED"."""
     pills = [label] + (["DELAYED"] if delayed else [])
     return " · ".join(f'<span class="label l-{_kind(label)}">{e(label)}</span>' for label in pills)
 

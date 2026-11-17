@@ -8,10 +8,10 @@ Goal: one HTTPS link to the history site that I can send, for a few cents a mont
 
 - **Public is copyable.** Taking our copy down takes minutes; copies others make (archive.org, scrapers) can outlive it. The terms reading (`docs/terms.md`) is what makes this acceptable.
 - **`noindex` stays on every page** (`docs/site-redesign.md`, "Pages"), so search engines will not list the site; people arrive by the link I share. Dropping it is a one-line change, my call.
-- **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). The front page says when the data was last recorded ("Last updated …").
+- **The site is a snapshot.** It shows the data as of the last upload, until a nightly build exists (q5, q2). Every page says when it was last updated ("Updated 3 hours ago", or its date and time without scripts).
 - **The address is a random `dxxxx.cloudfront.net` name.** A custom domain is a later, separate decision with its own cost.
 - **Pay-as-you-go has no spending cap.** The account's existing "My Monthly Cost Budget" ($5, emails at 85% and 100% of actual, 100% of forecast) is the guard.
-- **My name goes on the site.** Every page's footer and the front page carry a built-by line and a link to the code; the line held a placeholder until I wrote it (`BUILT_BY`, `src/timeline/words.py`); the upload check still refuses a site that contains the placeholder.
+- **My name goes on the site.** Every page's footer carries a built-by line and a link to the code; the line held a placeholder until I wrote it (`BUILT_BY`, `src/timeline/words.py`); the upload check still refuses a site that contains the placeholder.
 
 ## Design
 
@@ -29,22 +29,28 @@ Resources:
 
 ### Code changes
 
-- **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow. Since the redesign (q18) the footer reads `SOURCE_SHORT`, `UNOFFICIAL` and "Times are Israel time.", then "How this works", "Code on GitHub" and the built-by line; the full `ATTRIBUTION` moved to `how-it-works.html` (`docs/site-redesign.md`, "Footer (every page)").
-- **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html`, `.css` and `.js` file (the types the upload sends) as written and with tags stripped, a phrase in either counting; entities are unescaped and whitespace collapsed in both, so a phrase in an attribute, split by markup or broken across lines is still caught. It exits non-zero and names file and phrase on a hit.
+- **Footer** (clause 8 of the terms): `UNOFFICIAL` becomes "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The anti-goal line in `docs/timeline.md` and the test constant follow. Since the redesign (q18) the full `ATTRIBUTION` is on `how-it-works.html` only. Since q27 the footer reads `SOURCE_SHORT`, `UNOFFICIAL` ("This site is unofficial: it isn't run by, connected to or approved by the Israel Airports Authority, data.gov.il or the State of Israel.") and "All times are Israel time."; then `ESTIMATES` ("The chances on this site are estimates from past flights, not promises.") and the link "What the numbers mean"; then "How this works", "Code on GitHub" and the built-by line (`docs/site-redesign.md`, "Footer (every page)").
+- **One banned-phrase check, at upload**: `src/timeline/check.py` holds the list (moved from `tests/test_timeline_build.py`, which imports it) and `python -m timeline.check site` scans every `.html`, `.css` and `.js` file (the text types the upload sends; the font files and their licence, which it also sends, are pinned by tests instead: `tests/test_timeline_style.py`, `tests/test_timeline_build.py`) as written and with tags stripped, a phrase in either counting; entities are unescaped and whitespace collapsed in both, so a phrase in an attribute, split by markup or broken across lines is still caught. It exits non-zero and names file and phrase on a hit. Since q27 it also requires the estimates line on every page, and a "Worked out from" line on every flight page that gives a chance (`docs/flight-lookup.md`, "Tests and checks").
 - **`scripts/publish.sh`**, in this order, uploading nothing if a check fails:
   1. the AWS identity check `scripts/sync.sh` uses;
   2. `site/` must carry the build's `.timeline-site` marker, and its full path must hold no `[`, `]`, `?` or `*`;
   3. the banned-phrase check over `site/`;
   4. bucket and distribution from the stack's outputs; the bucket name must start with `flights-archive-site-sitebucket-` (so never the archive bucket, where a delete would add markers that hide locked snapshots, and never `None` from a missing output), and the distribution ID must be non-empty;
-  5. three syncs, one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css; charset=utf-8`, then `*.js` as `text/javascript; charset=utf-8`, each with `--delete` (which, under the filters, removes only stale files of that type) and `Cache-Control: max-age=300`. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
+  5. five syncs (three before q27), one per file type, each an allowlist with its content type set rather than guessed: `--exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'`, then `*.css` as `text/css; charset=utf-8`, `*.js` as `text/javascript; charset=utf-8`, `*.woff2` as `font/woff2` and `*.txt` (the fonts' licence) as `text/plain; charset=utf-8`, each with `--delete` (which, under the filters, removes only stale files of that type) and `Cache-Control: max-age=300`. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded;
   6. a CloudFront invalidation of the literal `'/*'`.
 - **The terms date** (`docs/terms.md`, clause 2) is not a script flag: anyone could copy it from our own doc. I read the date on the live page before each upload; my go means it still reads 30/08/2025, and I name the date only when it has changed, which stops the upload until the terms are read again.
+- **The sentences on "How this works" that rest on the data** (my decision at the q27 hand check, 2026-11-17): they stay, and before each upload, beside the terms date, they are re-read on the build being uploaded, and each must still hold: no check in the build reads them. As the build writes them (`views.how_it_works_page`; the last in "What the numbers mean", `words.WHAT_THE_NUMBERS_MEAN`):
+  - "And so far the record holds no really bad day at the airport."
+  - "A flight that is already cancelled when it first shows up is almost never seen, so the table is about flights that reached the list normally."
+  - "A flight number's own history is often short: one with 6 flights and none cancelled could be a flight that is never cancelled, or one that is cancelled a third of the time."
+  - "Most departures show an expected time 15 to 59 minutes after the scheduled time."
+  - "Then it's adjusted for how soon the flight leaves, because the closer a flight gets, the less likely it is to be cancelled."
 - **Takedown**: `aws s3 rm s3://<site bucket>/ --recursive`, then invalidate `'/*'`; minutes, and the stack can go later.
 
 ### Tests and mutation checks
 
 - `tests/test_site_template.py`: the bucket's four blocks and ownership; no `*` principal anywhere; the policy grants only `s3:GetObject` to the CloudFront service principal under the `AWS:SourceArn` condition on this distribution; the origin's `RegionalDomainName` and empty identity; the access control's signing; HTTPS redirect; GET and HEAD only; default root object; the managed policy IDs.
-- `tests/test_publish.py`, against a fake `aws` as `tests/test_sync.py` does: identity first; a wrong account, a missing marker, a banned phrase, the archive bucket's name or a missing output each upload nothing; the happy path runs the three syncs with their includes, content types and `--delete` against the stack's bucket, then invalidates the literal `/*`, all under `--profile flights-sam`.
+- `tests/test_publish.py`, against a fake `aws` as `tests/test_sync.py` does: identity first; a wrong account, a missing marker, a banned phrase, the archive bucket's name or a missing output each upload nothing; the happy path runs the five syncs with their includes, content types and `--delete` against the stack's bucket, then invalidates the literal `/*`, all under `--profile flights-sam`.
 - `tests/test_timeline_check.py`: a phrase found across a tag, a line break and an entity, in an attribute, in a script past a `<` comparison and inside markup in a script string; a clean site passes; an empty or missing folder fails. The footer's new words are checked on every page of a synthetic build (`tests/test_timeline_build.py`).
 - CI lints both templates with `--regions il-central-1` (cfn-lint checks only us-east-1 by default).
 - `scripts/mutation_check.py`: an entry for each refusal in `publish.sh`, the tag stripping, the footer words, the policy's `SourceArn` condition, the regional origin and the HTTPS redirect.
@@ -53,13 +59,13 @@ Resources:
 
 1. Identity check, then `aws cloudformation deploy --template-file site-template.yaml --stack-name flights-archive-site --profile flights-sam --region il-central-1`.
 2. `scripts/sync.sh`, model build, timeline build.
-3. I read the terms page's update date and give the go (a changed date stops it); `sh scripts/publish.sh`.
+3. The "How this works" sentences above are re-read on the build; I read the terms page's update date and give the go (a changed date stops it); `sh scripts/publish.sh`.
 4. I open the link and check a day page, a flight and the search.
 
 ## Cost (monthly)
 
 - S3 storage at $0.025 per GB-month (AWS price list, il-central-1, published 2026-10-15): well under a cent for the 3.9 MB site of 2026-10-30, about $0.03 near 1 GB.
-- S3 requests: every build rewrites every file, so each upload PUTs all of them (961 on 2026-10-30, more as new flight numbers and days appear) plus a few LISTs, at $0.0055 per 1,000 (AWS Price List API, il-central-1, read 2026-10-29; `docs/receipts.md`, "Cost (monthly)"): about half a cent an upload. CloudFront caches the GETs.
+- S3 requests: every build rewrites every file, so each upload PUTs all of them (961 on 2026-10-30, more as new flight numbers and days appear) plus a few LISTs (since q27 the four font files and their licence among them, five PUTs more), at $0.0055 per 1,000 (AWS Price List API, il-central-1, read 2026-10-29; `docs/receipts.md`, "Cost (monthly)"): about half a cent an upload. CloudFront caches the GETs.
 - CloudFront: inside the always-free 1 TB and 10 million requests a month; invalidations: the first 1,000 paths a month are free, and `/*` counts as one path (https://aws.amazon.com/cloudfront/pricing/pay-as-you-go, https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 - Total: under $0.05 a month at up to about nine uploads a month; uploading every day would come to about $0.16. Guard: the account's "My Monthly Cost Budget", $5, emails at 85% and 100% of actual and 100% of forecast (`aws budgets describe-budgets` and `describe-notifications-for-budget`, read 2026-10-29).
 

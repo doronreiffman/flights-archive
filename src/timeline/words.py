@@ -300,9 +300,7 @@ def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: fl
     return lines
 
 
-# --- rates (docs/flight-lookup.md, "Words"; docs/flight-lookup-plan.md, Question 4 and Appendix A) ------
-
-
+# --- a count as written, with thousands separators ("6,115") ----------------------------------------
 
 def _n(x: int) -> str:
     return f"{x:,}"

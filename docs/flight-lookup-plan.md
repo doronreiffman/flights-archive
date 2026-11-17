@@ -1041,6 +1041,8 @@ Implementer: the main session.
 
 ## Appendix A: "How this works", new sections (approved by me, 2026-11-12)
 
+Since q27 the page's text is in `views.how_it_works_page` (`src/timeline/views.py`), not here; this appendix holds the sections approved on 2026-11-12.
+
 The sections are placed after "Probably the same flight".
 - `{START}` is `record.COUNTING_START` as an Israel date, written as the lede writes "27 October 2026".
 - `{TAG}` is `record.TAG`, linked to `{CODE_URL}/tree/{TAG}`. That this address shows a tag is UNVERIFIED until the tag is pushed.

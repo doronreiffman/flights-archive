@@ -15,11 +15,10 @@ from .load import load
 
 FLOOR = 100  # counted flights that make an airline needed even when no flight is grouped under it
 
-# The owner approves this list (the plan's Question 5); the three are the ones the approved lines use.
 # The name a traveller says aloud, by airline code: approved by the owner at the hand check, 2026-11-17 (LH, LO and LY
-# are the approved lines' own). Four keep the airport's own name, title-cased: One Click (4L), Sky Up Nistru (4V) and
-# Transaero (UN), which the drafter could not identify, and the Royal Australian Air Force as "RAAF" (ASY), which reads
-# in every sentence without "the".
+# are the approved lines' own). Three keep the airport's own name, title-cased: One Click (4L), Sky Up Nistru (4V) and
+# Transaero (UN), which the drafter could not identify. The Royal Australian Air Force is "RAAF" (ASY), which reads in
+# every sentence without "the".
 SPOKEN_NAMES: dict[str, str] = {
     "3E": "Electra Airways", "3F": "FlyOne Armenia", "4L": "One Click",
     "4V": "Sky Up Nistru",

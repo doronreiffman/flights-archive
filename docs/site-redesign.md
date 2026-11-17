@@ -5,7 +5,7 @@ The 2026-11-17 update keeps the grade.
 
 Status: design v2, 2026-10-30. Worked out with me over mockups, then a builder check and a full outside review (summary at the end; the review's full text is in commit f360540). Built 2026-10-30 (plan: `docs/site-redesign-plan.md`; what building changed: "Deviations" at the end); published 2026-10-30 (`docs/publishing.md`). It replaces the "Pages", "Wording", "How it is built" and "Tests and mutation checks" sections of `docs/timeline.md`, which now point here.
 
-Updated 2026-11-17 for q27, not built. That day I decided the redesign, "Will It Fly?" in look A (`docs/flight-lookup.md`, "Decided 2026-11-17", D10 to D12); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in (`docs/flight-lookup.md`, "Update"). Until q27 is built, the code and the live site follow the earlier text of this file (commit 7c0d374) and the look under "The look as built". Later the same day I answered every open word and question the update had listed (`docs/flight-lookup.md`, D13); what is still open is listed there, under "Words", "Still open".
+Updated 2026-11-17 for q27. That day I decided the redesign, "Will It Fly?" in look A (`docs/flight-lookup.md`, "Decided 2026-11-17", D10 to D12); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in (`docs/flight-lookup.md`, "Update"). Built to [will-it-fly-plan.md](will-it-fly-plan.md): at the hand check on 2026-11-17 I looked at the built pages, light and dark, and a whole-branch review followed the same day. Where the build departs from this text is in the plan's "Deviations". Until q27's first upload, the live site follows the earlier text of this file (commit 7c0d374) and the look under "The look of 2026-11-04". Later the same day I answered every open word and question the update had listed (`docs/flight-lookup.md`, D13); the two things it left open (`docs/flight-lookup.md`, "Words", "Still open") were settled at the hand check.
 
 Mockups I approved for look and wording, with real data from the 2026-10-30 00:02 build: `docs/site-redesign/front-page-mockup.html` and `docs/site-redesign/flight-page-mockup.html` (open in a browser; the heading above each card is mockup chrome). Where a mockup and the rules below differ, the rules win. Known differences: the mockups title-case airline and airport names, leave out "last expected", the earliest-record and gap lines, "Times are Israel time" (front page), "Last updated", the story box's place in the page list, and use a footer that would fail the check.
 Those mockups show the site as designed on 2026-10-30. The 2026-11-17 design was worked out on four rounds of mockups by a Fable designer, kept outside the repository; the rules below carry what they settled.
@@ -32,7 +32,7 @@ The site is my portfolio piece for a job search: a recruiter or hiring manager c
 - A tested forecast, or a sign applied to a flight (`docs/flight-lookup.md`, "The blend" and "The gate"). The chance a flight page shows is a simple first blend, and the site says so.
 - A table that ranks airlines, and route comparisons. An airline's counts show only on its own flights' pages.
 - Live updates. The site is as fresh as the last build and publish, and the front page and every flight page say how old they are.
-- New file types beyond fonts. The upload sends `.html`, `.css` and `.js` and, for look A, four `.woff2` font files ("Look"). Still no images and no JSON files: the chart is inline SVG; the search data is JSON inside a script. A link-preview image (`.png`) is a launch item (q17), not this design.
+- New file types beyond fonts. The upload sends `.html`, `.css` and `.js` and, for look A, four `.woff2` font files and their licence, `fonts/LICENSE.txt` ("Look"). Still no images and no JSON files: the chart is inline SVG; the search data is JSON inside a script. A link-preview image (`.png`) is a launch item (q17), not this design.
 
 ## Anti-goals (a failure even if it works)
 
@@ -44,7 +44,7 @@ The site is my portfolio piece for a job search: a recruiter or hiring manager c
 
 ## Words (approved by me, 2026-11-17; they replace the words of 2026-10-30 where the two differ)
 
-The words that carry figures (the chances, the table, the total, the disclaimer) are in `docs/flight-lookup.md`, "Words", with how they were reached. This section and "Pages" hold the rest. The built site shows the 2026-10-30 words until q27 is built. Every line in the tables below was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code has them today, and passes. Lines I approved later the same day, for the cases the first approval left open (`docs/flight-lookup.md`, D13), are marked "approved by me, 2026-11-17".
+The words that carry figures (the chances, the table, the total, the disclaimer) are in `docs/flight-lookup.md`, "Words", with how they were reached. This section and "Pages" hold the rest. The q27 build shows these words (`docs/will-it-fly-plan.md`). Every line in the tables below was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code had them then, and passes; the lines marked "Question 6" of the plan were run against the built check for the plan's Task 17, and pass. Lines I approved later the same day, for the cases the first approval left open (`docs/flight-lookup.md`, D13), are marked "approved by me, 2026-11-17".
 
 - The site's name is "Will It Fly?", with "Tel Aviv airport" beside it. It replaces "Cancelled flights at Tel Aviv airport".
 - "Cancelled": not "CANCELED" and, since 2026-11-17, not "listed as cancelled". Where a sentence says when, it says "marked cancelled". "How this works" says once what it means: the airport's list marked the flight cancelled.
@@ -73,7 +73,7 @@ Each flight on each day gets one main label, plus an optional second one. A labe
 | `open`, `sched_utc_final` after the last sighting of the board (`confirmed_until` of the last snapshot) | UPCOMING | none; the day's chances stand in the headline slot or on the day (`docs/flight-lookup.md`, "Pages", Flight page) |
 | `open`, `sched_utc_final` at or before that sighting | NO NEWS YET (was NO FINAL UPDATE) | "Its time has passed, and the airport hasn't said how it ended." |
 | `gap` | UNKNOWN | "There's no record of how this flight ended." |
-| `vanished` | UNKNOWN | "The airport removed this flight 45 hours early without saying why. It may have been cancelled or moved to another time." On a day still ahead it adds: "Check with your airline." |
+| `vanished` | UNKNOWN | "The airport removed this flight 45 hours early without saying why. It may have been cancelled or moved to another time." On a day still ahead it adds: "Check with your airline." Less than an hour early: "The airport removed this flight less than an hour early without saying why. …" (Question 6g of the plan, approved 2026-11-17) |
 | `dropped` | UNKNOWN | "The airport removed this flight without saying why." |
 
 Both sides of the UPCOMING comparison are the model's naive UTC values; comparing the Israel wall-clock `sched_local_final` instead turns the 9 evening flights of 29 October (scheduled 23:30 to 23:55 Israel time, last record 22:02 UTC) into UPCOMING.
@@ -132,15 +132,15 @@ Per day, among that day's lines on the flight page: "Also sold as LY 9255 (proba
 
 ### Names
 
-- Airline names exactly as the airport publishes them, double spaces included ("ARKIA  ISRAELI  AIRLINES", "K.L.M.", "ROYAL AUSTALIAN AIR FORCE"). My call of 2026-10-30 stands: title case mangles the published names, and correcting them would change the source's text. The note "(as the airport lists it)" is dropped (round 4). Inside a sentence an airline takes a spoken name from a short list kept by hand ("LOT", "Lufthansa", "El Al"), and "its airline" when it has none (approved by me, 2026-11-17). The list itself is proposed by the build and approved by me (`docs/flight-lookup.md`, "Still open").
+- Airline names exactly as the airport publishes them, double spaces included ("ARKIA  ISRAELI  AIRLINES", "K.L.M.", "ROYAL AUSTALIAN AIR FORCE"). My call of 2026-10-30 stands: title case mangles the published names, and correcting them would change the source's text. The note "(as the airport lists it)" is dropped (round 4). Inside a sentence an airline takes a spoken name from a short list kept by hand ("LOT", "Lufthansa", "El Al"), and "its airline" when it has none (approved by me, 2026-11-17). The build proposed the list, and I approved it at the hand check, 2026-11-17 (`docs/flight-lookup.md`, "Still open").
 - Airports by city and code: "Warsaw (WAW)". Cities title-cased (every current city is plain capitals).
 - A flight's title, on its page, in the search list and in the story box: "LO 155 · Warsaw to Tel Aviv" for an arrival, "WZ 016 · Tel Aviv to Moscow" for a departure.
 - A number that has gone to more than one city names them (round 4; the built title, "LH 697, from Tel Aviv", left the reader asking "to where?"): "LH 697 · Tel Aviv to Athens or Frankfurt"; three cities, "Tel Aviv to Athens, Larnaca or Munich"; more, "Tel Aviv to Vitoria, Pristina or 3 other cities"; an arrival, "LH 682 · Munich or Frankfurt to Tel Aviv". The newest day's city comes first. 27 numbers in the 2026-11-17 build have more than one city.
-- Two titles of that build carry the airport's own odd data: "H4 238 · Tel Aviv to Bucharest", where the list also holds a cut-short second spelling, "Bucharest (bane", and "UA 091A · Newark or Ben Gurion to Tel Aviv". The mockups name a city once when one spelling is the beginning of the other.
+- Two titles of that build carry the airport's own odd data: "H4 238 · Tel Aviv to Bucharest", where one day goes to a second airport, whose city the list cuts short as "Bucharest (bane" (BBU), and the other days to Bucharest (OTP); and "UA 091A · Newark or Ben Gurion to Tel Aviv". The mockups name a city once when one name is the beginning of the other, and so does the build.
 
 ### Still open
 
-Every line this section listed as without approved words on 2026-11-17 has them now, in the sections above and in "Pages". What remains is listed in `docs/flight-lookup.md` ("Words", "Still open"): the list of spoken names for airlines, the text of "How this works", sections 2 to 10, and one composed line. All three are for my approval at the hand check during the build.
+Every line this section listed as without approved words on 2026-11-17 has them now, in the sections above and in "Pages". What remained is listed in `docs/flight-lookup.md` ("Words", "Still open"): the list of spoken names for airlines and the text of "How this works", sections 2 to 10. Both were for my approval at the hand check during the build, and I approved both there on 2026-11-17.
 
 ## Pages
 
@@ -158,7 +158,7 @@ Every page: `<meta name="robots" content="noindex">` until the launch decision (
 
 The site's name links to the front page; on the front page it is the page's `<h1>`.
 
-"Updated" stands on every page (my decision, 2026-11-17). The first approval named the front page and flight pages; my terms reading says every page says when it was last updated (`docs/terms.md`, clause 4), and so does the disclaimer. The page's age is written by the page's script from the time of the last sighting of the board (`docs/flight-lookup.md`, "Pages", `fromhere.js`); the build writes the date-and-time form, which stands when scripts are off. Its forms (the third is the first approval's; the others are approved by me, 2026-11-17):
+"Updated" stands on every page (my decision, 2026-11-17). The first approval named the front page and flight pages; my terms reading says every page says when it was last updated (`docs/terms.md`, clause 4), and so does the disclaimer. The page's age is written by the page's script from the time of the last sighting of the board (`docs/flight-lookup.md`, "Pages", `fromhere.js`); the build writes the date-and-time form, which stands when scripts are off. The script works the age out when the page loads, and again each time the page is shown again, so a tab left open does not keep an old age. Its forms (the third is the first approval's; the others are approved by me, 2026-11-17):
 
 | How old the page is | Words |
 |---|---|
@@ -222,7 +222,7 @@ Top to bottom:
 8. The later days still ahead, soonest first. Each: its date, "scheduled to land at 19:45", its label, its two chances on one line, then its own lines.
 9. The past days, newest first.
 
-A day's lines, in order: the date written out ("Monday 16 November"); the time line ("scheduled to land at 19:20"; with an expected time, or on a past day that landed or left, the forms under "Labels"); the city when the page has more than one ("to Athens (ATH)"); the main label and the second label; the label's line; the notice sentence under CANCELLED; the changed-back line; "Also sold as …" or the twin line; the note on expected times, once a page; then "What changed" in a `<details>` element, open for a cancelled day and closed otherwise.
+A day's lines, in order: the date written out ("Monday 16 November"); the time line ("scheduled to land at 19:20"; with an expected time, or on a past day that landed or left, the forms under "Labels"); the city when the page has more than one ("to Athens (ATH)"); the main label and the second label; the label's line; the notice sentence under CANCELLED; the changed-back line; the twin line; "Also sold as …" (a day can carry both); the note on expected times, once a page; then "What changed" in a `<details>` element, open for a cancelled day and closed otherwise.
 
 - One day per row of the model's `flights` table (a retime chain is one row), on the day of `sched_local_final`. A retimed row says "Moved to a new scheduled time" with both times.
 - Anchors: every row has one, in full form from `sched_local_first` and the airport, `#2026-10-28-1630-KUT`, so it never changes when a same-number flight appears later (IZ 992 has two rows on 30 October; LY 5115 left twice at 16:30 on 28 October, to Batumi and Kutaisi). Every link to a row carries its anchor. A link to a closed row scrolls to it; the design does not promise the browser opens it.
@@ -239,10 +239,12 @@ Reached from "Flights each day" and the day list.
 | Title and counts | Monday 16 November · 357 flights · 3 cancelled |
 | Part of the day missing | Some flights from this day may be missing: the records don't cover the whole day. |
 | Unknown outcomes | For 6 of these flights, there's no record of how they ended. |
+| Title and counts, one flight (Question 6f of the plan, approved 2026-11-17) | Monday 16 November · 1 flight · 1 cancelled |
+| Unknown outcomes, one flight (Question 6f of the plan, approved 2026-11-17) | For 1 of these flights, there's no record of how it ended. |
 | Empty list | No departures recorded. · No arrivals recorded. |
 | A number with its own status | (LH 0691A: cancelled) |
 
-Then departures and arrivals in scheduled order, one row per flight, as built: time, numbers, route, labels, and the notice sentence for a cancelled flight. Each row links to the flight page at its anchor. No change lines here, so day pages stay small. "Unknown" counts the UNKNOWN label only, as before.
+Then departures and arrivals in scheduled order, one row per flight, as built: time, numbers, route, labels, and the notice sentence for a cancelled flight. Each row links to the flight page at its anchor. No change lines here, so day pages stay small. "Unknown" counts the UNKNOWN label only, as before. A count of 0 leaves out its part of the title, or the unknown line (Question 6f of the plan, approved 2026-11-17).
 
 ### Cancelled flights (`cancellations.html`)
 
@@ -265,7 +267,7 @@ Its first section is "What the numbers mean", the disclaimer every page links to
 
 ### Footer (every page)
 
-Approved by me, 2026-11-17. The built site carries the footer of 2026-10-30.
+Approved by me, 2026-11-17, and built with q27.
 
 | Line | Words |
 |---|---|
@@ -273,18 +275,18 @@ Approved by me, 2026-11-17. The built site carries the footer of 2026-10-30.
 | Second | The chances on this site are estimates from past flights, not promises. What the numbers mean |
 | Links | How this works · Code on GitHub · Built by [owner's wording] |
 
-- The first sentence is `SOURCE_SHORT`, unchanged. The second is `UNOFFICIAL` (both in `src/timeline/words.py`), whose fixed words were "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The denials are the same, in plainer words: "connected to" and "approved by" for "affiliated with" and "endorsed by", and "run by" added. The line answers a licence clause (`docs/terms.md`, clause 8). That clause's line in `docs/terms.md` quotes the line the built site carries, and changes with the footer when q27 is built.
+- The first sentence is `SOURCE_SHORT`, unchanged. The second is `UNOFFICIAL` (both in `src/timeline/words.py`), whose fixed words were "Unofficial; not affiliated with or endorsed by the Israel Airports Authority, data.gov.il or the State of Israel." The denials are the same, in plainer words: "connected to" and "approved by" for "affiliated with" and "endorsed by", and "run by" added. The line answers a licence clause (`docs/terms.md`, clause 8). That clause's line in `docs/terms.md` quotes the line the built site carries.
 - "What the numbers mean" links to that section of "How this works".
-- The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) stays on "How this works". `timeline.check` requires `SOURCE_SHORT` and `UNOFFICIAL` on every page and `ATTRIBUTION` on `how-it-works.html`, as before, so a page built with the earlier unofficial line fails it.
+- The full `ATTRIBUTION` (dataset name and resource ID; `src/model/report.py`, unchanged for the report) stays on "How this works". `timeline.check` requires `SOURCE_SHORT`, `UNOFFICIAL` and, since q27, `ESTIMATES` (the second line's first sentence) on every page, and `ATTRIBUTION` on `how-it-works.html`, so a page built with the earlier unofficial line fails it.
 - The built-by text and the GitHub address come from one place, `BUILT_BY` and `CODE_URL` in `words.py`; the upload check still refuses the marker that stood there before I wrote the line.
 
 ## Look
 
-### Look A, "Timetable" (decided 2026-11-17, not built)
+### Look A, "Timetable" (decided 2026-11-17, built with q27)
 
 My pick among three looks by a Fable designer (`docs/flight-lookup.md`, D10): a printed timetable. One condensed sans-serif, black ink on white paper, a twelve-column sheet with heavy and hairline rules, and one red that means one thing. The values below are the round-4 mockup's.
 
-- **Typefaces.** IBM Plex Sans Condensed in three weights (Light for the large figures, Regular, SemiBold), and IBM Plex Sans Hebrew Regular for the Hebrew city names. Self-hosted WOFF2 files, cut down to the characters the site prints: 11,484 + 11,440 + 11,468 bytes for the three Latin files and 2,108 for the Hebrew one, 36,500 in all (measured for this update on the mockup's four files). Each Latin file maps 200 characters, the Hebrew file 34, of which 30 are Hebrew. The files carry IBM's copyright and the SIL Open Font License 1.1 notice under family names of their own, "FA Sans Condensed" and "FA Hebrew Sans" (read from the files for this update). The designer's note gives the releases as `@ibm/plex-sans-condensed@2.0.0` and `@ibm/plex-sans-hebrew@1.1.0`, and the reason for the names: the licence keeps the name "Plex" for unchanged files ("Unverified").
+- **Typefaces.** IBM Plex Sans Condensed in three weights (Light for the large figures, Regular, SemiBold), and IBM Plex Sans Hebrew Regular for the Hebrew city names. Self-hosted WOFF2 files, cut down to the characters the site prints: 11,484 + 11,440 + 11,468 bytes for the three Latin files and 2,108 for the Hebrew one, 36,500 in all (measured for this update on the mockup's four files). Each Latin file maps 200 characters, the Hebrew file 34, of which 30 are Hebrew. The files carry IBM's copyright and the SIL Open Font License 1.1 notice under family names of their own, "FA Sans Condensed" and "FA Hebrew Sans" (read from the files for this update). The releases are `@ibm/plex-sans-condensed@2.0.0` and `@ibm/plex-sans-hebrew@1.1.0`, both under the SIL Open Font License 1.1 with the Reserved Font Name "Plex". A cut-down file is a Modified Version, which may not take that name as its primary font name, so the files' own family names are required (read at the source during the build: the plan's "Deviations", Task 7). The files carry a link to the licence, not its text, so its text is committed beside them (`src/timeline/static/fonts/LICENSE.txt`) and served beside them (`fonts/LICENSE.txt`; the plan's Question 7, answered 2026-11-17).
 - **Loading.** Four `@font-face` rules with `font-display: swap`. The Hebrew face is limited to the Hebrew block (`unicode-range: U+0590-05FF`), so only a page with Hebrew on it fetches that file. Pages preload the Regular and SemiBold files. Nothing comes from another origin. Behind the faces: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif.
 - **Black and white, and one red.** Paper #ffffff, ink #111111 (18.88:1), secondary text #595959 (7.00:1 on paper, 6.36:1 on the tint), hairlines #d6d6d6, a tint #f4f4f2 for the row a link points at and a line under the pointer, red #cf2e1e (5.17:1 on paper, 4.69:1 on the tint). The ratios were recomputed for this update with the WCAG 2 formula `tests/test_timeline_style.py` uses. Links are ink with an underline.
 - **Red only for "cancelled".** The CANCELLED label, the notice sentence under it, a "Cancelled" line in a list of changes, a cancelled day's mark in the strip, the cancelled part of a day's bar and the total's "cancelled" tile. Nothing else is coloured, and the site's name is no longer red.
@@ -294,13 +296,13 @@ My pick among three looks by a Fable designer (`docs/flight-lookup.md`, D10): a 
 - **The headline slot.** The two chances side by side on a laptop, stacked on a phone, each the label over its number: the number large in the Light weight, "about" or "under" smaller before it. The "Worked out from" line under them, then a 3 px rule that closes the slot, so whatever fills it later has the same place and the same edges.
 - **The strip.** One mark per day: a filled circle for landed or departed, a ring for upcoming, a red square for cancelled, a dashed square for unknown, a dotted ring for no news yet; the day of the month under each mark, the month's name over the first mark of each month. Each mark is a link with a name.
 - **"Flights each day"** is a list of links, so a long line wraps on a phone: the date, the counts in text, and a thin bar with the cancelled part as a red block standing on it and the unknown part outlined. The day list under it is set as a calendar, seven days to a row (three on a phone).
-- **On a phone.** No sideways scrolling. The cancellations table stacks. A list of changes reads as lines. The top line keeps the site's name and "Tel Aviv airport" on one line with "Updated" under them.
+- **On a phone.** No sideways scrolling. The cancellations table stacks. A list of changes reads as lines. The top line keeps the site's name and "Tel Aviv airport" on one line with "Updated" under them. The total's three figures shrink with the screen and keep one line at 360 px and wider; narrower, the row wraps (measured with headless Chrome in the build: the plan's "Deviations", Task 13).
 - **Keyboard focus** shows a 3 px outline in ink.
-- **Dark scheme.** It ships with q27 (my decision, 2026-11-17). The mockups are light only, so its values are derived by the look's rule and shown to me at the hand check: paper and ink swap and the red lightens (the designer's example, #ff6b5a on #121212, is 6.69:1); no colour depends on a light ground.
+- **Dark scheme.** It ships with q27 (my decision, 2026-11-17). The mockups are light only, so its values are derived by the look's rule and shown to me at the hand check: paper and ink swap and the red lightens (the designer's example, #ff6b5a on #121212, is 6.69:1); no colour depends on a light ground. As built: paper #111111, ink #ffffff, secondary text #9e9e9e, hairlines #333333, tint #1e1e1c, red #ff6b5a. The red is 6.75:1 on the paper and 5.97:1 on the tint, the secondary text 7.05:1 and 6.23:1 (the same formula as above).
 
 No framework, no images, nothing loaded from elsewhere, no script but `search.js` (the front page) and `fromhere.js`. Charts are SVG written by Python.
 
-### The look as built (2026-11-04), until q27 replaces it
+### The look of 2026-11-04, replaced by look A in q27
 
 Restyled 2026-11-04 from the tidy single column of v2 into a data-product look. No sentence, label, number or claim changed; text moved into new layout elements, and counts gained thousands separators.
 
@@ -341,14 +343,14 @@ Text color on background, light scheme then dark (WCAG 2 ratio, 4.5:1 required):
 - Same model, same bytes (determinism across processes, as now). The build time is the last sighting of the board (`confirmed_until` of the last snapshot), never the clock.
 - Cost: no new AWS service. Hosting as estimated in `docs/publishing.md`, "Cost (monthly)": storage well under a cent a month for the 3.9 MB site of 2026-10-30, and about half a cent of requests per upload, since each upload sends every file (961 that day).
 
-What q27 adds (not built):
+What q27 adds (built):
 
-- **Font files.** The four `.woff2` files live with the other static files (`src/timeline/static/`) and the build copies them into the site beside the style sheet, which names them in its `@font-face` rules. They are committed as they stand: cutting them down again needs a font tool that the build does not depend on.
-- **Upload.** `scripts/publish.sh` uploads by an allowlist, one `aws s3 sync` per file type with its content type set, not guessed, because the responses send `nosniff`: today `*.html`, `*.css` and `*.js`. Font files need a fourth: `*.woff2` as `font/woff2`, the type the mockups' preload tags name. `tests/test_publish.py` and step 5 of `docs/publishing.md` follow.
-- **The upload check** reads text. Its `SCANNED` set stays `.html`, `.css` and `.js`, although the upload then sends a fourth type; the font files are pinned by a test instead ("Tests and checks").
-- **The scripts.** `search.js` writes the two new search lines. `fromhere.js` moves the next day ahead to the top and writes "Updated N hours ago" (`docs/flight-lookup.md`, "Pages").
+- **Font files.** The four `.woff2` files and their licence live in `src/timeline/static/fonts/`, and the build writes them byte for byte into the site's `fonts/` folder, beside the style sheet, which names them in its `@font-face` rules. They are committed as they stand: cutting them down again needs a font tool that the build does not depend on.
+- **Upload.** `scripts/publish.sh` uploads by an allowlist, one `aws s3 sync` per file type with its content type set, not guessed, because the responses send `nosniff`: before q27, `*.html`, `*.css` and `*.js`. The font files need a fourth, `*.woff2` as `font/woff2`, the type the mockups' preload tags name, and their licence a fifth, `*.txt` as `text/plain; charset=utf-8`. `tests/test_publish.py` and step 5 of `docs/publishing.md` follow.
+- **The upload check** reads text. Its `SCANNED` set stays `.html`, `.css` and `.js`, although the upload then sends two more types; the font files and their licence are pinned by tests instead ("Tests and checks").
+- **The scripts.** `search.js` writes the two new search lines. `fromhere.js` moves the next day ahead to the top and writes "Updated N hours ago", and works both out again each time the page is shown again (`docs/flight-lookup.md`, "Pages").
 - **`docs/terms.md`.** My reading for these pages is already there (2026-11-17, its clause 4 paragraph). Two of its lines follow the build: the clause 8 line, which quotes `UNOFFICIAL`, and the end of the clause 4 paragraph, which describes the upload check's rules as they stand.
-- **Cost.** No new AWS service. Each upload sends four more files: four more PUT requests at $0.0055 per 1,000, about $0.00002, and 36,500 bytes more storage (`docs/publishing.md`, "Cost (monthly)"; prices not re-read for this update). An upload stays about half a cent. The mockup pages weigh about what the built ones do: the front page 146,117 bytes against 147,000 in the local build of 2026-11-17, the style sheet 22,787 against 14,203 (measured for this update).
+- **Cost.** No new AWS service. Each upload sends five more files, the four fonts and their licence: five more PUT requests at $0.0055 per 1,000, about $0.00003, and 40,956 bytes more storage (`docs/publishing.md`, "Cost (monthly)"; prices not re-read for this update). An upload stays about half a cent. The mockup pages weigh about what the built ones do: the front page 146,117 bytes against 147,000 in the local build of 2026-11-17, the style sheet 22,787 against 14,203 (measured for this update).
 
 ## Tests and checks
 
@@ -368,16 +370,16 @@ New, each with a `scripts/mutation_check.py` entry:
 - search: the order, the cap and the "N more" line; the union of keys; a name containing `</script>`, a quote and a backtick stays inside the JSON (run under Node, as the current search test);
 - `timeline.check`: "we", "our", "us" as whole words, case-insensitive, on every page; "I" as a whole word outside `how-it-works.html` and the built-by line; "board", "snapshot", "stored", "observed", "receipt" as whole words on every page except `how-it-works.html`; "minutes late" and "hours late"; the existing banned phrases kept; the built-by marker refused. A test that "were", "hours", "status", "BUS", "AUSTRIAN AIRLINES" and "at least 23 hours" pass, and a mutation that turns the word match back into a substring match so that test fails.
 
-What q27 changes (not built). The lists above describe the tests as they stand; each sentence, label and rule that changes takes its exact-text test and its mutation entry with it.
+What q27 changes (built). The lists above describe the tests as they stand; each sentence, label and rule that changes takes its exact-text test and its mutation entry with it.
 
-- **The no-font rule.** `tests/test_timeline_style.py` (`test_nothing_loaded_from_elsewhere`) refuses `@import`, `url(` and `font-face` anywhere in the sheet. New rule: `@import` is still refused; a `url(` may stand only inside an `@font-face` rule and must name a `.woff2` file of the site's own fonts folder that exists among the static files; no address with a scheme or a host, no `data:` address, no image. Mutations: a sheet that names a font on another host, and one that names an image, must fail.
-- **The font files**: their four names and sizes pinned, so a changed or missing file fails a test and not an upload.
+- **The no-font rule.** `tests/test_timeline_style.py` (`test_nothing_loaded_from_elsewhere`, which the build replaced with `test_fonts_load_only_from_the_sites_own_folder`) refuses `@import`, `url(` and `font-face` anywhere in the sheet. New rule: `@import` is still refused; a `url(` may stand only inside an `@font-face` rule and must name a `.woff2` file of the site's own fonts folder that exists among the static files; no address with a scheme or a host, no `data:` address, no image. Mutations: a sheet that names a font on another host, and one that names an image, must fail.
+- **The font files**: their four names, sizes and SHA-256 pinned, and the licence's, so a changed or missing file fails a test and not an upload.
 - **The style tests for the built look** are rewritten for look A: the colour tokens and the text pairs that must clear 4.5:1, in the light scheme and in the dark one; a mark for every label, NO NEWS YET included; the header band's test goes with the band; the from-here table no longer stacks on a phone.
 - **One exact-text test** per label line, per notice rule 1 to 11 in both its forms, for "First on the list at", for each title form (one, two, three and five cities; a cut-short second spelling; an arrival), for "Also sold as" with one and with two numbers, for the footer's three lines, the page description and each page's lines in "Pages".
 - **The flight page's order**: the nearest day ahead at the top, once; the strip; later days ahead soonest first; past days newest first; the two once-a-page notes in their places.
 - **Search** (run under Node): the "more" line, the "No flight found" line, and titles in the new form.
 - **The lines and rules of my answer of 2026-11-17**: the first line's forms (a time; a date; "Already on the list" for a first record in the records' first list or the first after a gap; "already cancelled"); a past day's time line, the same time twice included; DELAYED at 59 and at 60 minutes; "Updated" on every page; the line that stands in the search box's place without scripts; the story picker skipping a flight first listed after its own scheduled time; each page's browser-tab title.
-- **Publish**: four uploads, each with its content type (`tests/test_publish.py`).
+- **Publish**: five uploads, each with its content type (`tests/test_publish.py`).
 - **Retired** with the words they tested: "(as the airport lists it)", "last expected", the 2026-10-30 warning texts, the built-by line above the footer, the header band.
 - **The upload check's rules**: `docs/flight-lookup.md`, "Tests and checks".
 
@@ -400,7 +402,7 @@ For q27:
 
 The questions this section held, from 2026-10-30 and from the q27 update, are settled (`docs/flight-lookup.md`, D13). What is left is mine to do:
 
-- At the hand check during the build, before the first upload: look at the built pages on a phone, light and dark, and approve the list of spoken names and the text of "How this works", sections 2 to 10.
+- Done at the hand check during the build, 2026-11-17 (the plan's "Deviations", Task 15): I looked at the built pages at phone width and on a desktop, light and dark, and approved the list of spoken names and the text of "How this works", sections 2 to 10.
 - Freshness: the scheduled rebuild comes next after q27 (q5, then q2 and q23). Until then every page says how old it is.
 - The link-preview image (q17) waits for the new look, and `noindex` stays until the launch decision.
 - The five outsider sessions (q13), on the script I approved on 2026-11-17 (`docs/flight-lookup.md`, "Five outsiders").
@@ -409,7 +411,6 @@ Settled on 2026-11-17: the dark scheme ships with q27; the round-4 mockups stay 
 
 ## Unverified
 
-- The typeface releases (`@ibm/plex-sans-condensed@2.0.0`, `@ibm/plex-sans-hebrew@1.1.0`), their dates, and that the licence keeps the name "Plex" for unchanged files are the designer's note. They were not re-read from the releases or the licence text for this update. What was read from the four files: their sizes, their character counts, IBM's copyright line, the licence notice and the family names. Reading the rest at the source is a task of the plan (my decision, 2026-11-17).
 - That a page served through the site's CloudFront distribution loads a font file from its own address has not been tried. The first upload shows it.
 - How look A reads on Windows and Android when the font files fail to load: the designer rendered the fallback on a Mac only.
 - The page weights and first-screen measurements of the mockups are the designer's, apart from the file sizes named above.

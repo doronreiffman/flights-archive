@@ -4,11 +4,11 @@ Grade: production-lean, the site's grade (`docs/site-redesign.md`): deterministi
 The 2026-11-17 update keeps the grade: no decision of that day changes it.
 
 Cost: nothing new on AWS, so $0 a month added. Version 1 is built by the existing local build and published by the existing hand upload, which costs about half a cent an upload (`docs/publishing.md`, "Cost (monthly)": $0.0055 per 1,000 PUT requests, AWS Price List API, il-central-1, read 2026-10-29; not re-read for this design). Nothing here needs a schedule, a function or a bucket.
-The 2026-11-17 update adds no AWS service either. Its four font files add four requests to an upload, far under a cent (`docs/site-redesign.md`, "How it is built").
+The 2026-11-17 update adds no AWS service either. Its four font files and their licence add five requests to an upload, far under a cent (`docs/site-redesign.md`, "How it is built").
 
 Status: design v3, 2026-11-12. Written by a Fable agent after a blind-spot pass on the same data, then revised after two reviews ("Review" at the end). The owner skipped the design questions, so every call that is the owner's is listed first, each with a recommendation. Calls the design made on its own are marked "(designer's call)". Approved by me, 2026-11-12, with D1 to D9 as recommended. Built to [flight-lookup-plan.md](flight-lookup-plan.md): the build is done, and it passed its final checks and a whole-branch review on 2026-11-15.
 
-Updated 2026-11-17 for q27, not built. That day I decided the redesign, "Will It Fly?" ("Decided 2026-11-17" below); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in ("Update" at the end). Until q27 is built, the code and the live site follow the 2026-11-12 text of this file (commit 9eefe61). The counting rules C1 to C10, "Signs", "The gate", the re-test and "The record" are frozen as tag `record-v1`, and no rule in them is changed. Two things inside those sections are new text: a dated note on page words at the head of "Counting method", and "What is honest now, and what is public" inside "The gate", which is rewritten. Later the same day I answered every open word and question the update had listed (D13 under "Decided 2026-11-17"); what is still open is listed once, under "Words", "Still open".
+Updated 2026-11-17 for q27. That day I decided the redesign, "Will It Fly?" ("Decided 2026-11-17" below); the design work was agents', and a Fable agent brought this document to my decisions. The update was reviewed the same day by a fresh Opus reviewer, and its findings are folded in ("Update" at the end). Built to [will-it-fly-plan.md](will-it-fly-plan.md): at the hand check on 2026-11-17 I looked at the built pages and approved the spoken names and "How this works", and a whole-branch review followed the same day. Where the build departs from this text is in the plan's "Deviations". Until q27's first upload, the live site follows the 2026-11-12 text of this file (commit 9eefe61). The counting rules C1 to C10, "Signs", "The gate", the re-test and "The record" are frozen as tag `record-v1`, and no rule in them is changed. Two things inside those sections are new text: a dated note on page words at the head of "Counting method", and "What is honest now, and what is public" inside "The gate", which is rewritten. Later the same day I answered every open word and question the update had listed (D13 under "Decided 2026-11-17"); the two things it left open ("Words", "Still open") were settled at the hand check.
 
 Figures: every figure comes from a query run for this document on the model built 2026-11-12 from lists up to 2026-11-12 10:16:45Z. The queries and their results are in [flight-lookup-figures.md](flight-lookup-figures.md), cited as (A1), (A2) and so on.
 
@@ -34,8 +34,8 @@ What my 2026-11-17 decisions change, in this document and in `docs/site-redesign
 - The upload check: "chance" and the percent sign are allowed, and a flight page with a chance must carry its "Worked out from" line ("Tests and checks").
 - Look A, with its font files (`docs/site-redesign.md`, "Look").
 - Not changed: C1 to C10, the signs, their test, the gate, the re-test, the record and the frozen files.
-- Not done by this update, and now behind it: `docs/publishing.md` (three uploads by file type; the file types the check reads), `docs/timeline.md` (the q13 script), `README.md` and `docs/README.md` (their lines on this site), and the text of "How this works" in the two plans' appendices. One docs task at the end of the plan brings them up (my decision, 2026-11-17).
-- Already done: `docs/terms.md` carries my reading for the "Will It Fly?" pages (2026-11-17: its opening line and its clause 4 paragraph). Only its clause 8 line still quotes the unofficial line the built site carries; the build changes that with the footer.
+- Not done by this update, and now behind it: `docs/publishing.md` (three uploads by file type; the file types the check reads), `docs/timeline.md` (the q13 script), `README.md` and `docs/README.md` (their lines on this site), and the text of "How this works" in the two plans' appendices. One docs task at the end of the build brought them up (my decision, 2026-11-17; the plan's Task 17).
+- Already done: `docs/terms.md` carries my reading for the "Will It Fly?" pages (2026-11-17: its opening line and its clause 4 paragraph). Its clause 8 line, which quotes the unofficial line, and the end of its clause 4 paragraph, which states the upload check's rules, were brought up to the build in the plan's Task 17.
 
 ## Decisions for the owner
 
@@ -179,12 +179,12 @@ Measured on this model. These facts shape the rules below.
 - A browse view (D8), a table that ranks airlines, route comparisons, a table by direction. An airline's history shows only on its own flights' pages.
 - Delays under an hour, in any line, figure or picture: what the airport's expected time measures is still unconfirmed ("The blend", Delays).
 - A range on a traveller's page.
-- Live data, a scheduled rebuild (q5, q2, q23), and new file types beyond look A's four font files (`docs/site-redesign.md`).
+- Live data, a scheduled rebuild (q5, q2, q23), and new file types beyond look A's four font files and their licence (`docs/site-redesign.md`).
 
 ## Anti-goals (a failure even if it works)
 
 - A reader taking a chance as a promise about their flight. Every chance reads "about" or "under" and says what it was worked out from, every page's footer says the chances are estimates and not promises, and q13 tests for this misreading.
-- "0%" as a chance, anywhere. A clean history reads "under 1%".
+- "0%" as a chance, anywhere. Below 1%, a chance reads "under 1%".
 - A chance on a flight page with no "Worked out from" line on that page.
 - One bad week read as a steady rate. Where a record's cancellations all fall in one week, its line names the dates.
 - A number's own cancelled-of-flights standing alone as its chance. That record is a median of 6 flights long (A21), and none cancelled in 6 cannot tell "never" from "1 in 3" (the usual 95% bound for none in six is 39%); one cancelled in two would read as 50%. The blend's pull towards the airline is the answer to this, and the history line gives counts only.
@@ -300,7 +300,7 @@ In symbols, with k cancelled of n flights for the number (f), its airline (a) an
 
 **The weights.** 14 and 100 reuse the thresholds of the rule the blend replaced. They are not tested. The reasons given for them then: 14 is two weeks of a daily flight, so every day of the week is in it twice; at 100 flights one flight moves an airline's figure by a point at most. On the 2026-11-17 model 292 of 1,044 flight numbers had 14 or more counted flights (counted for the plain-words proposal of that day, not recounted: "Unverified").
 
-**What follows from the rule.** A chance is never zero: a number with no cancelled flight still takes a share of its airline's rate, so a clean history reads "under 1%" and never "0%". A number with no flights yet takes its airline's rate, and an airline with none takes the airport's.
+**What follows from the rule.** A chance is never zero while the airport has a cancelled flight: a number with no cancelled flight still takes a share of its airline's rate. A chance is never "0%". Below 1%, it reads "under 1%". A number with no flights yet takes its airline's rate, and an airline with none takes the airport's.
 
 **The time-left curve on the 2026-11-17 model** (the local build of that day, front page; the last column computed for this update):
 
@@ -357,20 +357,20 @@ Part of my decision: before the blend ships, it predicts the last week from the 
 
 ## Words (approved by me, 2026-11-17; they replace the words of 2026-11-12)
 
-These add to the "Words" of `docs/site-redesign.md`, which holds every page's frame, the labels, the notice sentences and the lists. This section holds the words that carry figures. They replace the words I approved on 2026-11-12 (D7): "1 in N" with its range, never a percentage, "listed as cancelled", the record line and the condition line. The built site shows those until q27 is built.
+These add to the "Words" of `docs/site-redesign.md`, which holds every page's frame, the labels, the notice sentences and the lists. This section holds the words that carry figures. They replace the words I approved on 2026-11-12 (D7): "1 in N" with its range, never a percentage, "listed as cancelled", the record line and the condition line. The q27 build shows these words (`docs/will-it-fly-plan.md`).
 
 How they were reached: a plain-words proposal (kept outside the repository, as the mockups are), a third round of mockups by a Fable designer that set it in look A, and a second pass on the words after I called that round "absolute gibberish to a normal human". I settled the design on the fourth round of mockups and approved three fixes after it. The test for every line is mine: a 60-year-old checking her daughter's flight on her phone reads it aloud, and if she would pause, the line is rewritten.
 
 A second set of lines covers the cases those words left open. A Fable agent proposed them after the review, each patterned on an approved line and read aloud by the same test, and I approved them on 2026-11-17: all as proposed, bar two that I worded myself (D13). They stand in the tables below, each marked "approved by me, 2026-11-17" where it joins lines of the first approval.
 
-Every figure in the examples is from the 2026-11-17 model. The chances among them come from a rough first blend: examples of how a line reads, not results. Every line in this section's tables was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code has them today, and passes. The lines fail today's check only where my decisions change it: the words "chance" and "chances", and the percent sign ("Tests and checks").
+Every figure in the examples is from the 2026-11-17 model. The chances among them come from a rough first blend: examples of how a line reads, not results. Every line in this section's tables was run, for this update, against the upload check's banned phrases and its "we", "our" and "us" rule as the code had them then, and passes. The lines failed that day's check only where my decisions changed it: the words "chance" and "chances", and the percent sign ("Tests and checks"). The lines marked "Question 6" of the plan were run against the built check's banned phrases, word rules and odds words for the plan's Task 17, and pass.
 
 ### How numbers are written
 
 - A chance reads "Chance it's cancelled: about 15%". "About", because it is an estimate.
 - Below 1%: "under 1%" in sentences and headlines. The front page's table keeps one decimal (0.8%), where the numbers line up.
 - From 1% to 10%: whole numbers in headlines ("about 3%"), one decimal in the table and in the averages for all airlines (1.6%). The approved lines write the delay averages whole, with "about" ("about 8% for departures and 5% for arrivals").
-- Never "0%" as a chance: the blend never gives zero, and "under 1%" covers a clean history.
+- A chance is never "0%". Below 1%, it reads "under 1%".
 - A bad week is named with its dates.
 - Every count on a page uses the same flights: each flight whose ending is known. So the history line, the "Worked out from" line and the strip agree (LO 155: 22, not the 20 flights that are also two days past, C4). One exception, decided on 2026-11-17: a number marked cancelled on a day its flight flew under another number. Its "so far" line and its chance count that day as flown (C2), while its strip keeps the number's own mark, with the twin line under that day.
 - History lines give counts, not percentages ("22 flights · none cancelled"). The chance is the headline's job.
@@ -389,6 +389,7 @@ Every figure in the examples is from the 2026-11-17 model. The chances among the
 | A row with too few flights | Not enough flights yet |
 | Under the table | These are averages for all airlines, from about 5,000 flights since 27 October. A delayed flight still counts as "still on". |
 | The delay line | **Chance of a delay of an hour or more:** about 8% for departures and 5% for arrivals. It's about the same however soon you fly. |
+| The delay line, a direction under 1% (Question 6e of the plan, approved 2026-11-17) | **Chance of a delay of an hour or more:** under 1% for departures and about 5% for arrivals. It's about the same however soon you fly. |
 
 The rows are C5's six points: "3 days away" is the 70-hour point. The first line takes its two figures from the first and the last row. The delay line's figures are the delay measurement's 7.7% and 4.9%. When the first or the last row reads "Not enough flights yet", the first line is left out and the rows speak for themselves (approved by me, 2026-11-17). On today's record every row has its figure.
 
@@ -402,8 +403,10 @@ The rows are C5's six points: "3 days away" is the 70-hour point. The first line
 | Left out | 285 flights are left out because there's no record of how they ended. |
 | Tiles, below the floor | 420 flights · 3 cancelled |
 | Sentence, below the floor | Since 27 October, 3 of 420 flights at Ben Gurion were cancelled. Not enough flights yet for a percentage. |
+| Sentence, one cancelled flight (Question 6f of the plan, approved 2026-11-17) | Since 27 October, 1 of 420 flights at Ben Gurion was cancelled. Not enough flights yet for a percentage. |
+| Left out, one flight (Question 6f of the plan, approved 2026-11-17) | 1 flight is left out because there's no record of how it ended. |
 
-The total counts closed flights with a known result, as before (C2, C4). The late line counts as before: the model brackets each cancelled listing between two sightings, and the line counts the brackets that lie wholly after the scheduled time (A17). The two kinds of left-out flight (on this model, 240 that left the list while nothing was recorded and 45 that left it with no final status) move to "How this works". The two below-the-floor lines (approved by me, 2026-11-17) are for a total that rests on too few cancelled flights for a percentage (C8): no third tile, and the sentence says why. Their counts are made up to show the form; today's record clears the floor.
+The total counts closed flights with a known result, as before (C2, C4). The late line counts as before: the model brackets each cancelled listing between two sightings, and the line counts the brackets that lie wholly after the scheduled time (A17). The two kinds of left-out flight (on this model, 240 that left the list while nothing was recorded and 45 that left it with no final status) move to "How this works". The two below-the-floor lines (approved by me, 2026-11-17) are for a total that rests on too few cancelled flights for a percentage (C8): no third tile, and the sentence says why. Their counts are made up to show the form; today's record clears the floor. A count of 0 leaves its line out (Question 6f of the plan, approved 2026-11-17).
 
 ### Flight page: the headline
 
@@ -431,21 +434,24 @@ The first approval gave three forms. The others are approved by me, 2026-11-17 (
 | The same, one cancelled flight | The same line, its bracket reading "(1 of its 20 flights was cancelled)". |
 | A flight ahead, one bad week | Worked out from this flight's history: 4 of its 19 flights were cancelled, all between 6 and 9 November. Also from Lufthansa's history, and how soon it leaves. |
 | No flight ahead, a clean history | Worked out from this flight's history (none of its 22 flights was cancelled) and LOT's history. |
+| No flight ahead, cancellations not all in one week, or one (Question 6b of the plan, approved 2026-11-17) | Worked out from this flight's history (3 of its 21 flights were cancelled) and Lufthansa's history. |
 | No flight ahead, one bad week, flights since | Worked out from this flight's history: 4 of its 19 flights were cancelled, all between 6 and 9 November. |
 | No flight ahead, one bad week, none since (first approval) | Worked out from this flight's history: 4 of its 14 flights were cancelled, all between 6 and 9 November. It hasn't been on the airport's list since. |
+| A bad week on one day, or across a month's end (Question 6a of the plan, approved 2026-11-17) | "…all on 6 November." and "…all between 30 October and 2 November." Two cancelled flights keep "all". |
 | A short history, its airline with one bad week (first approval) | Worked out mostly from Lufthansa's history, because LH 697 has only 2 flights so far. Lufthansa cancelled 11 of its 183 flights, all between 6 and 10 November. |
 | A short history, its airline with no cancelled flight | Worked out mostly from LOT's history, because LO 157 has only 5 flights so far. LOT cancelled none of its 127 flights. |
 | A short history, its airline's cancellations spread over weeks | The same first sentence, then: "El Al cancelled 10 of its 1,624 flights." |
 | A short history under a small airline | Worked out mostly from all airlines at Ben Gurion, because IZ 992 has only 2 flights so far and its airline only 40. |
+| A number with no flights yet, under an airline with none (Question 6d of the plan, approved 2026-11-17) | Worked out from all airlines at Ben Gurion, because XX 123 and its airline have no flights so far. |
 | An airline with no spoken name | Worked out from this flight's history (none of its 22 flights was cancelled), its airline's history, and how soon it leaves. |
 | The same, a short history | Worked out mostly from its airline's history, because IZ 992 has only 2 flights so far. ARKIA ISRAELI AIRLINES cancelled none of its 140 flights. |
 
 What picks a form (approved by me, 2026-11-17, with the lines):
 - A flight ahead or none. "And how soon it leaves" stands only when a flight is ahead.
 - Whose history leads. The line says "mostly from" the airline when the number has fewer than 14 counted flights, and "mostly from all airlines at Ben Gurion" when its airline, too, has fewer than 100. A number with 14 flights or more under a small airline keeps the first forms. "How soon it leaves" stays out of every "mostly from" form, with a flight ahead or without: "mostly" covers it.
-- A bad week. When one week holds all of a record's cancelled flights, the line names its dates. "It hasn't been on the airport's list since." shows only when no flight of the number is scheduled after its last cancelled one.
+- A bad week. When one week holds all of a record's cancelled flights, the line names its dates. "It hasn't been on the airport's list since." shows unless a flight of the number is scheduled after its last cancelled one and was still on the airport's list after that cancelled flight's scheduled time. A later flight that the airport had already removed by then does not count (my ruling, 2026-11-17).
 - How many flights. One flight reads "has only 1 flight so far"; none yet, "because LO 157 has no flights so far".
-- The airline's name. Inside a sentence an airline takes a spoken name from a short list kept by hand ("LOT", "Lufthansa", "El Al"). For an airline not on the list the sentence says "its airline", and the published name stands only where no possessive is needed. The list is proposed by the build and approved by me ("Still open").
+- The airline's name. Inside a sentence an airline takes a spoken name from a short list kept by hand ("LOT", "Lufthansa", "El Al"). For an airline not on the list the sentence says "its airline", and the published name stands only where no possessive is needed. The build proposed the list, and I approved it at the hand check, 2026-11-17 ("Still open"). A spoken name ending in a lowercase "s" takes a bare apostrophe ("British Airways' history"); every other name takes "'s" ("Lufthansa's", "SAS's"). The build set that rule, and I approved it on 2026-11-17 (the plan's "Deviations").
 
 ### Flight page: the lines in smaller type
 
@@ -454,12 +460,14 @@ What picks a form (approved by me, 2026-11-17, with the lines):
 | This flight | **LO 155 so far:** 22 flights · none cancelled · none delayed an hour or more |
 | | **LH 694 so far:** 14 flights · 4 cancelled · none delayed an hour or more |
 | | **LH 697 so far:** 2 flights · 1 cancelled · none delayed an hour or more |
+| This flight, a short history with one bad week of its own (Question 6c of the plan, approved 2026-11-17) | **LH 697 so far:** 5 flights · 2 cancelled, all between 6 and 9 November · none delayed an hour or more |
 | Its airline | **LOT POLISH AIRLINES so far:** 127 flights · none cancelled · 2 delayed an hour or more |
 | | **LUFTHANSA so far:** 183 flights · 11 cancelled · 7 delayed an hour or more |
 | Its airline, one bad week behind its cancellations | **LUFTHANSA so far:** 183 flights · 11 cancelled, all between 6 and 10 November · 7 delayed an hour or more |
 | A number sold with another airline's flight, above the airline's line | LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history. |
 | All airlines, by the time left | **All airlines at Ben Gurion, 6 to 12 hours before a flight:** under 1% cancelled · about 5% of arrivals delayed an hour or more |
 | All airlines, no flight ahead, or scripts off | **All airlines at Ben Gurion:** 1.7% cancelled · about 5% of arrivals delayed an hour or more |
+| All airlines, a delay figure under 1% (Question 6e of the plan, approved 2026-11-17) | **All airlines at Ben Gurion:** 1.7% cancelled · under 1% of arrivals delayed an hour or more |
 | Freshness | Updated 3 hours ago. Things may have changed, so check with your airline. |
 | Freshness, without scripts | Updated 17 Nov at 09:46. Things may have changed, so check with your airline. |
 | Link | What the numbers mean |
@@ -468,6 +476,7 @@ What picks a form (approved by me, 2026-11-17, with the lines):
 - "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history." is my own wording (2026-11-17), in place of D11's "counted with". It stands on the page of a number whose flight is grouped under another airline (C8), as a line of its own above that airline's "so far" line. The lines after it name that airline as its own flights' pages do. The airline in it is always its spoken name: every grouping airline is on the names list. It says nothing about who flies the plane.
 - The all-airlines line has six forms, one per stretch of time left: "2 to 3 days", "1 to 2 days", "12 to 24 hours", "6 to 12 hours", "3 to 6 hours" and "less than 3 hours", each followed by "before a flight:". "6 to 12 hours before a flight:" was approved in round 4; the other five are approved by me, 2026-11-17. Each form gives the figure of the point at its far end, so it leans high: 1.6%, 1.4%, 1.1%, then "under 1%" three times on the 2026-11-17 model. "Before a flight" was added in round 4: read aloud, "before" alone left the reader asking "before what?".
 - A departure's page reads "about 8% of departures delayed an hour or more" (LH 697 on the mockup).
+- A number with no flights yet has no "so far" line: its "Worked out from" line already says it has none (Question 6d of the plan, approved 2026-11-17).
 - The form without a time takes the front page's total, 1.7%.
 - The freshness line follows the "Updated" line at the top of the page in all its forms, from "Updated less than an hour ago" to "Updated more than 2 days ago" (`docs/site-redesign.md`, "Every page"). Its no-script form is approved by me, 2026-11-17.
 
@@ -497,6 +506,7 @@ The key counts the strip's own marks, so it matches them, and it names each kind
 | A number cancelled while its twin flew, a departure | This number was cancelled, but the flight probably left as LH 695. |
 | The same, an arrival | This number was cancelled, but the flight probably landed as OS 083. |
 | The same, the twin still ahead | This number is marked cancelled, but the flight is probably still on, as OS 083. |
+| The same, the twin with no news yet (Question 6h of the plan, approved 2026-11-17) | This number was cancelled, but the flight may have gone ahead as OS 083. |
 
 Approved by me, 2026-11-17, beyond the first approval:
 - The "time has passed" line always carries the date. The first approval had the time alone ("last updated at 09:46"), which on a page from another day reads as this morning's; the page cannot know what day it is read.
@@ -534,9 +544,9 @@ The disclaimer. It is the first section of "How this works", and every page link
 
 ### Still open
 
-Every line this section listed as without approved words on 2026-11-17 has them now, in the tables above and in `docs/site-redesign.md`. Two things remain. Both are for the hand check during the build, before the first upload.
+Every line this section listed as without approved words on 2026-11-17 has them now, in the tables above and in `docs/site-redesign.md`. Two things remained, both for the hand check during the build. I approved both there on 2026-11-17 (the plan's "Deviations", Task 15).
 
-1. **The list of spoken names for airlines.** The build proposes it, for the airlines with the most flights and every airline that a number's flight is grouped under (C8), and I approve it. So the partner line always names the airline ("…worked out from LOT's history."), never "its airline's history", which a reader would take for the number's own airline (my call, 2026-11-17).
+1. **The list of spoken names for airlines.** The build proposed it, for the airlines with the most flights and every airline that a number's flight is grouped under (C8), and I approved it. So the partner line always names the airline ("…worked out from LOT's history."), never "its airline's history", which a reader would take for the number's own airline (my call, 2026-11-17).
 2. **"How this works", sections 2 to 10.** Drafted in the build and approved by me ("Pages", How this works).
 
 ## Pages
@@ -557,20 +567,20 @@ Every page's order and frame are in `docs/site-redesign.md`, "Pages". This secti
 **Days ahead.** A day is ahead when its scheduled time is later than the page's last update, whatever its label, so a day already marked cancelled but not yet due stays at the top (the rule of the round-2 structure D10 took). The nearest day ahead is the traveller's day and stands at the top, once. The strip follows it. The later days ahead come after the strip, soonest first, then the past days, newest first. The build sets this order.
 
 **The headline slot.** One slot under the traveller's day, closed by a heavy rule: the two chances, then the "Worked out from" line.
-- The traveller's day is labelled UPCOMING: "Chance it's cancelled" and "Chance it's delayed an hour or more", from the blend for that day's time left.
+- The traveller's day is labelled UPCOMING: "Chance it's cancelled" and "Chance it's delayed an hour or more", from the blend for that day's time left. A day that already carries DELAYED (the airport's expected time an hour or more after the scheduled time) shows "Chance it's cancelled" alone: its label and its expected time already say it is late, so no new words are needed (my decision, 2026-11-17, after the whole-branch review).
 - No day is ahead: the line "LH 694 isn't on the airport's list right now. The last one was on Tuesday 10 November." stands where the day would, or its "has no upcoming flight" form while the last flight is still listed, and both headlines say "its next flight".
 - The traveller's day is already marked cancelled: "This flight is marked cancelled. Contact your airline." and its notice sentence, and no chances for that day. A day the airport removed early carries its UNKNOWN line and no chances either. The "so far" lines and the freshness line stay (my decision, 2026-11-17).
-- A later day ahead labelled UPCOMING carries its two chances on the day itself, on one line, for its own time left, with no "Worked out from" line of its own.
+- A later day ahead labelled UPCOMING carries its two chances on the day itself, on one line, for its own time left, with no "Worked out from" line of its own. One that already carries DELAYED carries the cancellation chance alone.
 
-**Under the slot, in smaller type.** The number's "so far" line, its airline's "so far" line (on the page of a number sold with another airline's flight, with the "also sold as" line above it), the all-airlines line, the freshness line and the link "What the numbers mean". Then what belongs to the traveller's day alone: "Also sold as …" and its "What changed" list.
+**Under the slot, in smaller type.** The number's "so far" line, its airline's "so far" line (on the page of a number sold with another airline's flight, with the "also sold as" line above it), the all-airlines line, the freshness line and the link "What the numbers mean". Then what belongs to the traveller's day alone: "Also sold as …" and its "What changed" list. Three choices the build made where this design gives no words (the plan's "Deviations", Task 11): an airline's "so far" line with no flights is left out, as the number's is; when no "Worked out from" line is visible, both "so far" lines give their bad week's dates; and the all-airlines line is left out when none of its forms is left.
 
 **The strip.** One mark per day of the flight number, oldest first, each a link to that day on the page. The traveller's day's mark links to the top. A mark never rests on colour: its shape differs by label, the key names each shape in words with its count, the day of the month stands under it, and the link carries the day and the label as its name (`docs/site-redesign.md`, "Look").
 
-**`fromhere.js` today.** It reads each block's scheduled time, which the build writes as a UTC instant in a `data-` attribute, compares it with the visitor's clock, and shows the one prepared sentence that fits the time left. Over 72 hours it shows the "more than 3 days" line; once the time has passed it hides the block and shows the "has passed" line. It writes no text and no number of its own. Both sides are UTC instants, so the visitor's time zone does not matter. All of that stands. After q27:
+**`fromhere.js` before q27.** It reads each block's scheduled time, which the build writes as a UTC instant in a `data-` attribute, compares it with the visitor's clock, and shows the one prepared sentence that fits the time left. Over 72 hours it shows the "more than 3 days" line; once the time has passed it hides the block and shows the "has passed" line. It writes no text and no number of its own. Both sides are UTC instants, so the visitor's time zone does not matter. All of that stands. After q27:
 
 1. **The all-airlines line.** The page holds the six prepared forms; the script shows the one for the stretch the flight is in, with the bounds of 2026-11-12: over 48 and up to 72 hours, over 24 and up to 48, over 12 and up to 24, over 6 and up to 12, over 3 and up to 6, up to 3. Over 72 hours it shows "Your flight is more than 3 days away. …" in the line's place.
-2. **A day that passes (D10).** When the traveller's day has passed by the visitor's clock, the script moves the next day ahead to the top, with that day's own chances and lines, and the passed day reads "This flight's time has passed. …". Uploads are by hand, so a page can be a day or more old when it is read. When no later day is ahead, the page keeps the passed day's own line and its "time has passed" line, and under them shows the headline in its no-flight-ahead form ("Chance its next flight is cancelled" and the delay headline beside it), the "Worked out from" line in its no-flight-ahead form and the all-airlines line without a time. It does not show "isn't on the airport's list right now", which an old page cannot know (my decision, 2026-11-17).
-3. **The page's age (D11).** The script writes the page's age ("Updated 3 hours ago", and the other forms in `docs/site-redesign.md`, "Every page"), in the line at the top of every page and in a flight page's freshness line, from the instant of the page's last update, which the build writes as a UTC instant in a `data-` attribute. This is the one exception to the rule that the script writes no text and no number of its own. Every other sentence and number is already in the page, where the upload check reads it.
+2. **A day that passes (D10).** When the traveller's day has passed by the visitor's clock, the script moves the next day ahead to the top, with that day's own chances and lines, and the passed day reads "This flight's time has passed. …". Uploads are by hand, so a page can be a day or more old when it is read. When no later day is ahead, the page keeps the passed day's own line and its "time has passed" line, and under them shows the headline in its no-flight-ahead form ("Chance its next flight is cancelled" and the delay headline beside it), the "Worked out from" line in its no-flight-ahead form and the all-airlines line without a time. It does not show "isn't on the airport's list right now", which an old page cannot know (my decision, 2026-11-17). The script works this out again whenever the page is shown again (item 3), so a tab left open moves its days too.
+3. **The page's age (D11).** The script writes the page's age ("Updated 3 hours ago", and the other forms in `docs/site-redesign.md`, "Every page"), in the line at the top of every page and in a flight page's freshness line, from the instant of the page's last update, which the build writes as a UTC instant in a `data-` attribute. This is the one exception to the rule that the script writes no text and no number of its own. Every other sentence and number is already in the page, where the upload check reads it. The script works the age out when the page loads, and again whenever the page is shown again: when the browser brings it back from memory (`pageshow`) and when its tab becomes visible (`visibilitychange`). So a tab left open does not keep the age it showed when it loaded (added after the whole-branch review).
 4. **Without scripts.** The build's order stands. The age reads as a date and time, "Updated 17 Nov at 09:46". The all-airlines line shows its form without a time. The "more than 3 days" and "time has passed" lines stay hidden.
 
 Whether the two chances also follow the visitor's clock is under "Left to the builder".
@@ -710,7 +720,7 @@ What it does not replace. Telling a traveller which half of a split their flight
 Uploads are by hand (`docs/publishing.md`). After q27 the pages stay true between them this way:
 
 - The table and the total are a record up to a stated moment. An old upload shows an older record, not a wrong one.
-- Every page says how old it is: "Updated 3 hours ago", worked out on the visitor's clock, down to "Updated more than 2 days ago" on an old page; without scripts, the date and time of the update.
+- Every page says how old it is: "Updated 3 hours ago", worked out on the visitor's clock each time the page is shown, down to "Updated more than 2 days ago" on an old page; without scripts, the date and time of the update.
 - "How long until the scheduled time" comes from the visitor's clock, not from the upload.
 - When a day passes by the visitor's clock, the next day ahead moves to the top.
 - The freshness line sends the reader to their airline ("Things may have changed, so check with your airline."). The 2026-11-12 line sent them to the airport's own list.
@@ -728,13 +738,13 @@ A fresher site is outside version 1. It needs q5 first, then q2 and q23, each on
 - The sign test is a separate entry point that reads the same module and writes a local report. The tag of D5 is the first commit in which it runs.
 - Cost: no new AWS service, as at the top; an upload stays about half a cent.
 
-### What q27 adds (not built)
+### What q27 adds (built to `docs/will-it-fly-plan.md`)
 
 - The blend is one new pure module beside `flights.py` and `display.py`. It reads the frozen modules' flights and results (`counting.flights`, C1 and C2) and the table's rows (`counting.figures`), and adds its own counts per flight number and per airline: flights, cancelled, delayed an hour or more. It is not a frozen file, and no frozen file may import it; `tests/test_frozen.py` already fails when a frozen module imports another module of the site.
 - No frozen file changes: `src/model/`, `src/timeline/load.py`, `counting.py`, `rates.py` and `record.py` stay as tagged. If the build finds it needs a change there, it stops and asks me ("The record", condition 2).
 - A flight's delay is read as the delay measurement read it: the model's `est_minus_sched_min` of its numbers that departed or landed.
 - `words.py` gains the new sentences, the rules of "How numbers are written" and the notice sentences. `views.py` gains the new order, the slot, the strip and the lists. `check.py` takes the rules below.
-- `fromhere.js` gains the move of the next day ahead and the "Updated" line. `search.js` writes its two new lines (`docs/site-redesign.md`, "Pages").
+- `fromhere.js` gains the move of the next day ahead and the "Updated" line, and works both out again whenever the page is shown again. `search.js` writes its two new lines (`docs/site-redesign.md`, "Pages").
 - The back-test is a separate local entry point, like the figures check: it needs the real model, which is not in the repository.
 - Same model, same bytes, as before: the blend uses no random numbers and no clock. The page's age is worked out in the browser.
 - Cost: no new AWS service. The font files are costed in `docs/site-redesign.md`.
@@ -800,21 +810,21 @@ Words and pages:
 - the script writes no text but the "Updated" line (today's test fails on any text written, and is rewritten to allow that one);
 - a missing or unreadable attribute leaves the no-script page standing.
 
-The upload check. What `src/timeline/check.py` does today, and what q27 changes:
+The upload check. What `src/timeline/check.py` did before q27, and what q27 changed, as built:
 
-| Rule today | After q27 |
+| Rule before q27 | After q27 |
 |---|---|
 | Banned phrases (`BANNED`: "cancelled at", "canceled at", "delayed by", "operated by", "took off", "minutes late", "hours late", "pause in our collection"), in every `.html`, `.css` and `.js` file, as written and with tags stripped | Unchanged. The approved words are written round them: "Cancelled with at least 21 hours' notice." and not "cancelled at least". |
 | The built-by placeholder is refused | Unchanged |
 | "we", "our", "us" as whole words, in every file | Unchanged |
 | "I" as a whole word outside `how-it-works.html` and the built-by line | Unchanged |
 | "board", "snapshot", "stored", "observed", "receipt" and their plurals outside `how-it-works.html` | Unchanged |
-| The odds words (`ODDS_WORDS`: chance, chances, odds, probability, probable, likely, unlikely, risk, risks, risky, forecast, forecasts, forecasting, predict, predicts, predicted, prediction) outside `how-it-works.html`, after the airport's own strings are skipped | "chance" and "chances" are allowed: the headline says "Chance it's cancelled" and the footer "The chances on this site". My decision names only "chance", so the other words stay refused on a traveller's page (a reading: "Left to the builder"). |
+| The odds words (`ODDS_WORDS`: chance, chances, odds, probability, probable, likely, unlikely, risk, risks, risky, forecast, forecasts, forecasting, predict, predicts, predicted, prediction) outside `how-it-works.html`, after the airport's own strings are skipped | "chance" and "chances" are allowed: the headline says "Chance it's cancelled" and the footer "The chances on this site". My decision names only "chance", so the other words stay refused on a traveller's page (a reading: "Left to the builder", built so). |
 | A percent sign in the text of an HTML page | Allowed |
-| Every "1 in N" in a page's text is followed at once by "(between 1 in A and 1 in B)", or sits inside such a range | The plain-words proposal meant a twin rule, every percentage with its base, to take this rule's place, and D11 recorded that twin; it is not carried (under this table). No traveller's page prints "1 in N" any more. Since my decision of 2026-11-17 the ranges on "How this works" are percentages too, so this rule guards nothing. Recommended: it goes, with the record-line rule under it. |
-| A page whose text holds "1 in N" must hold the record line (`PAST_ONLY`) | The record line leaves the pages. Recommended: this rule goes, and the footer's second line ("The chances on this site are estimates from past flights, not promises.") joins the lines required on every page. |
+| Every "1 in N" in a page's text is followed at once by "(between 1 in A and 1 in B)", or sits inside such a range | The plain-words proposal meant a twin rule, every percentage with its base, to take this rule's place, and D11 recorded that twin; it is not carried (under this table). No traveller's page prints "1 in N" any more. Since my decision of 2026-11-17 the ranges on "How this works" are percentages too, so this rule guards nothing. As recommended, it went, with the record-line rule under it. |
+| A page whose text holds "1 in N" must hold the record line (`PAST_ONLY`) | The record line left the pages. As recommended, this rule went, and the footer's second line ("The chances on this site are estimates from past flights, not promises.") is required on every page. |
 | The source line and the unofficial line on every page; the full source line on `how-it-works.html` | The rule stands. The unofficial line's fixed words change to the approved footer's (`docs/site-redesign.md`, "Footer"), so a page built before the change fails, as the check intends. |
-| No rule | New: a flight page whose text holds a chance must hold a "Worked out from" line. The rule is per page, not per chance: a later day ahead carries chances with no line of its own. The front page's table needs none. |
+| No rule | New: a flight page whose text holds a chance must hold a "Worked out from" line. The rule is per page, not per chance: a later day ahead carries chances with no line of its own. The front page's table needs none. The line is matched at its capital start, "Worked out from" or "Worked out mostly from", so the partner line's "…worked out from LOT's history." does not count (the plan's "Deviations", Task 1). |
 
 Two check rules that D11 recorded are not carried. "Thresholds enforced" (no flight's own percentage under 14 flights, no airline's under 100): D12 replaced the thresholds with the blend's weights, so no threshold is left to enforce. "Every percentage has its base": the approved words' own list of the check's changes ("chance" allowed, a percent sign allowed, the "Worked out from" line, the banned phrases kept) leaves it out, and approved lines carry no base beside them ("Chance it's cancelled: about 15%"; "under 1% cancelled · about 5% of arrivals delayed an hour or more"). What a chance rests on is said by its "Worked out from" line, which the new rule requires.
 
@@ -871,7 +881,7 @@ For q27, each with a recommendation. None adds or rewords a sentence a traveller
 - **A number's record: per number and direction.** A flight page is one flight number and one direction, and its strip shows that page's days. Recommended: the number's counts are those days, so the "so far" line, the "Worked out from" line and the strip agree. A number that runs both ways then has two records.
 - **The airline's counts and the number's own flights.** Recommended: the airline's counts are its whole counts, the number's own flights included, so that a chance is worked out from the count the airline's "so far" line prints (Lufthansa: 183). The cost: a number's own flights weigh twice, once in each pull, which matters only for a small airline.
 - **The delay chance rests on flights that flew.** The cancellation chance counts every flight with a known ending; the delay chance counts only those that flew. It is the chance of a delay if the flight flies, and the two chances do not share a base. Recommended: kept, as the examples and the delay measurement have it, and said on "How this works" where "delayed" is defined (its words are mine to approve).
-- **The label DELAYED by the hour rule.** Decided: a day is DELAYED when the airport's expected time is an hour or more after the scheduled time. Recommended for the rest: the label is drawn from the airport's last expected time, on a day that flew and on a day still ahead, and never beside CANCELLED or UNKNOWN; in a list, a flight is DELAYED when any of its numbers is, as C10 added the label when any number showed the word.
+- **The label DELAYED by the hour rule.** Decided: a day is DELAYED when the airport's expected time is an hour or more after the scheduled time. Recommended for the rest: the label is drawn from the airport's last expected time, on a day that flew and on a day still ahead, and never beside CANCELLED or UNKNOWN; in a list, a flight is DELAYED when any of its numbers is, as C10 added the label when any number showed the word. Built so. Added after the whole-branch review (my decision, 2026-11-17): a day still ahead that carries DELAYED shows the cancellation chance alone ("Pages", Flight page).
 - **A range as percentages, on "How this works".** Recommended: one decimal, the ends rounded outward, so the printed range is never narrower than the computed one, as C8 rounds its ends.
 - **"Worked out mostly from" the airline.** Recommended, and the reading the lines approved on 2026-11-17 take: when the number has fewer than 14 counted flights, the point below which the airline's part outweighs its own. LH 694 at 14 reads "from this flight's history"; LH 697 at 2 reads "mostly from Lufthansa's".
 - **When a bad week is named.** Recommended, from the plain-words proposal: when all of a record's cancelled flights, two or more, fall within 7 days.
@@ -900,12 +910,12 @@ For q27, each with a recommendation. None adds or rewords a sentence a traveller
 
 ## Outside this design, for the owner
 
-Everything this section listed on 2026-11-17 is settled (D13, and the sections it points to). What is left is mine to do. Only the first line is still a decision.
+Everything this section listed on 2026-11-17 is settled (D13, and the sections it points to). What is left is mine to do.
 
-At the hand check during the build, before the first upload:
-- Approve the list of spoken names, and the text of "How this works", sections 2 to 10 ("Words", "Still open").
-- Look at the built pages on a phone, light and dark: the front page, a clean flight, a flight with a bad week and a page with no flight ahead.
-- Read the back-test's report. If it is flagged, choose between shipping and changing the weights.
+Done at the hand check during the build, 2026-11-17 (the plan's "Deviations", Task 15):
+- I approved the list of spoken names, and the text of "How this works", sections 2 to 10 ("Words", "Still open").
+- I looked at the built pages at phone width and on a desktop, light and dark.
+- The back-test's report was not flagged, so the blend ships (the plan's "Back-test record").
 
 After q27:
 - The scheduled rebuild comes next (q5, then q2 and q23). "Updated more than 2 days ago" on every page will make a stale site plain to see.
@@ -913,7 +923,7 @@ After q27:
 - The launch post, once q27 is uploaded, with its figure taken from the live page that day.
 - Search engines and the link-preview image (q17): `noindex` stays until the launch decision, and the image waits for the new look.
 - q3, what the airport's expected time measures: my own question to the airport authority's public-inquiries channel, when convenient. Nothing in q27 waits for it; delay figures are shown at an hour or more, with the disclaimer.
-- The README's counts and screenshots follow the first upload, in the docs task at the plan's end.
+- The README's counts come from the plan's final verification, and its screenshots follow the first upload (the plan's Task 18).
 
 Done: the tag and its push (D5; 2026-11-15, "The record"), and the terms reading (`docs/terms.md`; rates over past flights, and since 2026-11-17 the "Will It Fly?" pages). No action: the name (a bootcamp demo called "Will it Fly??" predicts delays; noted when I chose it). The round-4 mockups stay out of the repository: the documents carry the rules, and the mockups carry rough example figures that would read as results.
 
@@ -954,7 +964,7 @@ An Opus re-review of the second draft rebuilt the counts in plain Python, matche
 
 ## Update (2026-11-17)
 
-A Fable agent brought this document and `docs/site-redesign.md` to my three decisions of 2026-11-17 (D10 to D12), from the approved words, the round-4 mockups and the three fixes after them. Figures were re-read from that day's local build and the delay measurement; the examples' arithmetic and the font files' sizes were computed for the update. Nothing of it is built.
+A Fable agent brought this document and `docs/site-redesign.md` to my three decisions of 2026-11-17 (D10 to D12), from the approved words, the round-4 mockups and the three fixes after them. Figures were re-read from that day's local build and the delay measurement; the examples' arithmetic and the font files' sizes were computed for the update. Nothing of it was built then; the build followed (`docs/will-it-fly-plan.md`).
 
 Review, 2026-11-17. A fresh Opus reviewer read both documents against their sources. Each finding was checked against the files before it was folded in:
 - The terms reading was already recorded (`docs/terms.md`, my reading of that day); both documents had it as still to do.
@@ -966,4 +976,4 @@ Review, 2026-11-17. A fresh Opus reviewer read both documents against their sour
 - "I redesigned the site" claimed agents' design work for me.
 - Five builder-level gaps in the blend had no entry, and one that changes a figure had no recommendation.
 
-Answers, 2026-11-17. The update and its review left 28 lines or cases without approved words, and 22 other questions. A Fable agent proposed words for each line, with the approved line it copies and how it reads aloud, and a recommendation for each question. I answered the same day: all as recommended, with two lines in my own wording (D13). The answers are folded into both documents. What remains is under "Words", "Still open".
+Answers, 2026-11-17. The update and its review left 28 lines or cases without approved words, and 22 other questions. A Fable agent proposed words for each line, with the approved line it copies and how it reads aloud, and a recommendation for each question. I answered the same day: all as recommended, with two lines in my own wording (D13). The answers are folded into both documents. What remained is under "Words", "Still open", settled at the hand check.

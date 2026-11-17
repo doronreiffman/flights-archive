@@ -53,7 +53,7 @@ Replaced by the redesign: `docs/site-redesign.md`, "Tests and checks".
 
 ## Five outsiders (from the review)
 
-Observed sessions with me watching, not a copy handed out: the point is to see where people misread. Tasks: "find IZ 991 on 29 October and tell me what happened to it", "find a flight that was cancelled and say when that was announced", "is there anything here you would use, and for what?". Watch for: misreading "first observed CANCELED" as the cancellation time, misreading "listed together" as the same aircraft, not finding a flight. The review's stop rule: if fewer than two of five name a real use, keep the collector and the case study and stop product work. The tasks and the watch list quote v1's wording; rewrite them before any session (`docs/site-redesign.md`, "Outside this design").
+Replaced by `docs/flight-lookup.md`, "Five outsiders (q13)": the tasks, what to watch for and the stop rule I approved on 2026-11-17 for the "Will It Fly?" pages.
 
 ## Publishing (q15, my call)
 

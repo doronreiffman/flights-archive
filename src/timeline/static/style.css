@@ -230,7 +230,9 @@ main > .table-card { margin-top: 32px; }
 .fig .q, #now .one .q { font-size: 2.75rem; letter-spacing: -.01em; }
 .fig .n, #now .one .n { font-size: 5.5rem; font-weight: 300; letter-spacing: -.02em; }
 /* A later day keeps its one-line form when the page script moves it to the top; there it takes the slot's look, each
-   label over its number, side by side. Its children: label, figure, " · ", label, figure. */
+   label over its number, side by side. Its children: label, figure, " · ", label, figure. A day already showing DELAYED
+   holds the first two alone, its cancellation chance, which then fills the width. A DELAYED day built at the top sets
+   that one chance in .pair's two columns instead, so above 760 px the right one stays empty. */
 #now .one {
   display: grid; grid-template-rows: auto auto; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   column-gap: var(--gap);
