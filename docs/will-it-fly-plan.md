@@ -230,7 +230,8 @@ Implementer: transcription (Sonnet). Design: `docs/flight-lookup.md`, "Tests and
   - no percent rule, and neither "1 in N" rule (`rate_hits`, `RANGED_RATE`, `BARE_RANGE`, `ONE_IN` and the record-line rule go);
   - `NOTICES` gains `"estimates line": ESTIMATES`;
   - `CHANCE = re.compile(r"\bchance (?:it's|its next flight is) (?:cancelled|delayed)\b")`, read on `flatten(strip_tags(raw))`;
-  - `missing_notices` adds `(name, "worked-out line")` for a page under `flight/` whose text matches `CHANCE` and holds no "worked out ".
+  - `WORKED_OUT = re.compile(r"\bWorked out (?:mostly )?from\b")`, read on the case-kept `plain(strip_tags(raw))`: every approved form starts with a capital "Worked out from" or "Worked out mostly from" (`docs/flight-lookup.md:429-441`), while the partner line's lowercase "…worked out from LOT's history." (:460) stands on the same pages and must not count;
+  - `missing_notices` adds `(name, "worked-out line")` for a page under `flight/` whose text matches `CHANCE` and holds no `WORKED_OUT` match.
 
 - [ ] **Step 1: Write the failing tests:**
   - `test_chance_and_chances_pass_on_a_travellers_page`;
@@ -1065,7 +1066,7 @@ Draft: a Fable drafter dispatched by the main session. Code: transcription (Sonn
   - the tag's link, the counting start and the gaps, as built;
   - the page passes the check.
 - [ ] **Step 3: Run; fail.** `.venv/bin/pytest tests/test_timeline_views.py tests/test_timeline_build.py -q`
-- [ ] **Step 4: Implement** the draft verbatim, with the model's figures in its slots.
+- [ ] **Step 4: Implement** the draft verbatim, with the model's figures in its slots. Remove the skip of the footer's `how-it-works.html#what-the-numbers-mean` link in `tests/test_timeline_build.py`'s link and anchor test (added in Task 1), so the anchor is checked again.
 - [ ] **Step 5: Run; pass.** Then the full suite.
 - [ ] **Step 6: Mutation entries:** "views: section 1 without its anchor", "views: the gate's first sentence kept", "views: a range rounded inward". Run the entries of every file the task changed.
 - [ ] **Step 7: Commit** (`q27: How this works: the approved opening and "What the numbers mean", sections 2 to 10 drafted for the owner`).
@@ -1124,3 +1125,5 @@ Filled in by the main session after each run on the real model: the model, the w
 The executor appends here whenever reality forces a change from this plan: what changed, why, and the commit.
 
 - Task 0 (2026-11-17, main session): the baseline on `data/model-2026-11-17` (last sighting 2026-11-17 07:46:44Z), built at abe26ca, whose code is that of 0f1b7e8. `timeline.check site` exits 0. Largest flight page: `site/flight/KL461-A.html`, 34,953 bytes. Whole site: 1,109 files, 17,960,040 bytes. The timeline build took 4.3 s (peak footprint 206 MB).
+- Task 1 (2026-11-17): the footer links to `how-it-works.html#what-the-numbers-mean` before Task 14 writes that section, so `tests/test_timeline_build.py`'s link and anchor test skips that one link until then; Task 14, Step 4 removes the skip. The task also rewrote `tests/test_timeline_words.py`, which the task's file list did not name: it pinned the old `UNOFFICIAL` and `TIMES_NOTE`. Commit d08cca6.
+- Task 1 (2026-11-17), review: the brief's worked-out rule ("worked out " anywhere in the lowercased text) was met by the partner line (`docs/flight-lookup.md:460`), which stands on the same flight pages, so a page missing its "Worked out from" line passed. The rule now matches the line's own capitalised start, `WORKED_OUT`, on the case-kept text (Task 1's interfaces amended).
