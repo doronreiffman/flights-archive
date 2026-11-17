@@ -134,9 +134,10 @@ def test_every_colour_is_a_token():
                 assert token in TOKENS, (at, sel, prop, value)
 
 
-# docs/site-redesign.md, "Red only for 'cancelled'": the CANCELLED label, the notice sentence under it, a cancelled
-# day's mark in the strip (and its mark in the key), the cancelled part of a day's bar and the total's "cancelled" tile.
-CANCELLED_THINGS = ("l-cancelled", "warn", "s-cancelled", "cancelled", "cancel")
+# docs/site-redesign.md, "Red only for 'cancelled'": the CANCELLED label, the notice sentence under it, a "Cancelled"
+# line in a list of changes, a cancelled day's mark in the strip (and its mark in the key), the cancelled part of a
+# day's bar and the total's "cancelled" tile.
+CANCELLED_THINGS = ("l-cancelled", "warn", "is-cancel", "s-cancelled", "cancelled", "cancel")
 RED = "var(--red)"
 
 
@@ -153,6 +154,7 @@ def test_red_only_for_cancelled():
             assert names_a_cancelled_thing(part), (at, part)
     assert declared((), ".l-cancelled").get("color") == RED
     assert declared((), ".warn").get("color") == RED
+    assert declared((), "li.is-cancel .w").get("color") == RED
     assert declared((), ".s-cancelled i").get("background") == RED
     assert declared((), ".chart .cancelled").get("fill") == RED
     assert declared((), ".stat.cancel").get("color") == RED

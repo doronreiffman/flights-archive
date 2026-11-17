@@ -123,10 +123,20 @@ def _names(items: list[str]) -> str:
     return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
+def _change(left: str, what: str) -> str:
+    """One line of a list of changes. The line that says the flight was cancelled carries is-cancel, its word in .w,
+    for the sheet's red (docs/site-redesign.md, "Look A": a "Cancelled" line in a list of changes)."""
+    split = words.cancel_split(what)
+    if split is None:
+        return f'<li><span class="t">{e(left)}</span> {e(what)}</li>'
+    before, word, after = split
+    return (f'<li class="is-cancel"><span class="t">{e(left)}</span> '
+            f'{e(before)}<span class="w">{e(word)}</span>{e(after)}</li>')
+
+
 def _changes(r: Row) -> str:
     """What changed, oldest first, the time in a left column."""
-    items = [f'<li><span class="t">{e(left)}</span> {e(what)}</li>' for left, what in r.lines]
-    return "\n".join(['<ol class="changes">', *items, "</ol>"])
+    return "\n".join(['<ol class="changes">', *(_change(left, what) for left, what in r.lines), "</ol>"])
 
 
 # --- flight page -----------------------------------------------------------------------------------
@@ -612,7 +622,7 @@ def how_it_works_page(summary: Summary, airport: blend.Airport, attribution: str
 <p><b>The figures for all flights each have a range.</b> A percentage worked out from past flights is never exact. Its range shows how far luck alone could have moved it.{reads} The other pages show only the first figure, to keep them simple. Here they all are:</p>
 {_items("ul", figures)}
 <p><b>Why the ranges are wide.</b> Cancellations come in bunches: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each range is worked out twice, once allowing for an airline's bad week and once for a bad day at the airport, and the wider of the two is used.</p>
-<p><b>When there are too few flights.</b> The total and each row of the table get a percentage only when they rest on at least 10 cancelled flights, from at least 5 airlines and at least 5 days. The delay figures are held to the same rule, with 10 delayed flights. A row with too few reads “Not enough flights yet”.</p>
+<p><b>When there are too few flights.</b> The total and each row of the table get a percentage only when they rest on at least 10 cancelled flights, from at least 5 airlines and at least 5 days. The delay ranges are held to the same rule, with 10 delayed flights. A row with too few reads “Not enough flights yet”.</p>
 <p><b>Why a flight's own chance has no range.</b> The chance on a flight's page isn't a measured figure like the ones above. It's a mix of three histories, using the numbers 14 and 100, which haven't been tested yet. A flight number's own history is often short: one with 6 flights and none cancelled could be a flight that is never cancelled, or one that is cancelled a third of the time. In place of a range, the “Worked out from” line at the top of a flight's page says what the chance rests on: whose history, how many flights, and the dates of a bad week. The lines below it give plain counts, so you can see how much, or how little, is behind the chance.</p>
 </section>
 <section>
@@ -683,13 +693,14 @@ def _search() -> str:
     one wrapper, hidden until search.js has read the flights, so that none of them shows without the others; in the
     box's place without scripts, the line whose last words link to the day list. The box is named by its visible
     label (no aria-label: WCAG 2.5.3) and described by the hint; the results are announced as the script writes
-    them."""
+    them, by a plain wrapper around their list that never toggles: the script shows and hides the list, and a live
+    region that is hidden when its first results arrive may not announce them."""
     before, link, after = words.FIND_OFF
     return "\n".join(['<div class="find" id="find" hidden>',
                       f'<label class="find-l" for="search">{e(words.FIND_LABEL)}</label>',
                       f'<input id="search" type="search" placeholder="{e(words.SEARCH_HINT)}" '
                       'aria-describedby="find-hint">',
-                      '<ul id="search-results" aria-live="polite" hidden></ul>',
+                      '<div aria-live="polite"><ul id="search-results" hidden></ul></div>',
                       f'<p class="find-hint" id="find-hint">{e(words.FIND_HINT)}</p>',
                       "</div>",
                       f'<p class="find-off" id="find-off">{e(before)}<a href="#days">{e(link)}</a>{e(after)}</p>'])

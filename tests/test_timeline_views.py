@@ -465,13 +465,32 @@ def test_the_cancelled_row_is_open_with_its_notice_and_changes():
     assert text(row).startswith("Thursday 29 October · scheduled to leave at 17:10 · CANCELLED")
     assert 'class="marked"' not in row  # "This flight is marked cancelled. Contact your airline." is for a day ahead
     assert "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." in text(row)
-    assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
+    assert [text(li) for li in re.findall(r"<li[^>]*>(.*?)</li>", row)] == [
         "Already on the list on 27 Oct at 20:04 on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
         "17:32 Expected to leave at 17:38 instead",
         "18:32 Expected to leave at 18:45 instead",
         "Between 19:16 and 19:32 Cancelled",
     ]
+
+
+CANCEL_LINE = '<li class="is-cancel"><span class="t">Between 19:16 and 19:32</span> <span class="w">Cancelled</span></li>'
+
+
+def test_the_cancelled_line_in_a_list_of_changes_has_its_hook(israeli_machine):
+    """docs/site-redesign.md, "Look A": a "Cancelled" line in a list of changes is red, and only that line. The line
+    carries is-cancel and its word stands in .w, for the sheet; the other lines carry neither."""
+    page = to3459_page()
+    assert page.count('class="is-cancel"') == 1 and page.count('class="w"') == 1
+    assert CANCEL_LINE in day_block(page, "2026-10-29-1710-ORY")
+    moved = flight("moved", local(30, 1, 10), sched_local_first=local(29, 23, 30), **CLEAN)
+    start = first(moved) | {"sched_local": local(29, 23, 30), "est_local": local(29, 23, 30)}
+    gone = then(start, utc(29, 20, 32, 45), kind="retime", sched_local=local(30, 1, 10), est_local=local(30, 1, 10),
+                status="CANCELED")
+    block = day_block(page_of(moved, obs=[start, gone]), "2026-10-29-2330-JFK")
+    assert ('<li class="is-cancel"><span class="t">Between 29 Oct 22:16 and 29 Oct 22:32</span> Moved to a new '
+            'scheduled time: 29 Oct 23:30 → 01:10, <span class="w">cancelled</span></li>') in block
+    assert block.count("<li") == 2 and block.count("is-cancel") == 1
 
 
 def test_other_rows_are_closed():
@@ -1687,7 +1706,7 @@ SECTIONS = {
         "Departures delayed an hour or more: 7.7% (between 6.4% and 9.4%)",
         "Arrivals delayed an hour or more: 4.9% (between 3.8% and 6.3%)",
         "Why the ranges are wide. Cancellations come in bunches: an airline cancels several flights in the same week, and a bad day hits many flights at once. So each range is worked out twice, once allowing for an airline's bad week and once for a bad day at the airport, and the wider of the two is used.",
-        "When there are too few flights. The total and each row of the table get a percentage only when they rest on at least 10 cancelled flights, from at least 5 airlines and at least 5 days. The delay figures are held to the same rule, with 10 delayed flights. A row with too few reads “Not enough flights yet”.",
+        "When there are too few flights. The total and each row of the table get a percentage only when they rest on at least 10 cancelled flights, from at least 5 airlines and at least 5 days. The delay ranges are held to the same rule, with 10 delayed flights. A row with too few reads “Not enough flights yet”.",
         "Why a flight's own chance has no range. The chance on a flight's page isn't a measured figure like the ones above. It's a mix of three histories, using the numbers 14 and 100, which haven't been tested yet. A flight number's own history is often short: one with 6 flights and none cancelled could be a flight that is never cancelled, or one that is cancelled a third of the time. In place of a range, the “Worked out from” line at the top of a flight's page says what the chance rests on: whose history, how many flights, and the dates of a bad week. The lines below it give plain counts, so you can see how much, or how little, is behind the chance.",
     ],
     "What “cancelled”, “delayed” and “notice” mean": [
@@ -2111,7 +2130,7 @@ FIND = ('<div class="find" id="find" hidden>\n'
         '<label class="find-l" for="search">Find your flight</label>\n'
         '<input id="search" type="search" placeholder="Flight number or city, like LY 001 or Paris" '
         'aria-describedby="find-hint">\n'
-        '<ul id="search-results" aria-live="polite" hidden></ul>\n'
+        '<div aria-live="polite"><ul id="search-results" hidden></ul></div>\n'
         '<p class="find-hint" id="find-hint">Your flight number is on your ticket or booking email.</p>\n'
         "</div>\n"
         '<p class="find-off" id="find-off">To find your flight, <a href="#days">pick its day below</a>.</p>')
@@ -2126,7 +2145,7 @@ def test_without_scripts_the_search_is_replaced_by_the_day_list_link():
     els = {el.attrs["id"]: el for el in main_of(page).walk() if "id" in el.attrs}
     assert "hidden" in els["find"].attrs and "hidden" not in els["find-off"].attrs
     assert "hidden" not in els["search"].attrs  # the wrapper hides it
-    assert [k.tag for k in els["find"].kids] == ["label", "input", "ul", "p"]
+    assert [k.tag for k in els["find"].kids] == ["label", "input", "div", "p"]
     # the link leads to "Pick a day:" with the list under it, so the line it names stays in view
     assert [(k.tag, k.classes) for k in els["days"].kids] == [("p", ["days-h"]), ("ol", ["days"])]
     assert "day/2026-10-26.html" in section(page, 'id="days"', "</ol>")
@@ -2145,9 +2164,12 @@ def test_the_search_box_is_named_by_its_visible_label():
 
 def test_the_results_are_announced_as_they_change():
     """A screen reader hears the results list's lines as the script writes them, "No flight found" and the "more" line
-    among them."""
+    among them. The live region is a plain wrapper around the list, which the script shows and hides: a region that
+    is itself hidden when its first results arrive may not announce them."""
+    (wrapper,) = [el for el in main_of(front()).walk() if any(k.attrs.get("id") == "search-results" for k in el.kids)]
+    assert (wrapper.tag, wrapper.attrs, len(wrapper.kids)) == ("div", {"aria-live": "polite"}, 1)
     els = {el.attrs["id"]: el for el in main_of(front()).walk() if "id" in el.attrs}
-    assert els["search-results"].attrs["aria-live"] == "polite"
+    assert "aria-live" not in els["search-results"].attrs and "hidden" in els["search-results"].attrs
 
 
 def test_search_data_in_the_page():
@@ -2354,14 +2376,14 @@ def test_the_story_box():
     assert ('<h3><a href="flight/TO3459-D.html#2026-10-29-1710-ORY"><span class="d">TO 3459 · Tel Aviv to Paris'
             "</span></a></h3>") in box
     assert re.findall(r'<p class="when">(.*?)</p>', box) == ["Thursday 29 October · scheduled to leave at 17:10"]
-    assert [text(li) for li in re.findall(r"<li>(.*?)</li>", box)] == [
+    assert [text(li) for li in re.findall(r"<li[^>]*>(.*?)</li>", box)] == [
         "Already on the list on 27 Oct at 20:04 on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
         "17:32 Expected to leave at 17:38 instead",
         "18:32 Expected to leave at 18:45 instead",
         "Between 19:16 and 19:32 Cancelled",
     ]
-    assert '<ol class="changes">' in box and '<span class="t">Between 19:16 and 19:32</span>' in box
+    assert '<ol class="changes">' in box and CANCEL_LINE in box and box.count("is-cancel") == 1
 
 
 def test_the_story_box_holds_its_flight_pages_title_and_the_designs_day():

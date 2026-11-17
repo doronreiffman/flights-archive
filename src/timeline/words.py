@@ -261,6 +261,19 @@ def _change(o: dict, before: dict, direction: str, page_date: date) -> str | Non
     return text[0].upper() + text[1:]
 
 
+def cancel_split(text: str) -> tuple[str, str, str] | None:
+    """A change line's text around the word that says the flight was cancelled, for the sheet's red
+    (docs/site-redesign.md, "Look A"): _change writes it as a part of its own, first ("Cancelled", "Cancelled, terminal
+    3") or after a move
+    ("Moved to a new scheduled time: 30 Oct 23:30 → 01:10, cancelled"). (before, word, after), which join back to the
+    text; None for a line with no cancellation, the earliest record's "already cancelled" among them."""
+    parts = text.split(", ")
+    at = 0 if parts[0] == "Cancelled" else 1 if parts[1:2] == ["cancelled"] else None
+    if at is None:
+        return None
+    return "".join(f"{p}, " for p in parts[:at]), parts[at], "".join(f", {p}" for p in parts[at + 1:])
+
+
 def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: float,
                  resumes: frozenset[datetime]) -> list[tuple[str, str]]:
     """What changed, oldest first: (left column, text) for the earliest record and each record that changed

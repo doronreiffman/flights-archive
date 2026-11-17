@@ -173,6 +173,14 @@ def test_ten_links_then_a_line_saying_how_many_more():
     assert out["after"][1] == {"hidden": False, "items": [*map(link, many[9:19])]}  # LY 010 to 019: ten, no line
 
 
+def test_the_more_line_writes_its_count_with_thousands_separators():
+    """As every count on the site: "1,234 more. Keep typing to narrow it down."."""
+    many = [entry("LY", f"{n:04d}", "London", "LHR") for n in range(1, 1245)]  # 1,244: ten shown, 1,234 more
+    out = typed(many, "london")
+    assert out["after"][0]["items"][-1] == {"tag": "li", "class": "more", "text": f"1,234 {MORE}"}
+    assert len(out["after"][0]["items"]) == 11
+
+
 def test_a_query_that_matches_nothing_says_so():
     """docs/site-redesign.md, "Front page", item 2: one line for a query that finds no flight; nothing for an empty
     box."""
