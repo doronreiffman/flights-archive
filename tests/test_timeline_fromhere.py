@@ -189,22 +189,37 @@ function make(spec, parent) {
 }
 const root = make(payload.page, null);
 function* walk(el) { yield el; for (const kid of el.kids) yield* walk(kid); }
-let ready = null;
+// Each listener with what it listens on: "document" or "window", as a browser fires DOMContentLoaded and
+// visibilitychange on the document and pageshow on the window.
+const listeners = [];
 globalThis.document = {
   getElementById: (id) => [...walk(root)].find((el) => el.attrs.id === id) || null,
   querySelectorAll(selector) {
     if (selector !== "[data-updated]") throw new Error(`querySelectorAll(${selector})`);
     return [...walk(root)].filter((el) => "data-updated" in el.attrs);
   },
-  addEventListener(type, listener) { if (type === "DOMContentLoaded") ready = listener; },
+  visibilityState: "visible",
+  addEventListener(type, listener) { listeners.push(["document", type, listener]); },
 };
+globalThis.window = { addEventListener(type, listener) { listeners.push(["window", type, listener]); } };
+function fire(target, type) {
+  listeners.forEach(([on, kind, listener]) => { if (on === target && kind === type) listener({ type, persisted: true }); });
+}
 const dump = (el) => ({ tag: el.tag, n: el.n, attrs: { ...el.attrs }, hidden: el.hidden, text: el.text,
                         children: el.kids.map(dump) });
 const built = dump(root);
-Date.now = () => payload.now;
+let clock = payload.now;
+Date.now = () => clock;
 require(SCRIPT);
-ready();
-console.log(JSON.stringify({ built, after: dump(root), writes }));
+fire("document", "DOMContentLoaded");
+const first = dump(root);
+// Then each [target, type, clock, visibility] of payload.again: the page shown again, or the tab hidden, later.
+for (const [target, type, at, state] of payload.again || []) {
+  clock = at;
+  document.visibilityState = state;
+  fire(target, type);
+}
+console.log(JSON.stringify({ built, first, after: dump(root), writes }));
 """
 
 MORE = "Your flight is more than 3 days away. Flights show up on the airport's list about 3 days ahead."
@@ -301,6 +316,22 @@ def run(page: list, clock_hours: float, tz: str | None = None) -> tuple[dict, di
     and the serial numbers of the elements whose text the script set."""
     out = node(HARNESS, {"page": page, "now": UPDATED_MS + round(clock_hours * HOUR)}, tz)
     return out["built"], out["after"], out["writes"]
+
+
+# The two ways a page is shown again: brought back from the browser's memory (pageshow, on the window), and its tab
+# come back to (visibilitychange on the document, with the document visible).
+EVENTS = {"pageshow": ("window", "pageshow"), "tab visible again": ("document", "visibilitychange")}
+
+
+def rerun(page: list, first: float, then: float, event: str = "pageshow",
+          state: str = "visible") -> tuple[dict, dict, dict, list]:
+    """The page as built, after the hook ran on load with the visitor's clock `first` hours after the last update,
+    and after `event` fired `then` hours after it with the document's visibility `state`; and the serial numbers of
+    the elements whose text the script set, on both runs."""
+    target, kind = EVENTS[event]
+    at = [UPDATED_MS + round(h * HOUR) for h in (first, then)]
+    out = node(HARNESS, {"page": page, "now": at[0], "again": [[target, kind, at[1], state]]})
+    return out["built"], out["first"], out["after"], out["writes"]
 
 
 def walk(el: dict):
@@ -600,3 +631,82 @@ def test_a_day_that_passes_moves_into_an_empty_past_list():
     assert (days(after, "now"), days(after, "later"), days(after, "past")) == (["l0"], [], ["t"])
     assert passed_shown(after, "t") and not chances_shown(after, "t")
     assert layout(part(after, "l0")) == ["head", "chances", "passed", "support", "own"]
+
+
+# --- a page shown again ------------------------------------------------------------------------------
+# A tab left open, or a page the browser brings back from memory, is worked out again at the visitor's clock then
+# (the whole-branch review's Important 2): its age, and on a flight page its days. Each step reads the page as it
+# stands, so a second run moves only what has changed since the first.
+
+AGAIN = [pytest.param(flight_page(top=9, later=(26, 80)), 0, 5, id="no day passes"),
+         pytest.param(flight_page(top=2, later=(26, 50)), 1, 5, id="the top day passes"),
+         pytest.param(flight_page(top=2, later=(4, 30)), 3, 6, id="a later day passes after the top day"),
+         pytest.param(flight_page(top=2, later=(26, 50)), 5, 168, id="every day passes"),
+         pytest.param(flight_page(top=2), 1, 3, id="the only day passes"),
+         pytest.param(flight_page(top=2, later=(5,)), 3, 8, id="the last of two passes"),
+         pytest.param(flight_page(top=80), 0, 30, id="from over 72 hours"),
+         pytest.param(flight_page(top=2, later=(26,), past=()), 1, 5, id="into an empty past list"),
+         pytest.param(no_day_page(), 0, 30, id="no day ahead"),
+         pytest.param(other_page(), 0, 30, id="a day page")]
+
+
+def seen(el: dict, behind: bool = False) -> dict:
+    """The page as a reader sees it: every element in its place with its attributes and text, `hidden` read as hidden
+    by itself or by an element around it (the style sheet's `[hidden] { display: none !important; }`). A day that
+    passes between two runs keeps, inside its hidden chances, the pair the first run showed; nobody sees it."""
+    gone = behind or el["hidden"]
+    return {**el, "hidden": gone, "children": [seen(kid, gone) for kid in el["children"]]}
+
+
+@pytest.mark.parametrize("event", EVENTS)
+@pytest.mark.parametrize("page,first,then", AGAIN)
+def test_a_page_shown_again_later_reads_as_one_first_read_then(page, first, then, event):
+    built, once, after, writes = rerun(page, first, then, event)
+    _, single, _ = run(page, then)
+    assert seen(after) == seen(single)
+    assert ages(after) != ages(once)  # the second run ran
+    # Each run writes the age into each [data-updated] element and no other text (the stand-in throws on any other).
+    dated = sorted(el["n"] for el in walk(built) if "data-updated" in el["attrs"])
+    assert sorted(writes) == sorted(dated * 2)
+
+
+@pytest.mark.parametrize("event", EVENTS)
+@pytest.mark.parametrize("page,clock", SCENES)
+def test_a_page_shown_again_at_the_same_clock_is_unchanged(page, clock, event):
+    _, once, after, _ = rerun(page, clock, clock, event)
+    assert after == once
+
+
+def test_the_all_airlines_line_reads_its_form_without_a_time_once_the_last_day_passes_between_runs():
+    # The review's case (IZ 212): an hour after the update the only day is an hour ahead, and the line shows its
+    # (0, 3] form; two hours later the day has passed, and the line shows its form without a time, as built.
+    built, once, after, _ = rerun(flight_page(top=2), 1, 3)
+    assert aa_shown(once) == [(0, 3)]
+    assert aa_shown(after) == aa_shown(built) == ["off"]
+    assert slot(after) == {"none-ahead": [True, True], "flight-ahead worked": [False]}
+
+
+@pytest.mark.parametrize("event", EVENTS)
+def test_the_age_line_is_worked_out_again(event):
+    _, once, after, _ = rerun(flight_page(top=40), 0.5, 30, event)
+    assert ages(once) == ["Updated less than an hour ago"] * 2
+    assert ages(after) == ["Updated more than a day ago"] * 2
+    _, once, after, _ = rerun(other_page(), 0.5, 30, event)
+    assert (ages(once), ages(after)) == (["Updated less than an hour ago"], ["Updated more than a day ago"])
+
+
+def test_a_tab_being_hidden_leaves_the_page_alone():
+    # visibilitychange fires when the tab is hidden too: the page is worked out again only when it shows.
+    _, once, after, _ = rerun(flight_page(top=2, later=(26, 50)), 1, 5, "tab visible again", state="hidden")
+    assert after == once
+
+
+def test_an_unreadable_attribute_leaves_the_page_as_built_on_the_second_run_too():
+    page = flight_page(top=2, later=(26, 50))
+    for anchor in ("t", "l0"):
+        for bad in [*UNREADABLE, None]:
+            built, _, after, _ = rerun(with_attr(page, by_id(anchor), "data-sched", bad), 1, 5)
+            assert blank_ages(after) == blank_ages(built), (anchor, bad)
+    for bad in [*UNREADABLE, None]:
+        _, _, after, writes = rerun(flight_page(updated=bad), 1, 5)
+        assert ages(after) == [BUILT_AGE] * 2 and writes == [], bad

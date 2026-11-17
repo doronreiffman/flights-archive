@@ -1,7 +1,8 @@
 // The site's page script (docs/flight-lookup.md, "Pages", `fromhere.js`). The build writes every time it reads as a
 // UTC instant in a data- attribute: the page's last update in data-updated, a day's scheduled time in data-sched. It
 // compares them with the visitor's clock, so the visitor's time zone does not matter. Uploads are by hand, so a page
-// can be a day or more old when it is read; this script keeps an old page reading right.
+// can be a day or more old when it is read; this script keeps an old page reading right, and works it out again each
+// time the page is shown again, so a tab left open does too.
 //
 // The page's age is the one text it writes, into each [data-updated] element (docs/site-redesign.md, "Every page").
 // Everything else it does is hide, show and move what the page already holds. On a flight page: each day still
@@ -112,10 +113,12 @@ function showStretch(line, schedIso, nowMs) {
 }
 
 // No day ahead: the no-flight-ahead headline and "Worked out from" line show, and the flight-ahead line hides. The
-// all-airlines line stays as built, where only its form without a time shows.
-function showNoneAhead(support) {
+// all-airlines line (`line`, when the page has one) shows its form without a time alone, as built, whatever form an
+// earlier run showed while a day was still ahead.
+function showNoneAhead(support, line) {
   kids(support, "none-ahead").forEach((el) => { el.hidden = false; });
   kids(support, "worked").forEach((el) => { if (!el.classList.contains("none-ahead")) el.hidden = true; });
+  if (line) [...line.children].forEach((el) => { el.hidden = !el.classList.contains("off"); });
 }
 
 // A flight page's days (docs/flight-lookup.md, "Pages", Flight page). #now holds the traveller's day with the
@@ -144,23 +147,31 @@ function arrange(nowMs) {
   // Each to the head of .past in page order, so the latest ends first.
   leaving.forEach((d) => { past.insertBefore(d, kid(past, "day")); });
   if (!support) return;
+  const line = kid(support, "aa");
   if (ahead) {
-    const line = kid(support, "aa");
     if (line) showStretch(line, ahead.getAttribute("data-sched"), nowMs);
   } else {
-    showNoneAhead(support);
+    showNoneAhead(support, line);
   }
 }
 
-if (typeof document !== "undefined") {
-  document.addEventListener("DOMContentLoaded", () => {
-    const nowMs = Date.now();
-    document.querySelectorAll("[data-updated]").forEach((el) => {
-      const text = age(el.getAttribute("data-updated"), nowMs);
-      if (text !== null) el.textContent = text;
-    });
-    arrange(nowMs);
+// The page's age, and on a flight page its days, at the visitor's clock now. Run when the page loads, and again
+// whenever it is shown again: a page the browser brings back from memory (pageshow), a tab come back to
+// (visibilitychange, once visible). Each step reads the page as it stands, so a second run moves only what has
+// changed since the first, and a second run at the same clock changes nothing.
+function refresh() {
+  const nowMs = Date.now();
+  document.querySelectorAll("[data-updated]").forEach((el) => {
+    const text = age(el.getAttribute("data-updated"), nowMs);
+    if (text !== null) el.textContent = text;
   });
+  arrange(nowMs);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", refresh);
+  window.addEventListener("pageshow", refresh);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 }
 
 if (typeof module !== "undefined") module.exports = { age, pick, plan };

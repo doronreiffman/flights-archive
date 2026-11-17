@@ -259,6 +259,11 @@ COLLECTOR_MUTATIONS = {
     "fromhere: the flight-ahead line left showing with no flight ahead": (FROMHERE, '  kids(support, "worked").forEach((el) => { if (!el.classList.contains("none-ahead")) el.hidden = true; });\n', ""),
     "fromhere: an empty past list taken for none": (FROMHERE, "if (leaving.length && !past) return;", 'if (leaving.length && !kid(past, "day")) return;'),
     "fromhere: a bad all-airlines bound hides the line": (FROMHERE, "  if (result === null) return;\n", ""),
+    # a page shown again is worked out again (the whole-branch review's Important 2)
+    "fromhere: not worked out again when the browser shows the page again": (FROMHERE, '  window.addEventListener("pageshow", refresh);\n', ""),
+    "fromhere: not worked out again when the tab is shown again": (FROMHERE, '  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });\n', ""),
+    "fromhere: worked out again when the tab is hidden": (FROMHERE, 'if (document.visibilityState === "visible") refresh();', "refresh();"),
+    "fromhere: a second run leaves the all-airlines line in its timed form": (FROMHERE, '  if (line) [...line.children].forEach((el) => { el.hidden = !el.classList.contains("off"); });\n', ""),
     "fromhere: reads an id the page does not carry": (FROMHERE_NAMES, 'getElementById("now")', 'getElementById("top")'),
     "fromhere: finds a day's lines by a class the page does not carry": (FROMHERE_NAMES, 'kid(head, "own")', 'kid(head, "mine")'),
     "fromhere: tests a class the page does not carry": (FROMHERE_NAMES, 'classList.contains("later")', 'classList.contains("next")'),
