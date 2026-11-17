@@ -17,9 +17,10 @@ PUBLISHED = {"AA": "AIRLINE A", "BB": "AIRLINE B", "DD": "AIRLINE D", "EE": "AIR
 
 
 def rows(airline: str, count: int, base: int = 100, at: int = 0) -> list[dict]:
-    """`count` closed, departed numbers of `airline` (numbers base, base + 1, ...), one an hour from the hour `at`
-    of 1 November, 00:00 UTC. Rows of two airlines at the same hour are one slot, and the lower number groups it."""
-    return [number(f"{airline}-{i}", T(1, 0) + timedelta(hours=at + i), airline=airline,
+    """`count` numbers of `airline` that departed on time, numbered base, base + 1, ... (their flight IDs too), one an
+    hour from `at` hours after 1 November, 00:00 UTC; a row is closed at LAST only when scheduled 48 hours or more
+    before it. Rows of two airlines at the same hour are one slot, and the lower number groups it."""
+    return [number(f"{airline}-{base + i}", T(1, 0) + timedelta(hours=at + i), airline=airline,
                    flight_no=str(base + i)) | {"airline_name": PUBLISHED[airline], "est_minus_sched_min": 0} for i in range(count)]
 
 
@@ -29,6 +30,7 @@ def archive():
     table = (rows("AA", 100) + rows("BB", 99, base=1000) + rows("DD", 100, base=2000) + rows("EE", 3, base=3000)
              + rows("LY", 3, at=500)
              + [r | {"outcome": "left"} for r in rows("AA", 1, base=900, at=700) + rows("BB", 1, base=9000, at=700)])
+    assert len({r["flight_id"] for r in table}) == len(table)  # a flight ID names one row
     snaps = board(LAST)
     return blend.records(table, [], snaps), table, counting.flights(table, counting.last_sighting(snaps))
 

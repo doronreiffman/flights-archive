@@ -350,3 +350,49 @@ def test_flat_delays():
     # a row whose delayed flights are below the floor (9 of them) is not read, however far off
     thin = departures(9)
     blend.flat_delays(*thin, replace(blend.records(*thin).airport, delay={"D": made(0, 100), "A": made(0, 0)}))
+
+
+# --- end to end: from rows to the two chances ----------------------------------------------------------
+
+def test_from_rows_to_the_two_chances():
+    """docs/flight-lookup.md:775, "A synthetic fixture with hand-computed chances": rows through `records` to the
+    chances of LY 1, each worked out by hand below. 200 departures, one an hour from 1 November 00:00 UTC, so each is
+    a flight of its own, all closed at the last sighting (12 November 00:00). Of a number's flights the first are
+    cancelled, the next departed an hour late and the rest on time. Each is first listed 30 hours before its time,
+    so it is in the 24-hour row; EE's are first listed 10 hours before, so they are in no 24-hour row."""
+    table, obs = [], []
+
+    def fly(airline: str, flight_no: str, n: int, cancelled: int, delayed: int, ahead: int = 30) -> None:
+        for i in range(n):
+            sched, fid = T(1, 0) + len(table) * H, f"{airline}{flight_no}-{i}"
+            table.append(number(fid, sched, "canceled" if i < cancelled else "departed",
+                                late=60.0 if cancelled <= i < cancelled + delayed else 0.0, airline=airline,
+                                flight_no=flight_no, name=airline))
+            obs.append(seen(fid, 1, sched - ahead * H, sched_utc=sched))
+
+    fly("LY", "1", 6, cancelled=2, delayed=1)
+    fly("LY", "2", 19, cancelled=3, delayed=4)
+    for airline, cancelled in (("AA", 2), ("BB", 1), ("CC", 1), ("DD", 1)):
+        fly(airline, "1", 25, cancelled, delayed=0)
+    fly("EE", "1", 75, cancelled=10, delayed=13, ahead=10)
+    r = blend.records(table, obs, board(T(12, 0)))
+
+    lead, ly, airport = r.numbers[("LY", "1", "D")], r.airlines["LY"], r.airport
+    assert (lead.flights, lead.cancelled, lead.flew, lead.delayed) == (6, 2, 4, 1)
+    assert (ly.flights, ly.cancelled, ly.flew, ly.delayed) == (25, 5, 20, 5)
+    assert (airport.total.cancelled, airport.total.flights) == (20, 200)
+    # LY's 25 and AA's to DD's 100; the cancelled ones from 5 airlines on 5 days (1 to 5 November): it clears the floor
+    assert (airport.rows[24].cancelled, airport.rows[24].flights, airport.rows[24].clears_floor) == (10, 125, True)
+    assert (airport.delay["D"].cancelled, airport.delay["D"].flights) == (18, 180)  # LY's 5 and EE's 13 of 180 flown
+
+    # Cancelled, 20 hours before its time (the 24-hour row):
+    #   the airport: 20 / 200 = 0.1
+    #   LY: (5 + 100 x 0.1) / (25 + 100) = 15 / 125 = 0.12
+    #   LY 1: (2 + 14 x 0.12) / (6 + 14) = 3.68 / 20 = 0.184
+    #   scaled by the 24-hour row, 10 / 125 = 0.08, over the airport's 0.1, so by 0.8: 0.184 x 0.8 = 0.1472
+    assert cancel_chance(lead, ly, airport, blend.row_for(20)) == approx(0.1472)
+    # Delayed an hour or more, if it flies, not scaled:
+    #   the departures that flew: 18 / 180 = 0.1
+    #   LY: (5 + 100 x 0.1) / (20 + 100) = 15 / 120 = 0.125
+    #   LY 1: (1 + 14 x 0.125) / (4 + 14) = 2.75 / 18 = 0.152778
+    assert delay_chance(lead, ly, airport, "D") == approx(0.152778)

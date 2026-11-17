@@ -66,8 +66,9 @@ def known(label: str) -> bool:
 
 
 def delayed(f: counting.Flight, by_id: dict[str, dict]) -> bool:
-    """Delayed an hour or more, read from its numbers that departed or landed (the delay measurement's reading); the
-    back-test counts the delays it scores by it too."""
+    """Whether flight `f` was delayed an hour or more: any of its numbers that departed or landed was, by
+    display.delayed_an_hour (the delay measurement's reading). The blend's delay counts use it, and so does the
+    back-test, for the delays that happened."""
     return any(display.delayed_an_hour(by_id[fid]) for fid in f.numbers
                if by_id[fid]["outcome"] in counting.OPERATED)
 
@@ -195,8 +196,9 @@ def lead(f: counting.Flight, by_id: dict[str, dict]) -> dict:
 
 def flat_delays(table: list[dict], obs: list[dict], snaps: list[dict], airport: Airport) -> None:
     """The stop behind "It's about the same however soon you fly.": ValueError when a row's delay rate, for
-    departures or arrivals, is more than one percentage point from the direction's own rate in `airport`. Only rows
-    whose delayed flights clear C8's floor are read; on fewer, a row differs by chance."""
+    departures or arrivals, is more than one percentage point from the direction's own rate in `airport`, the full
+    model's airport (`records` with no cut), as the rows are the full model's. Only rows whose delayed flights clear
+    C8's floor are read; on fewer, a row differs by chance."""
     flights_ = counting.flights(table, counting.last_sighting(snaps))
     by_id = {r["flight_id"]: r for r in table}
     in_rows = counting.cells(flights_, counting.passings(counting.stretches(table, obs), counting.holes(snaps)))
