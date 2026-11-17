@@ -1,0 +1,68 @@
+"""The spoken names of airlines: the name a traveller says aloud ("Lufthansa", not "LUFTHANSA"), kept by hand,
+and the list of airlines that still need one (docs/will-it-fly-plan.md, Question 5, answered 2026-11-17: every
+airline some flight is grouped under, and every airline with 100 or more counted flights).
+
+This module only holds and lists the names. A page that says one passes it through `views.d()`.
+
+    PYTHONPATH=src python -m timeline.names --model data/model-<date>
+"""
+import argparse
+import sys
+from pathlib import Path
+
+from . import blend, counting
+from .load import load
+
+FLOOR = 100  # counted flights that make an airline needed even when no flight is grouped under it
+
+# The owner approves this list (the plan's Question 5); the three are the ones the approved lines use.
+SPOKEN_NAMES: dict[str, str] = {"LH": "Lufthansa", "LO": "LOT", "LY": "El Al"}
+
+
+def spoken(code: str) -> str | None:
+    """The name a traveller says for airline `code`, or None when none is kept."""
+    return SPOKEN_NAMES.get(code)
+
+
+def needed(records: blend.Records, table: list[dict], flights_: list[counting.Flight]) -> list[tuple[str, str, int, str]]:
+    """Each airline that needs a spoken name, sorted by code: (code, published name, counted flights, why). Why is
+    "100 or more flights", "a grouping airline" (C8: some flight is grouped under it) or both. Counted flights are
+    those with a number of the airline whose result is known (C4: not "unknown"), whoever the flight is grouped
+    under."""
+    by_id = {r["flight_id"]: r for r in table}
+    counted = dict.fromkeys(records.published, 0)
+    for f in flights_:
+        if f.result != "unknown":
+            for code in {by_id[fid]["airline"] for fid in f.numbers}:
+                counted[code] += 1
+    out = []
+    for code in sorted(counted):
+        reasons = ([f"{FLOOR} or more flights"] if counted[code] >= FLOOR else []) + \
+                  (["a grouping airline"] if code in records.airlines else [])
+        if reasons:
+            out.append((code, records.published[code], counted[code], " and ".join(reasons)))
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Print the airlines that need a spoken name, each with the one kept or "missing". Exit 1 when one is missing,
+    2 with no model."""
+    parser = argparse.ArgumentParser(prog="python -m timeline.names", description="The airlines that need a "
+                                     "spoken name, and the names kept for them.")
+    parser.add_argument("--model", type=Path, required=True, help="the model folder (data/model-<date>)")
+    args = parser.parse_args(argv)
+    if not (args.model / "flights.parquet").exists():
+        print(f"no model under {args.model}; run model.build first", file=sys.stderr)
+        return 2
+    table, obs, snaps = load(args.model)
+    missing = 0
+    for code, published, flights_n, why in needed(blend.records(table, obs, snaps), table,
+                                                  counting.flights(table, counting.last_sighting(snaps))):
+        name = spoken(code)
+        missing += name is None
+        print(f"{code}  {published}  {flights_n} flights  {why}  {name or 'missing'}")
+    return 1 if missing else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

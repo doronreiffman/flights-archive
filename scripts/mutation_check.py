@@ -71,6 +71,7 @@ RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
 BACKTEST = ("src/timeline/backtest.py", ["tests/test_backtest.py"])
+NAME_LIST = ("src/timeline/names.py", ["tests/test_names.py"])
 # The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
 NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
 VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
@@ -617,6 +618,12 @@ COLLECTOR_MUTATIONS = {
     "backtest: top-tenth flag reversed": (BACKTEST, "top.cancelled * rest.flights <= rest.cancelled * top.flights)", "top.cancelled * rest.flights >= rest.cancelled * top.flights)"),
     "backtest: ties broken against the flight key": (BACKTEST, "key=lambda i: (-chance(i), i.key))", "key=lambda i: (chance(i), i.key), reverse=True)"),
     "backtest: a flight with no delay chance not counted": (BACKTEST, "no_delay_chance=sum(i.flew and i.delay is None for i in items))", "no_delay_chance=0)"),
+    "names: an airline no flight is grouped under needed": (NAME_LIST, "        if reasons:\n", "        if reasons and code in records.airlines:\n"),
+    "names: a missing name exits 0": (NAME_LIST, "    return 1 if missing else 0\n", "    return 0\n"),
+    "names: the floor of 100 flights exclusive": (NAME_LIST, "if counted[code] >= FLOOR", "if counted[code] > FLOOR"),
+    "names: an unknown result counted": (NAME_LIST, 'if f.result != "unknown":', "if True:"),
+    "names: a grouping airline with few flights left out": (NAME_LIST, 'if code in records.airlines else [])', "if code in records.airlines and counted[code] >= FLOOR else [])"),
+    "names: no model exits 0": (NAME_LIST, "        return 2\n", "        return 0\n"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
