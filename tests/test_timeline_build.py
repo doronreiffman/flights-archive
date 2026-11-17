@@ -249,14 +249,14 @@ def test_two_numbers_on_one_page_stop_the_build():
 def test_a_cancellation_reads_the_same_on_the_front_page_and_its_flight_page(site):
     index = read(site, "index.html")
     recent = re.search(r'<tr><td>[^<]*</td><td><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">.*?</tr>', index)
-    assert recent.group(0).endswith("<td>at least 25 hours</td></tr>")
+    assert recent.group(0).endswith("<td>25+ hours</td></tr>")
     page = read(site, "flight/IZ991-D.html")
-    assert '<p class="warn">Warning: at least 25 hours.</p>' in page
+    assert '<p class="warn">Cancelled with at least 25 hours&#x27; notice.</p>' in page  # rule 8; the text is escaped
     assert "Between 27 Oct 08:00 and 27 Oct 08:15 Cancelled" in text(page)
     assert '<h2><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in index  # the story box
     # IZ 991 is due on 28 October, after the last record: not closed (C4), so not counted yet
     assert "So far, 0 of 0 flights with a known outcome were listed as cancelled." in text(index)
-    assert "<td>at least 25 hours</td>" in read(site, "cancellations.html")
+    assert "<td>25+ hours</td>" in read(site, "cancellations.html")
 
 
 def test_the_total_counts_closed_flights(tmp_path):
@@ -280,7 +280,7 @@ def closing_model() -> list:
     LY 9614, one flight (C1), which departed though EY 607 was listed as cancelled (C2); IZ 991, listed as cancelled;
     LY 003, which left the list in the gap (unknown). 27 October holds LY 004, which left in the gap. 28 October holds
     two flights not yet closed: LY 006, which departed, and UA 090 with LY 8090, one flight (C1), whose UA 090 was
-    listed as cancelled while LY 8090 is still listed: C2's result is cancelled, C10's label NO FINAL UPDATE (its time
+    listed as cancelled while LY 8090 is still listed: C2's result is cancelled, C10's label NO NEWS YET (its time
     has passed at the last record). LY 005 is still ahead, on 30 October. No closed flight has a number still listed
     (Question 3's case is left out)."""
     auh = dict(sched_local="2026-10-26T11:00:00", airport="AUH", city_en="ABU DHABI", counters="12-21")
@@ -305,7 +305,7 @@ def closing_model() -> list:
 def test_the_chart_counts_equal_the_day_pages(tmp_path):
     """The chart counts flights as the day pages do (C1, labelled by C10): 26 October is four flights, not five
     numbers, and EY 607's cancelled listing inside a flight that departed is not a cancelled flight; on 28 October,
-    UA 090 with LY 8090 is labelled NO FINAL UPDATE, not cancelled, though C2's result is cancelled."""
+    UA 090 with LY 8090 is labelled NO NEWS YET, not cancelled, though C2's result is cancelled."""
     site = make_site(tmp_path, closing_model())
     index, pages = read(site, "index.html"), all_pages(site)
     days = sorted(name[4:14] for name in pages if name.startswith("day/"))
@@ -337,7 +337,7 @@ def test_over_days_whose_flights_are_all_closed_the_day_pages_sum_to_the_total(t
 def test_a_closed_flight_still_listed(tmp_path):
     """LY 001 and LY 9614, one flight (C1), were due at 08:00 UTC on 27 October. LY 001 was listed as cancelled and
     LY 9614 is still listed normally at the last record, 48 hours and 15 minutes later: the flight is closed. Its
-    label is C10's, NO FINAL UPDATE, and the total counts it as cancelled, by C2 (Question 3). So its day page counts
+    label is C10's, NO NEWS YET, and the total counts it as cancelled, by C2 (Question 3). So its day page counts
     no cancelled flight while the total counts one."""
     ly1, ly9614 = dict(sched_local="2026-10-27T10:00:00"), dict(flight_no="9614", sched_local="2026-10-27T10:00:00")
     site = make_site(tmp_path, [(at(7, 45), [row(**ly1), row(**ly9614)]),
@@ -345,7 +345,7 @@ def test_a_closed_flight_still_listed(tmp_path):
                                 (at(8, 15, day=29), [row(**ly9614)])])
     day = read(site, "day/2026-10-27.html")
     assert re.findall(r'<span class="labels">(.*?)</span></li>', day) == [
-        '<span class="label l-no-final-update">NO FINAL UPDATE</span>']
+        '<span class="label l-no-news-yet">NO NEWS YET</span>']
     assert day_counts(day) == (1, 0, 0)
     assert total_counts(read(site, "index.html")) == (1, 1)
 

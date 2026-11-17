@@ -31,16 +31,14 @@ def test_fixed_texts_are_the_specs_words():
     assert (words.MEANS, words.MEANS_ANCHOR) == ("What the numbers mean", "what-the-numbers-mean")
     assert words.PLACEHOLDER == "[owner's wording]"
     assert words.CODE_URL == "https://github.com/doronreiffman/flights-archive"
-    assert words.DELAY_SENTENCE == (
-        "Expected times are the airport's own. This site doesn't turn them into delay figures, "
-        "because the airport doesn't say whether they mean leaving the gate or taking off.")
     assert str(words.ISRAEL) == "Asia/Jerusalem"
 
 
 def test_labels_and_their_order():
-    assert words.LABEL_ORDER == ("DEPARTED", "LANDED", "CANCELLED", "UPCOMING", "NO FINAL UPDATE", "UNKNOWN")
+    assert words.LABEL_ORDER == ("DEPARTED", "LANDED", "CANCELLED", "UPCOMING", "NO NEWS YET", "UNKNOWN")
     assert words.LABEL_ORDER == (words.DEPARTED, words.LANDED, words.CANCELLED, words.UPCOMING,
-                                 words.NO_FINAL_UPDATE, words.UNKNOWN)
+                                 words.NO_NEWS_YET, words.UNKNOWN)
+    assert words.NO_NEWS_YET == "NO NEWS YET"
 
 
 # --- times -----------------------------------------------------------------------------------------
@@ -82,8 +80,8 @@ def test_main_label_from_the_outcome(outcome, label):
 
 @pytest.mark.parametrize("sched_utc_final, label", [
     (datetime(2026, 10, 29, 22, 10), "UPCOMING"),
-    (datetime(2026, 10, 29, 21, 55), "NO FINAL UPDATE"),
-    (LAST_FETCH, "NO FINAL UPDATE"),  # at the last record's time: no longer ahead
+    (datetime(2026, 10, 29, 21, 55), "NO NEWS YET"),
+    (LAST_FETCH, "NO NEWS YET"),  # at the last record's time: no longer ahead
 ])
 def test_open_flight_upcoming_until_its_scheduled_time(sched_utc_final, label):
     assert words.main_label("open", sched_utc_final, LAST_FETCH) == label
@@ -94,144 +92,191 @@ def test_unknown_outcome_refused():
         words.main_label("teleported", datetime(2026, 10, 29, 22, 10), LAST_FETCH)
 
 
-def test_no_final_update_decided_in_utc(israeli_machine):
+def test_no_news_yet_is_decided_in_utc(israeli_machine):
     """23:55 Israel time is 21:55 UTC, before the 22:02 UTC last record: the evening flights of 29 October
-    have no final update. Comparing the Israel wall-clock value would call them UPCOMING."""
+    have no news yet. Comparing the Israel wall-clock value would call them UPCOMING."""
     f = {"outcome": "open", "sched_local_final": datetime(2026, 10, 29, 23, 55),
          "sched_utc_final": datetime(2026, 10, 29, 21, 55)}
-    assert words.main_label(f["outcome"], f["sched_utc_final"], LAST_FETCH) == "NO FINAL UPDATE"
+    assert words.main_label(f["outcome"], f["sched_utc_final"], LAST_FETCH) == "NO NEWS YET"
 
 
 SCHED = datetime(2026, 10, 29, 16, 30)
 
 
+def lnote(outcome, last_seen_at=SCHED - timedelta(hours=9)):
+    return {"outcome": outcome, "sched_utc_final": SCHED, "last_seen_at": last_seen_at}
+
+
+VANISHED_45 = lnote("vanished", SCHED - timedelta(hours=45, minutes=20))
 LABEL_NOTE_CASES = [
-    ("gap", SCHED - timedelta(hours=9), "No records for the time it left the airport's list."),
-    ("vanished", SCHED - timedelta(hours=6, minutes=20),
-     "Removed from the airport's list 6 hours before it was scheduled, with no final status. "
-     "Not necessarily cancelled; it may have moved to another time."),
-    ("vanished", SCHED - timedelta(hours=1, minutes=5),
-     "Removed from the airport's list 1 hour before it was scheduled, with no final status. "
-     "Not necessarily cancelled; it may have moved to another time."),
-    ("dropped", SCHED - timedelta(minutes=20), "Removed from the airport's list with no final status."),
-    ("departed", SCHED, None), ("landed", SCHED, None), ("canceled", SCHED, None), ("open", SCHED, None),
+    (lnote("open"), "NO NEWS YET", False,
+     "Its time has passed, and the airport hasn't said how it ended."),
+    (lnote("gap"), "UNKNOWN", False, "There's no record of how this flight ended."),
+    (VANISHED_45, "UNKNOWN", False,
+     "The airport removed this flight 45 hours early without saying why. "
+     "It may have been cancelled or moved to another time."),
+    (VANISHED_45, "UNKNOWN", True,
+     "The airport removed this flight 45 hours early without saying why. "
+     "It may have been cancelled or moved to another time. Check with your airline."),
+    (lnote("vanished", SCHED - timedelta(hours=1, minutes=5)), "UNKNOWN", False,
+     "The airport removed this flight 1 hour early without saying why. "
+     "It may have been cancelled or moved to another time."),
+    (lnote("dropped"), "UNKNOWN", False, "The airport removed this flight without saying why."),
+    (lnote("departed"), "DEPARTED", False, None), (lnote("landed"), "LANDED", False, None),
+    (lnote("canceled"), "CANCELLED", False, None), (lnote("open"), "UPCOMING", True, None),
 ]
 
 
-@pytest.mark.parametrize("outcome, last_seen_at, note", LABEL_NOTE_CASES)
-def test_label_note(outcome, last_seen_at, note):
-    assert words.label_note({"outcome": outcome, "sched_utc_final": SCHED, "last_seen_at": last_seen_at}) == note
+@pytest.mark.parametrize("f, label, ahead, note", LABEL_NOTE_CASES)
+def test_label_note(f, label, ahead, note):
+    assert words.label_note(f, label, ahead) == note
 
 
 CHANGED_BACK_CASES = [
-    (True, "LANDED", "Shown as cancelled for a while, then changed back."),
-    (True, "CANCELLED", "Cancelled, changed back, then cancelled again."),
+    (True, "LANDED", "Marked cancelled for a while, then back on."),
+    (True, "CANCELLED", "Cancelled, back on, then cancelled again."),
     (None, "CANCELLED", None),  # NULL: the earliest record already showed it cancelled, never shown otherwise
     (False, "LANDED", None),
 ]
 
 
 @pytest.mark.parametrize("uncanceled, label, line", CHANGED_BACK_CASES)
-def test_changed_back(uncanceled, label, line):
+def test_changed_back_lines(uncanceled, label, line):
     assert words.changed_back({"uncanceled": uncanceled}, label) == line
 
 
 def test_scheduled():
-    assert words.scheduled("D", datetime(2026, 10, 29, 17, 10), DAY) == "scheduled to leave 17:10"
-    assert words.scheduled("A", datetime(2026, 10, 29, 13, 50), DAY) == "scheduled to land 13:50"
-    assert words.scheduled("D", datetime(2026, 10, 29, 17, 10), date(2026, 10, 30)) == "scheduled to leave 29 Oct 17:10"
+    assert words.scheduled("D", datetime(2026, 10, 29, 17, 10), DAY) == "scheduled to leave at 17:10"
+    assert words.scheduled("A", datetime(2026, 10, 29, 13, 50), DAY) == "scheduled to land at 13:50"
+    assert (words.scheduled("D", datetime(2026, 10, 29, 17, 10), date(2026, 10, 30))
+            == "scheduled to leave at 29 Oct 17:10")
 
 
-LAST_EXPECTED_CASES = [
-    (datetime(2026, 10, 29, 17, 9), datetime(2026, 10, 29, 16, 45), "last expected 17:09"),
-    (datetime(2026, 10, 29, 16, 45), datetime(2026, 10, 29, 16, 45), None),
-    (None, datetime(2026, 10, 29, 16, 45), None),
-    (datetime(2026, 10, 29, 17, 9), None, None),
+S, E = datetime(2026, 11, 16, 19, 45), datetime(2026, 11, 16, 19, 55)
+PAGE = date(2026, 11, 16)
+TIME_LINE_CASES = [
+    # a day labelled LANDED or DEPARTED with an expected time, even when the two are the same
+    ("A", S, E, "LANDED", "scheduled 19:45 · landed around 19:55"),
+    ("D", datetime(2026, 11, 16, 17, 30), datetime(2026, 11, 16, 17, 38), "DEPARTED",
+     "scheduled 17:30 · left around 17:38"),
+    ("A", S, S, "LANDED", "scheduled 19:45 · landed around 19:45"),
+    ("D", S, S, "DEPARTED", "scheduled 19:45 · left around 19:45"),
+    # an expected time on another date carries its date
+    ("A", datetime(2026, 11, 16, 23, 50), datetime(2026, 11, 17, 0, 10), "LANDED",
+     "scheduled 23:50 · landed around 17 Nov 00:10"),
+    # a day with no final word whose expected time differs
+    ("A", S, E, "UPCOMING", "scheduled 19:45 · expected 19:55"),
+    ("D", S, E, "NO NEWS YET", "scheduled 19:45 · expected 19:55"),
+    ("A", S, E, "UNKNOWN", "scheduled 19:45 · expected 19:55"),
+    # otherwise: no expected time, the same time, or a cancelled day
+    ("A", S, S, "UPCOMING", "scheduled to land at 19:45"),
+    ("D", S, S, "NO NEWS YET", "scheduled to leave at 19:45"),
+    ("A", S, None, "LANDED", "scheduled to land at 19:45"),
+    ("D", S, None, "UPCOMING", "scheduled to leave at 19:45"),
+    ("D", S, E, "CANCELLED", "scheduled to leave at 19:45"),
 ]
 
 
-@pytest.mark.parametrize("est, sched, text", LAST_EXPECTED_CASES)
-def test_last_expected(est, sched, text):
-    assert words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY) == text
+@pytest.mark.parametrize("direction, sched, est, label, line", TIME_LINE_CASES)
+def test_the_time_lines_four_forms(direction, sched, est, label, line):
+    assert words.time_line(direction, sched, est, label, PAGE) == line
 
 
-# --- warning ---------------------------------------------------------------------------------------
+def test_the_time_line_names_the_date_of_a_scheduled_time_off_the_page():
+    assert words.time_line("D", S, E, "UPCOMING", date(2026, 11, 17)) == "scheduled 16 Nov 19:45 · expected 16 Nov 19:55"
+
+
+def test_expected_note_and_final_note_are_the_designs_words():
+    assert words.EXPECTED_NOTE == (
+        "Expected times are the airport's own. Delays under an hour aren't counted, because the airport doesn't "
+        "say whether its time means leaving the gate or taking off.")
+    assert words.FINAL_NOTE == "“Final” and “not final” are the airport's own words. It doesn't explain them."
+    assert words.NOTICE_GIVEN == "Notice given"
+
+
+# --- notice ----------------------------------------------------------------------------------------
 
 def cancelled(lo, hi, censored, direction="D", outcome="canceled"):
     return {"outcome": outcome, "direction": direction, "cancel_lead_min": lo, "cancel_lead_max_min": hi,
             "cancel_lead_censored": censored}
 
 
-WARNING_CASES = [
-    (1400.95, None, True, "A", "at least 23 hours"),            # rule 1, IZ 992
-    (60.0, None, True, "D", "at least 1 hour"),                  # rule 1 boundary
-    (59.9, None, True, "D", "unknown"),                          # rule 2
-    (-59.05, None, True, "D", "unknown"),                        # rule 2, ASY 991
-    (-50.0, -10.0, False, "D", "none: listed as cancelled less than an hour after it was scheduled to leave"),
-    (-70.0, -30.0, False, "D", "none: listed as cancelled about an hour after it was scheduled to leave"),
-    (-60.0, -30.0, False, "D", "none: listed as cancelled about an hour after it was scheduled to leave"),   # -lo exactly 60
-    (-150.0, -120.0, False, "D", "none: listed as cancelled about 2 hours after it was scheduled to leave"),  # -hi exactly 120
-    (-142.75, -126.75, False, "D", "none: listed as cancelled about 2 hours after it was scheduled to leave"),  # TO 3459
-    (-142.75, -126.75, False, "A", "none: listed as cancelled about 2 hours after it was scheduled to land"),
-    (-200.0, -100.0, True, "D", "none: listed as cancelled after it was scheduled to leave"),                  # rule 4
-    (75.95, 2600.48, True, "D", "between 1 and 44 hours"),       # rule 5, LY 5409
-    (445.95, 2970.48, True, "A", "between 7 and 50 hours"),      # rule 5, LY 5410
-    (60.0, 2000.0, True, "D", "between 1 and 34 hours"),         # rule 5, boundary 60
-    (0.0, 2000.0, True, "D", "up to 34 hours"),                  # rule 6, boundary 0
-    (-64.05, 2460.48, True, "D", "unknown: no records for that time"),  # rule 7, BZ 254
-    (400.0, 416.0, False, "D", "at least 6 hours"),              # rule 8
-    (60.0, 75.0, False, "D", "at least 1 hour"),                 # rule 8, boundary 60
-    (0.0, 59.0, False, "D", "less than an hour"),                # rule 9, boundary 0
-    (45.0, 74.0, False, "D", "about an hour"),                   # rule 10
-    (59.9, 60.0, False, "D", "about an hour"),                   # rule 10, boundary 60
-    (-10.0, 6.0, False, "D", "around the scheduled time"),       # rule 11
-    (-10.0, 0.0, False, "D", "around the scheduled time"),       # rule 11, hi exactly 0
+LATE = "Cancelled with no notice: it was marked cancelled"
+GAP = "(There's a gap in the records then.)"
+NOTICE_CASES = [
+    # rule 1: hi NULL, lo >= 60 (IZ 992)
+    (1400.95, None, True, "A", "Cancelled with at least 23 hours' notice. It was already cancelled when it first appeared.",
+     "23+ hours"),
+    (60.0, None, True, "D", "Cancelled with at least 1 hour's notice. It was already cancelled when it first appeared.",
+     "1+ hours"),
+    # rule 2: hi NULL, lo < 60 (ASY 991)
+    (59.9, None, True, "D", "How much notice is unknown: it was already cancelled when it first appeared.", "unknown"),
+    (-59.05, None, True, "D", "How much notice is unknown: it was already cancelled when it first appeared.", "unknown"),
+    # rule 3: hi < 0, not censored (TO 3459)
+    (-50.0, -10.0, False, "D", f"{LATE} less than an hour after it should have left.", "none"),
+    (-50.0, -10.0, False, "A", f"{LATE} less than an hour after it should have landed.", "none"),
+    (-60.0, -30.0, False, "D", f"{LATE} about an hour after it should have left.", "none"),  # -lo exactly 60
+    (-70.0, -30.0, False, "D", f"{LATE} about an hour after it should have left.", "none"),
+    (-150.0, -120.0, False, "D", f"{LATE} about 2 hours after it should have left.", "none"),  # -hi exactly 120
+    (-142.75, -126.75, False, "D", f"{LATE} about 2 hours after it should have left.", "none"),
+    (-142.75, -126.75, False, "A", f"{LATE} about 2 hours after it should have landed.", "none"),
+    # rule 4: hi < 0, censored
+    (-200.0, -100.0, True, "D",
+     f"Cancelled with no notice: it was only marked cancelled after its scheduled time. {GAP}", "none"),
+    # rule 5: censored, lo >= 60 (LY 5410, and LY 5409's shape over 42 hours)
+    (445.95, 2970.48, True, "A", f"Cancelled between 7 and 50 hours before its scheduled time. {GAP}", "7 to 50 hours"),
+    (75.95, 2600.48, True, "D", f"Cancelled between 1 and 44 hours before its scheduled time. {GAP}", "1 to 44 hours"),
+    (60.0, 2000.0, True, "D", f"Cancelled between 1 and 34 hours before its scheduled time. {GAP}", "1 to 34 hours"),
+    (60.0, 2520.0, True, "D", f"Cancelled between 1 and 42 hours before its scheduled time. {GAP}", "1 to 42 hours"),
+    # rule 6: censored, 0 <= lo < 60
+    (0.0, 2000.0, True, "D", f"Cancelled up to 34 hours before its scheduled time. {GAP}", "up to 34 hours"),
+    (59.9, 2000.0, True, "D", f"Cancelled up to 34 hours before its scheduled time. {GAP}", "up to 34 hours"),
+    # rule 7: censored, lo < 0 (BZ 254)
+    (-64.05, 2460.48, True, "D", "How much notice is unknown: there's a gap in the records then.", "unknown"),
+    # rule 8: not censored, lo >= 60
+    (400.0, 416.0, False, "D", "Cancelled with at least 6 hours' notice.", "6+ hours"),
+    (60.0, 75.0, False, "D", "Cancelled with at least 1 hour's notice.", "1+ hours"),
+    (1295.0, 1310.0, False, "D", "Cancelled with at least 21 hours' notice.", "21+ hours"),
+    # rule 9: not censored, 0 <= lo, hi < 60
+    (0.0, 59.0, False, "D", "Cancelled less than an hour before its scheduled time.", "under an hour"),
+    # rule 10: not censored, 0 <= lo < 60 <= hi
+    (45.0, 74.0, False, "D", "Cancelled about an hour before its scheduled time.", "about an hour"),
+    (59.9, 60.0, False, "D", "Cancelled about an hour before its scheduled time.", "about an hour"),
+    # rule 11: not censored, lo < 0 <= hi
+    (-10.0, 6.0, False, "D", "Cancelled around its scheduled time.", "almost none"),
+    (-10.0, 0.0, False, "D", "Cancelled around its scheduled time.", "almost none"),
 ]
 
 
-@pytest.mark.parametrize("lo, hi, censored, direction, text", WARNING_CASES)
-def test_warning_rules(lo, hi, censored, direction, text):
-    assert words.warning(cancelled(lo, hi, censored, direction)) == text
+@pytest.mark.parametrize("lo, hi, censored, direction, sentence, short", NOTICE_CASES)
+def test_notice_rules(lo, hi, censored, direction, sentence, short):
+    assert words.notice(cancelled(lo, hi, censored, direction)) == words.Notice(sentence, short)
 
 
-def test_no_warning_unless_cancelled():
-    assert words.warning(cancelled(400.0, 416.0, False, outcome="departed")) is None
-    assert words.warning_note(cancelled(1400.95, None, True, outcome="departed")) is None
+def test_notice_boundary_60_belongs_to_the_row_that_says_at_least():
+    assert words.notice(cancelled(60.0, 75.0, False)).short == "1+ hours"
+    assert words.notice(cancelled(59.99, 75.0, False)).short == "about an hour"
+    assert words.notice(cancelled(0.0, 59.99, False)).short == "under an hour"
+    assert words.notice(cancelled(0.0, 60.0, False)).short == "about an hour"
 
 
-EARLIEST = "The earliest record already showed it as cancelled."
-PART = "No records for part of that time."
+def test_notice_one_hour_and_one_plus_hours():
+    n = words.notice(cancelled(60.0, 75.0, False))
+    assert "1 hour's notice" in n.sentence and "1 hours" not in n.sentence and n.short == "1+ hours"
+    n = words.notice(cancelled(60.0, None, True))
+    assert "1 hour's notice" in n.sentence and n.short == "1+ hours"
 
 
-@pytest.mark.parametrize("lo, hi, censored, note", [
-    (1400.95, None, True, EARLIEST),     # rule 1
-    (59.9, None, True, EARLIEST),        # rule 2
-    (-142.75, -126.75, False, None),     # rule 3
-    (-200.0, -100.0, True, PART),        # rule 4
-    (75.95, 2600.48, True, PART),        # rule 5
-    (0.0, 2000.0, True, PART),           # rule 6
-    (-64.05, 2460.48, True, None),       # rule 7: its text already says "no records for that time"
-    (400.0, 416.0, False, None),         # rule 8
-    (0.0, 59.0, False, None),            # rule 9
-    (45.0, 74.0, False, None),           # rule 10
-    (-10.0, 6.0, False, None),           # rule 11
-])
-def test_warning_note(lo, hi, censored, note):
-    assert words.warning_note(cancelled(lo, hi, censored)) == note
+def test_no_notice_unless_cancelled():
+    assert words.notice(cancelled(400.0, 416.0, False, outcome="departed")) is None
+    assert words.notice(cancelled(1400.95, None, True, outcome="open")) is None
 
 
-SENTENCE_CASES = [
-    ("none: listed as cancelled about 2 hours after it was scheduled to leave",
-     "No warning: listed as cancelled about 2 hours after it was scheduled to leave."),
-    ("unknown: no records for that time", "Warning unknown: no records for that time."),
-    ("unknown", "Warning unknown."),
-    ("at least 23 hours", "Warning: at least 23 hours."),
-]
-
-
-@pytest.mark.parametrize("text, sentence", SENTENCE_CASES)
-def test_warning_sentence(text, sentence):
-    assert words.warning_sentence(text) == sentence
+def test_the_notice_is_a_frozen_pair():
+    n = words.Notice("a", "b")
+    assert (n.sentence, n.short) == ("a", "b")
+    with pytest.raises(AttributeError):
+        n.sentence = "c"
 
 
 # --- rates -----------------------------------------------------------------------------------------
@@ -534,14 +579,13 @@ def test_status_words():
 def site_texts() -> list[str]:
     """Every fixed text of the module, and what each sentence function says over this file's cases."""
     texts = [words.UNOFFICIAL, words.SOURCE_SHORT, words.TIMES_NOTE, words.PLACEHOLDER, words.BUILT_BY,
-             words.CODE_URL, words.DELAY_SENTENCE, *words.LABEL_ORDER]
-    for lo, hi, censored, direction, _ in WARNING_CASES:
-        f = cancelled(lo, hi, censored, direction)
-        texts += [words.warning(f), words.warning_note(f), words.warning_sentence(words.warning(f))]
-    texts += [words.warning_sentence(text) for text, _ in SENTENCE_CASES]
-    texts += [words.label_note({"outcome": o, "sched_utc_final": SCHED, "last_seen_at": seen})
-              for o, seen, _ in LABEL_NOTE_CASES]
+             words.CODE_URL, words.EXPECTED_NOTE, words.FINAL_NOTE, words.NOTICE_GIVEN, *words.LABEL_ORDER]
+    for lo, hi, censored, direction, *_ in NOTICE_CASES:
+        n = words.notice(cancelled(lo, hi, censored, direction))
+        texts += [n.sentence, n.short]
+    texts += [words.label_note(f, label, ahead) for f, label, ahead, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
+    texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
     texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
               words.late_line(FakeSummary()), words.another_number("departed"), words.PAST_ONLY, words.A_FLIGHT,
               words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),
@@ -549,8 +593,6 @@ def site_texts() -> list[str]:
               words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
               words.BRACKET, words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
               words.another_number("landed"), words.another_number("is still listed")]
-    texts += [words.last_expected({"est_local_final": est, "sched_local_final": sched}, DAY)
-              for est, sched, _ in LAST_EXPECTED_CASES]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())
     # a day's lines as the page reads them: left column and text, line after line, as one run

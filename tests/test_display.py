@@ -53,12 +53,12 @@ def test_a_flight_with_a_number_still_listed_is_upcoming_until_it_departs():
 
     still_listed = flight("open")
     assert display.label(*still_listed, T(5, 0)) == words.UPCOMING
-    assert display.label(*still_listed, T(5, 12)) == words.NO_FINAL_UPDATE  # at its scheduled time it has passed
-    assert display.label(*still_listed, T(5, 13)) == words.NO_FINAL_UPDATE
-    # Review Focus 2: 48 hours on, closed with a number still listed, NO FINAL UPDATE; counted as cancelled (C2)
+    assert display.label(*still_listed, T(5, 12)) == words.NO_NEWS_YET  # at its scheduled time it has passed
+    assert display.label(*still_listed, T(5, 13)) == words.NO_NEWS_YET
+    # Review Focus 2: 48 hours on, closed with a number still listed, NO NEWS YET; counted as cancelled (C2)
     closed = flight("open", sched=CLOSED)
     assert (closed[0].closed, closed[0].result) == (True, "cancelled")
-    assert display.label(*closed, LAST) == words.NO_FINAL_UPDATE
+    assert display.label(*closed, LAST) == words.NO_NEWS_YET
     # once LH 695 departs, or lands for an arrival
     assert display.label(*flight("departed"), T(5, 13)) == words.DEPARTED
     assert display.label(*flight("landed", direction="A"), T(5, 13)) == words.LANDED
@@ -82,11 +82,16 @@ def test_cancelled_only_when_no_number_is_listed_otherwise():
     assert display.label(f, by_id, LAST) == words.UNKNOWN
 
 
-def test_delayed_when_any_number_showed_it():
-    f, _ = one_flight(number("a", CLOSED, "departed"), number("b", CLOSED, "departed", airline="IZ", flight_no="2"))
-    assert f.numbers == ("a", "b")
-    assert display.delayed(f, {"b"}) and display.delayed(f, {"a"}) and display.delayed(f, {"a", "b", "c"})
-    assert not display.delayed(f, set()) and not display.delayed(f, {"c"})  # "c" is another flight's number
+def test_delayed_at_59_and_at_60_minutes():
+    assert display.DELAY_MINUTES == 60
+    assert not display.delayed_an_hour({"est_minus_sched_min": 59.0})
+    assert display.delayed_an_hour({"est_minus_sched_min": 60.0})
+    assert display.delayed_an_hour({"est_minus_sched_min": 61.5})
+    assert not display.delayed_an_hour({"est_minus_sched_min": -90.0})  # early is not late
+
+
+def test_no_expected_time_is_not_delayed():
+    assert not display.delayed_an_hour({"est_minus_sched_min": None})
 
 
 # --- C9: a cancelled flight's warning -------------------------------------------------------------------

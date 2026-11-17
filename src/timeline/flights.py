@@ -3,8 +3,8 @@
 "Day pages, the chart, the cancellation lists").
 
 Pure functions; every text comes from `words`. A "flight" in a list is rule C1's (counting.flights): its numbers,
-labelled as one by C10 and, when cancelled, warned by C9's number (display); every count here counts flights that
-way. A number's own page keeps that number's own label and warning.
+labelled as one by C10 and, when cancelled, noticed by C9's number (display); every count here counts flights that
+way. A number's own page keeps that number's own label and notice.
 """
 from __future__ import annotations
 
@@ -32,12 +32,12 @@ class Row:
     sched_final: datetime
     sched_utc_final: datetime  # the model's naive UTC: past or ahead is decided on it
     label: str
-    delayed: bool
-    warning: str | None
-    warning_note: str | None
+    delayed: bool  # the hour rule on the airport's last expected time, never beside CANCELLED or UNKNOWN
+    notice: words.Notice | None  # a cancelled row's
     label_note: str | None
     changed_back: str | None
-    last_expected: str | None
+    est_final: datetime | None  # the airport's last expected time, Israel wall-clock (est_local_final)
+    last_seen_at: datetime  # the model's naive UTC: the row's last record
     page: str  # "flight/LY5115-D.html"
     anchor: str  # "2026-10-28-1630-KUT"
     group_id: str
@@ -49,7 +49,7 @@ class ListFlight:
     """One flight under rule C1, as the lists show it."""
     rows: tuple[Row, ...]  # its numbers, in row order
     label: str  # C10
-    delayed: bool  # C10: any of its numbers showed DELAYED
+    delayed: bool  # any of its numbers is delayed (the hour rule), unless the flight is CANCELLED or UNKNOWN
     lead: Row  # C9's number when the flight is cancelled (C2), else rows[0]
     day: date
 
@@ -120,9 +120,10 @@ def make_rows(flights: list[dict], obs: list[dict], last_fetch: datetime, gap_ho
             city=string.capwords(f["city_en"]), city_he=f["city_he"], day=day,
             sched_first=f["sched_local_first"], sched_final=f["sched_local_final"],
             sched_utc_final=f["sched_utc_final"], label=label,
-            delayed=any(o["status"] == "DELAYED" for o in own),
-            warning=words.warning(f), warning_note=words.warning_note(f), label_note=words.label_note(f),
-            changed_back=words.changed_back(f, label), last_expected=words.last_expected(f, day),
+            delayed=display.delayed_an_hour(f) and label not in (words.CANCELLED, words.UNKNOWN),
+            notice=words.notice(f), label_note=words.label_note(f, label, f["sched_utc_final"] > last_fetch),
+            changed_back=words.changed_back(f, label), est_final=f["est_local_final"],
+            last_seen_at=f["last_seen_at"],
             page=page_address(f["airline"], f["flight_no"], f["direction"]),
             anchor=row_anchor(f["sched_local_first"], f["airport"]), group_id=f["codeshare_group_id"],
             lines=tuple(words.change_lines(own, f["direction"], day, gap_hours))))
@@ -150,13 +151,13 @@ def group_flights(rows: list[Row], table: list[dict], last_fetch: datetime) -> l
     out: dict[tuple, list[Row]] = {}
     for r in rows:
         out.setdefault(of[r.flight_id].key, []).append(r)
-    delayed_ids = {r.flight_id for r in rows if r.delayed}
     lists = []
     for members in out.values():
         f = of[members[0].flight_id]
         c9 = display.warning_number(f, by_id)  # a flight_id, or None when the flight is not cancelled (C2)
-        lists.append(ListFlight(rows=tuple(members), label=display.label(f, by_id, last_fetch),
-                                delayed=display.delayed(f, delayed_ids),
+        label = display.label(f, by_id, last_fetch)
+        lists.append(ListFlight(rows=tuple(members), label=label,
+                                delayed=any(r.delayed for r in members),  # a row is never delayed beside CANCELLED or UNKNOWN, so neither is its flight
                                 lead=next(r for r in members if r.flight_id == c9) if c9 else members[0],
                                 day=f.day))
     return lists
@@ -173,7 +174,7 @@ def partners(lists: list[ListFlight], table: list[dict]) -> dict[str, tuple[Row,
 
 
 _OTHERS = {words.DEPARTED: "departed", words.LANDED: "landed", words.UPCOMING: "is still listed",
-           words.NO_FINAL_UPDATE: "is still listed"}
+           words.NO_NEWS_YET: "is still listed"}
 
 
 def others(lists: list[ListFlight]) -> dict[str, tuple[str, tuple[Row, ...]]]:

@@ -1,5 +1,5 @@
 """Rules shown only on pages (docs/flight-lookup.md, C9 and C10; "Words", the count line and the late line;
-docs/flight-lookup-figures.md, A3, A17 and A24): a flight's label in lists and its DELAYED mark, a cancelled flight's
+docs/flight-lookup-figures.md, A3, A17 and A24): a flight's label in lists and the hour rule for DELAYED, a cancelled flight's
 warning number, and the front page's figures.
 
 Not part of the frozen rule: it reads the flights and figures of the frozen modules and adds only what pages show.
@@ -13,12 +13,12 @@ from datetime import date, datetime
 
 from . import counting, words
 from .counting import OPERATED, Flight
-from .words import CANCELLED, DEPARTED, LANDED, NO_FINAL_UPDATE, UNKNOWN, UPCOMING
+from .words import CANCELLED, DEPARTED, LANDED, NO_NEWS_YET, UNKNOWN, UPCOMING
 
 
 def label(f: Flight, by_id: dict[str, dict], last_fetch: datetime) -> str:
     """C10, the first that applies: 1, DEPARTED or LANDED when any of its numbers departed or landed; 2, UPCOMING, or
-    NO FINAL UPDATE once its scheduled time is not after `last_fetch` (both naive UTC, as words.main_label reads
+    NO NEWS YET once its scheduled time is not after `last_fetch` (both naive UTC, as words.main_label reads
     them), while any of its numbers is still listed with a status other than cancelled (outcome "open"); 3, CANCELLED
     when a number ended listed as cancelled; 4, UNKNOWN. Rule 2 comes before rule 3: a flight with one number listed
     as cancelled and another still listed has not been listed as cancelled as a whole (A24)."""
@@ -26,15 +26,21 @@ def label(f: Flight, by_id: dict[str, dict], last_fetch: datetime) -> str:
     if outcomes & OPERATED:
         return DEPARTED if "departed" in outcomes else LANDED
     if "open" in outcomes:
-        return UPCOMING if f.key[2] > last_fetch else NO_FINAL_UPDATE  # key[2]: the slot's scheduled time
+        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot's scheduled time
     if "canceled" in outcomes:
         return CANCELLED
     return UNKNOWN
 
 
-def delayed(f: Flight, delayed_ids: set[str]) -> bool:
-    """C10: DELAYED is added when any of the flight's numbers showed it (`delayed_ids`, by flight_id)."""
-    return any(fid in delayed_ids for fid in f.numbers)
+DELAY_MINUTES = 60  # a delay is an hour or more (docs/flight-lookup.md, "Delays: only an hour or more")
+
+
+def delayed_an_hour(r: dict) -> bool:
+    """The one rule for the DELAYED label, the counts and the chances: the airport's final expected time is an hour or
+    more after the scheduled one (the model's `est_minus_sched_min`). No expected time is not delayed. The airport's
+    own status word DELAYED plays no part."""
+    late = r["est_minus_sched_min"]
+    return late is not None and late >= DELAY_MINUTES
 
 
 def warning_number(f: Flight, by_id: dict[str, dict]) -> str | None:

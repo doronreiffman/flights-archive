@@ -1,10 +1,10 @@
 """The redesigned site's HTML (docs/site-redesign.md, "Pages"): pure functions from display rows to pages.
 
 Every string from the airport's data (flight numbers, airline names, cities, airport codes) goes through `d()`,
-which escapes it and marks it as data. A warning beside a label is always the flight page's sentence
-(`words.warning_sentence`): the upload check reads a page as flat text across tags, so a label followed by the bare
-text ("CANCELLED" then "at least 23 hours") would read as "cancelled at". The bare text appears only in the
-cancellations table's Warning column, whose previous cell ends with a scheduled time.
+which escapes it and marks it as data. A notice beside a label is always the flight page's sentence
+(`Notice.sentence`): the upload check reads a page as flat text across tags, so a label followed by the short form
+("CANCELLED" then "at least 23 hours") would read as "cancelled at". The short form appears only in the
+cancellations table's "Notice given" column, whose previous cell ends with a scheduled time.
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ def _changes(r: Row) -> str:
 # --- flight page -----------------------------------------------------------------------------------
 
 _DID = {words.DEPARTED: "departed", words.LANDED: "landed", words.CANCELLED: "cancelled"}
-_ARE = {words.UPCOMING: "upcoming", words.NO_FINAL_UPDATE: "with no final update", words.UNKNOWN: "unknown"}
+_ARE = {words.UPCOMING: "upcoming", words.NO_NEWS_YET: "with no final update", words.UNKNOWN: "unknown"}
 
 
 def _times(n: int) -> str:
@@ -213,7 +213,7 @@ def _block(r: Row, pairs: list[tuple[int, int, str]], updated: datetime) -> list
 
 def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool, other: tuple[str, tuple[Row, ...]] | None,
                 pairs: list[tuple[int, int, str]], updated: datetime) -> str:
-    when = " · ".join(t for t in (words.scheduled(r.direction, r.sched_final, r.day), r.last_expected) if t)
+    when = words.time_line(r.direction, r.sched_final, r.est_final, r.label, r.day)
     head = [f'<span class="date">{_short_date(r.day)}</span>', f'<span class="sched">{e(when)}</span>']
     if many_places:
         head.append(f'<span class="place">{_to_or_from(r)}</span>')
@@ -221,9 +221,8 @@ def _flight_row(r: Row, partners: tuple[Row, ...], many_places: bool, other: tup
     out = [f'<div class="row" id="{e(r.anchor)}">', f'<p class="head">{" ".join(head)}</p>']
     if r.label_note:
         out.append(f'<p class="note">{e(r.label_note)}</p>')
-    if r.warning:
-        sentence = " ".join(t for t in (words.warning_sentence(r.warning), r.warning_note) if t)
-        out.append(f'<p class="warn">{e(sentence)}</p>')
+    if r.notice:
+        out.append(f'<p class="warn">{e(r.notice.sentence)}</p>')
     if r.changed_back:
         out.append(f'<p class="note">{e(r.changed_back)}</p>')
     if other:
@@ -261,8 +260,8 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
         who.append(f'<span lang="he" dir="rtl">{d(top.city_he)}</span>')
     body = [f"<h1>{d(title)}</h1>", f'<p class="who">{" · ".join(who)}</p>',
             f'<p class="summary">{e(_summary(rows, summary.first_record))}</p>']
-    if any(r.last_expected for r in rows):
-        body.append(f'<p class="note">{e(words.DELAY_SENTENCE)}</p>')
+    if any(words.shows_expected(r.est_final, r.sched_final, r.label) for r in rows):
+        body.append(f'<p class="note">{e(words.EXPECTED_NOTE)}</p>')
     body += ['<div class="history">',
              *(_flight_row(r, partners.get(r.flight_id, ()), many_places, others.get(r.flight_id), pairs, updated)
                for r in newest),
@@ -274,13 +273,13 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
 # --- day page --------------------------------------------------------------------------------------
 
 def _day_row(fl: ListFlight) -> str:
-    """A flight's line: its numbers, labelled as one (C10); a cancelled one with C9's number's warning."""
+    """A flight's line: its numbers, labelled as one (C10); a cancelled one with C9's number's notice."""
     r = fl.lead
     parts = [f'<span class="t">{words.clock(r.sched_final, r.day)}</span>',
              f'<span class="nums">{_numbers(fl, "../")}</span>', f'<span class="route">{_to_or_from(r)}</span>',
              f'<span class="labels">{_labels(fl.label, fl.delayed)}</span>']
     if fl.label == words.CANCELLED:
-        parts.append(f'<span class="warn">{e(words.warning_sentence(r.warning))}</span>')
+        parts.append(f'<span class="warn">{e(r.notice.sentence)}</span>')
     return f"<li>{' '.join(parts)}</li>"
 
 
@@ -304,12 +303,12 @@ def day_page(info: DayInfo, flights_: list[ListFlight]) -> str:
 # --- all cancellations -----------------------------------------------------------------------------
 
 def _cancellations_table(cancelled: list[ListFlight], root: str) -> str:
-    """Date, flight, route with the scheduled time, and the bare warning text, C9's number's: the cell before it
+    """Date, flight, route with the scheduled time, and the short notice, C9's number's: the cell before it
     ends with a time, so no label runs into it."""
     rows = [f"<tr><td>{_short_date(fl.day)}</td><td>{_numbers(fl, root)}</td><td>{_route(fl.lead)}</td>"
-            f"<td>{e(fl.lead.warning)}</td></tr>" for fl in cancelled]
-    return ('<div class="table-card">\n<table class="cancellations">\n<thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Warning</th>'
-            "</tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>\n</div>")
+            f"<td>{e(fl.lead.notice.short)}</td></tr>" for fl in cancelled]
+    return ('<div class="table-card">\n<table class="cancellations">\n<thead><tr><th>Date</th><th>Flight</th><th>Route</th>'
+            f"<th>{words.NOTICE_GIVEN}</th></tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>\n</div>")
 
 
 def cancellations_page(flights_: list[ListFlight]) -> str:

@@ -164,11 +164,11 @@ def test_flight_rows_newest_first():
             < page.index('id="2026-10-27-1645-ORY"'))
 
 
-def test_the_cancelled_row_is_open_with_its_warning_and_changes():
+def test_the_cancelled_row_is_open_with_its_notice_and_changes():
     row = row_block(to3459_page(), "2026-10-29-1710-ORY")
     assert "<details open>" in row
-    assert text(row).startswith("Thu 29 Oct scheduled to leave 17:10 · last expected 18:45 CANCELLED")
-    assert "No warning: listed as cancelled about 2 hours after it was scheduled to leave." in text(row)
+    assert text(row).startswith("Thu 29 Oct scheduled to leave at 17:10 CANCELLED")
+    assert "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." in text(row)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
         "Earliest record (27 Oct 20:04) on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
@@ -185,18 +185,28 @@ def test_other_rows_are_closed():
         assert "<details>" in row and "<details open" not in row
 
 
-def test_last_expected_beside_the_scheduled_time_and_the_delay_sentence_once():
+def test_landed_around_beside_the_scheduled_time_and_the_expected_note_once():
     page = to3459_page()
-    assert ("Tue 27 Oct scheduled to leave 16:45 · last expected 17:09 DEPARTED"
+    assert ("Tue 27 Oct scheduled 16:45 · left around 17:09 DEPARTED"
             in text(row_block(page, "2026-10-27-1645-ORY")))
-    assert "last expected" not in row_block(page, "2026-11-01-1830-ORY")
-    assert text(page).count(words.DELAY_SENTENCE) == 1  # two rows show a last expected time
+    assert "around" not in row_block(page, "2026-11-01-1830-ORY") and "expected 1" not in row_block(page, "2026-11-01-1830-ORY")
+    assert text(page).count(words.EXPECTED_NOTE) == 1  # two rows show a landed-around or expected time
 
 
-def test_no_delay_sentence_without_a_last_expected_time():
-    page = page_of(flight("on time"))
-    assert "scheduled to leave 16:45 DEPARTED" in text(page)
-    assert "last expected" not in page and words.DELAY_SENTENCE not in text(page)
+def test_expected_on_a_day_with_no_final_word_and_no_note_without_an_expected_time():
+    page = page_of(flight("ahead", outcome="open", est_local_final=local(29, 17, 20)),
+                   flight("same", local(30, 16, 45), outcome="open"))
+    assert "scheduled 16:45 · expected 17:20 UPCOMING" not in text(page)  # 29 Oct 16:45 Israel time is not ahead
+    page = page_of(flight("ahead", local(30, 16, 45), outcome="open", est_local_final=local(30, 17, 20)))
+    assert "scheduled 16:45 · expected 17:20 UPCOMING" in text(page) and words.EXPECTED_NOTE in text(page)
+    page = page_of(flight("ahead", local(30, 16, 45), outcome="open"))
+    assert "scheduled to leave at 16:45 UPCOMING" in text(page) and words.EXPECTED_NOTE not in text(page)
+
+
+def test_no_expected_note_without_an_expected_time():
+    page = page_of(flight("on time", est_local_final=None))
+    assert "scheduled to leave at 16:45 DEPARTED" in text(page)
+    assert "around" not in text(row_block(page, "2026-10-29-1645-JFK")) and words.EXPECTED_NOTE not in text(page)
 
 
 def test_a_row_without_records_has_no_details():
@@ -290,21 +300,22 @@ def test_notes_under_a_row():
     page = page_of(flight("gone", local(28, 9, 0), outcome="vanished", last_seen_at=utc(28, 0, 40)),  # 6 h 20 min
                    flight("back", local(29, 9, 0), uncanceled=True),
                    flight("cancelled", local(30, 9, 0), **AT_LEAST_23))
-    assert ("Removed from the airport's list 6 hours before it was scheduled, with no final status. "
-            "Not necessarily cancelled; it may have moved to another time."
+    assert ("The airport removed this flight 6 hours early without saying why. "
+            "It may have been cancelled or moved to another time."
             in text(row_block(page, "2026-10-28-0900-JFK")))
-    assert "Shown as cancelled for a while, then changed back." in text(row_block(page, "2026-10-29-0900-JFK"))
-    assert ("Warning: at least 23 hours. The earliest record already showed it as cancelled."
+    assert "Marked cancelled for a while, then back on." in text(row_block(page, "2026-10-29-0900-JFK"))
+    assert ("Cancelled with at least 23 hours' notice. It was already cancelled when it first appeared."
             in text(row_block(page, "2026-10-30-0900-JFK")))
 
 
 def test_delayed_beside_the_main_label():
-    f = flight("late", direction="A", outcome="landed")
-    start = first(f)
-    late = start | {"snap_rn": 2, "observed_at": utc(29, 13, 2, 45), "prev_observed_at": utc(29, 12, 46, 45),
-                    "change_kind": "change", "changed_fields": ["status"], "status": "DELAYED"}
-    row = row_block(page_of(f, obs=[start, late]), "2026-10-29-1645-JFK")
-    assert "LANDED · DELAYED" in text(row)
+    """An expected time an hour after the scheduled one; the airport's own word DELAYED is not what labels."""
+    row = row_block(page_of(flight("late", direction="A", outcome="landed", est_local_final=local(29, 17, 45))),
+                    "2026-10-29-1645-JFK")
+    assert "LANDED · DELAYED" in text(row) and "scheduled 16:45 · landed around 17:45" in text(row)
+    row = row_block(page_of(flight("close", direction="A", outcome="landed", est_local_final=local(29, 17, 44))),
+                    "2026-10-29-1645-JFK")
+    assert "DELAYED" not in text(row)
 
 
 def test_airport_data_is_escaped():
@@ -360,7 +371,7 @@ def below_at(*hs: int) -> display.Summary:
 
 def test_the_block_on_upcoming_rows_only():
     """Only a row labelled UPCOMING, still listed normally, carries the block and the "has passed" line: rows labelled
-    DEPARTED, LANDED, CANCELLED, NO FINAL UPDATE or UNKNOWN get none. The block sits above the row's change list."""
+    DEPARTED, LANDED, CANCELLED, NO NEWS YET or UNKNOWN get none. The block sits above the row's change list."""
     fs = summary_rows(["departed", "landed", "cancelled", "upcoming", "no final update", "unknown"])
     page = page_of(*fs)
     assert sorted(r.label for r in rows(*fs)) == sorted(words.LABEL_ORDER)
@@ -625,8 +636,8 @@ def test_day_page_without_partial_or_unknown_lines():
 def test_day_page_departures_then_arrivals_in_scheduled_order():
     page = text(day_page())
     order = ["Departures", "09:00 DL 7426, AM 7895 to New York (JFK) DEPARTED",
-             "17:10 TO 3459 to Paris (ORY) CANCELLED No warning: listed as cancelled about 2 hours after it was scheduled "
-             "to leave.", "20:00 LY 003 to New York (JFK) DEPARTED",
+             "17:10 TO 3459 to Paris (ORY) CANCELLED Cancelled with no notice: it was marked cancelled about 2 hours "
+             "after it should have left.", "20:00 LY 003 to New York (JFK) DEPARTED",
              "Arrivals", "05:00 LY 002 from New York (JFK) LANDED"]
     assert [page.index(part) for part in order] == sorted(page.index(part) for part in order)
 
@@ -699,11 +710,10 @@ def test_cancellations_newest_first():
     page = cancellations_page()
     assert "<title>All cancellations</title>" in page and "<h1>All cancellations</h1>" in page
     assert cells(page) == [
-        ["Date", "Flight", "Route", "Warning"],
-        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land 13:50", "at least 23 hours"],
-        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave 17:10",
-         "none: listed as cancelled about 2 hours after it was scheduled to leave"],
-        ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave 09:00", "at least 6 hours"],
+        ["Date", "Flight", "Route", "Notice given"],
+        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "23+ hours"],
+        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "none"],
+        ["Wed 28 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00", "6+ hours"],
     ]
     assert "LH 0691A" not in text(page) and "LH 695" not in text(page)
 
@@ -721,14 +731,14 @@ def test_no_cancellations_yet():
     assert "<table" not in page and "No flights listed as cancelled so far." in text(page)
 
 
-def test_cancellations_show_c9s_warning():
+def test_cancellations_show_c9s_notice():
     """EY 607 and LY 9614, one cancelled flight (C1): LY 9614 was listed as cancelled first, so the lists show its
-    warning, at least 23 hours, not that of EY 607, the first row (at least 6 hours)."""
+    notice, 23+ hours, not that of EY 607, the first row (6+ hours)."""
     fl = lists(*ey_ly())
     assert cells(views.cancellations_page(fl))[1] == [
-        "Thu 29 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave 09:00", "at least 23 hours"]
+        "Thu 29 Oct", "EY 607, LY 9614", "Tel Aviv to New York (JFK), scheduled to leave at 09:00", "23+ hours"]
     day = views.day_page(DayInfo(DAY, 1, 1, 0, "past", False), fl)
-    assert "09:00 EY 607, LY 9614 to New York (JFK) CANCELLED Warning: at least 23 hours." in text(day)
+    assert "09:00 EY 607, LY 9614 to New York (JFK) CANCELLED Cancelled with at least 23 hours' notice." in text(day)
 
 
 # --- how this works --------------------------------------------------------------------------------
@@ -1071,7 +1081,7 @@ def test_the_story_box():
     box = section(front(), '<section class="story">', "</section>")
     assert ('<h2><a href="flight/TO3459-D.html#2026-10-29-1710-ORY"><span class="d">TO 3459, Tel Aviv to Paris'
             "</span></a></h2>") in box
-    assert "Thursday 29 October 2026, scheduled to leave 17:10" in text(box)
+    assert "Thursday 29 October 2026, scheduled to leave at 17:10" in text(box)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", box)] == [
         "Earliest record (27 Oct 20:04) on time, terminal 1",
         "Between 27 Oct 20:24 and 14:29 Check-in desks 345-348, zone B",
@@ -1112,10 +1122,9 @@ def test_recent_cancellations():
     page = front()
     table = section(page, '<table class="cancellations">', "</table>")
     assert cells(table) == [
-        ["Date", "Flight", "Route", "Warning"],
-        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land 13:50", "at least 23 hours"],
-        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave 17:10",
-         "none: listed as cancelled about 2 hours after it was scheduled to leave"],
+        ["Date", "Flight", "Route", "Notice given"],
+        ["Fri 30 Oct", "IZ 992", "New York (JFK) to Tel Aviv, scheduled to land at 13:50", "23+ hours"],
+        ["Thu 29 Oct", "TO 3459", "Tel Aviv to Paris (ORY), scheduled to leave at 17:10", "none"],
     ]
     assert '<a href="flight/IZ992-A.html#2026-10-30-1350-JFK">' in table
     assert '<a href="flight/TO3459-D.html#2026-10-29-1710-ORY">' in table

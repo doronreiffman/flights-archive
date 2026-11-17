@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import flights
+from timeline import flights, words
 from timeline.flights import DayInfo, Row
 
 LAST_FETCH = datetime(2026, 10, 29, 22, 2, 45)  # 00:02 Israel time on 30 October
@@ -38,7 +38,8 @@ def flight(fid, sched=local(29, 16, 45), *, airline="LY", flight_no="001", direc
          "cancel_lead_min": None, "cancel_lead_max_min": None, "cancel_lead_censored": None,
          "uncanceled": False, "codeshare_group_id": group or fid} | kw
     est = f["est_local_final"]
-    return {"est_utc_final": None if est is None else est - timedelta(hours=2), "terminal_final": 3,
+    late = None if est is None else (est - f["sched_local_final"]).total_seconds() / 60
+    return {"est_minus_sched_min": late, "est_utc_final": None if est is None else est - timedelta(hours=2), "terminal_final": 3,
             "counters_final": "", "first_seen_at": FIRST_RECORD,
             "canceled_first_seen_at": FIRST_RECORD if f["outcome"] == "canceled" else None} | f
 
@@ -160,9 +161,9 @@ def test_a_row_ready_to_show():
     assert rows(f) == [Row(
         flight_id="f1", airline="LY", flight_no="001", airline_name=EL_AL, direction="D", airport="JFK",
         city="New York", city_he="ניו יורק", day=date(2026, 10, 29), sched_first=local(29, 16, 45),
-        sched_final=local(29, 16, 45), sched_utc_final=utc(29, 14, 45), label="DEPARTED", delayed=False, warning=None, warning_note=None,
-        label_note=None, changed_back=None, last_expected="last expected 17:09", page="flight/LY001-D.html",
-        anchor="2026-10-29-1645-JFK", group_id="g1",
+        sched_final=local(29, 16, 45), sched_utc_final=utc(29, 14, 45), label="DEPARTED", delayed=False,
+        notice=None, label_note=None, changed_back=None, est_final=local(29, 17, 9), last_seen_at=utc(29, 13, 45),
+        page="flight/LY001-D.html", anchor="2026-10-29-1645-JFK", group_id="g1",
         lines=(("Earliest record (27 Oct 20:04)", "on time, terminal 3"),))]
 
 
@@ -178,35 +179,87 @@ def test_a_retimed_row_is_on_the_day_of_its_final_time_with_the_anchor_of_its_fi
                          ("28 Oct 22:32", "Moved to a new scheduled time: 28 Oct 23:30 → 00:30"))
 
 
-def test_delayed_only_for_the_row_whose_own_records_show_it():
-    """The next day's flight of the same number stays undelayed, and a later status does not undo it."""
-    today, tomorrow = flight("today", local(29, 16, 45)), flight("tomorrow", local(30, 16, 45), outcome="open")
-    start = first(today)
-    late = then(start, utc(29, 13, 2, 45), status="DELAYED")
-    gone = then(late, utc(29, 15, 2, 45), status="DEPARTED")
-    got = rows(today, tomorrow, obs=[start, late, gone, first(tomorrow)])
-    assert [(r.label, r.delayed) for r in got] == [("DEPARTED", True), ("UPCOMING", False)]
+def test_delayed_at_59_and_at_60_minutes():
+    """The hour rule on the airport's last expected time, a row at a time: 59 minutes is not delayed, 60 is, and the
+    next day's flight of the same number is not."""
+    on_time = flight("a", local(29, 16, 45), est_local_final=local(29, 17, 44))
+    hour = flight("b", local(29, 18, 45), est_local_final=local(29, 19, 45))
+    tomorrow = flight("c", local(30, 16, 45), outcome="open")
+    assert [(r.label, r.delayed) for r in rows(on_time, hour, tomorrow)] == [
+        ("DEPARTED", False), ("DEPARTED", True), ("UPCOMING", False)]
 
 
-def test_label_warning_and_notes_come_from_words():
-    gone = flight("v", outcome="vanished", last_seen_at=utc(29, 8, 25))  # 6 h 20 min before 14:45 UTC
+def test_no_expected_time_is_not_delayed():
+    f = flight("a", est_local_final=None)
+    assert f["est_minus_sched_min"] is None
+    assert not rows(f)[0].delayed
+
+
+def test_the_airports_word_delayed_no_longer_labels():
+    """An observation with status DELAYED and an expected time 20 minutes late gives no DELAYED."""
+    f = flight("a", est_local_final=local(29, 17, 5))
+    start = first(f)
+    late = then(start, utc(29, 13, 2, 45), status="DELAYED", est_local=local(29, 17, 5))
+    got = rows(f, obs=[start, late])[0]
+    assert (got.label, got.delayed) == ("DEPARTED", False)
+
+
+def test_delayed_never_beside_cancelled_or_unknown():
+    """A cancelled or unknown flight keeps an expected time more than an hour late and is still not DELAYED."""
+    cancelled = flight("c", local(29, 10, 0), **CLEAN, est_local_final=local(29, 11, 30))
+    gone = flight("v", local(29, 12, 0), outcome="vanished", est_local_final=local(29, 13, 30))
+    flew = flight("d", local(29, 14, 0), est_local_final=local(29, 15, 30))
+    got = rows(cancelled, gone, flew)
+    assert [(r.label, r.delayed) for r in got] == [("CANCELLED", False), ("UNKNOWN", False), ("DEPARTED", True)]
+    assert [(fl.label, fl.delayed) for fl in lists(cancelled, gone, flew)] == [
+        ("CANCELLED", False), ("UNKNOWN", False), ("DEPARTED", True)]
+
+
+def test_a_list_flight_is_delayed_when_any_number_is():
+    """LH 695 an hour late beside LH 0691A, listed as cancelled: the departed flight is DELAYED; it is not when no
+    number is; and a second number that is delayed is enough, though the first is the cancelled one."""
+    late = lh("lh695", local(29, 9, 0), "695", est_local_final=local(29, 10, 0))
+    gone = lh("lh0691a", local(29, 9, 0), "0691A", "canceled")
+    on_time = lh("lh697", local(30, 9, 0), "697")
+    on_time_b = lh("lh0699a", local(30, 9, 0), "0699A", "canceled")
+    third = lh("lh0701a", local(31, 9, 0), "0701A", "canceled")
+    third_late = lh("lh701", local(31, 9, 0), "701", est_local_final=local(31, 10, 0))
+    got = lists(late, gone, on_time, on_time_b, third, third_late)
+    assert [(ids([fl])[0], fl.label, fl.delayed) for fl in got] == [
+        (["lh695", "lh0691a"], "DEPARTED", True), (["lh697", "lh0699a"], "DEPARTED", False),
+        (["lh0701a", "lh701"], "DEPARTED", True)]
+
+
+def test_label_notice_and_notes_come_from_words():
+    gone = flight("v", outcome="vanished", last_seen_at=utc(27, 15, 25))  # 47 h 20 min before 14:45 UTC on 29 Oct
+    ahead = flight("w", local(31, 9, 0), outcome="vanished", last_seen_at=utc(29, 21, 0))
     cancelled = flight("c", **CENSORED | {"cancel_lead_min": 1400.95, "cancel_lead_max_min": None, "uncanceled": None})
     back = flight("b", direction="A", outcome="landed", uncanceled=True)
-    got = [(r.label, r.warning, r.warning_note, r.label_note, r.changed_back) for r in rows(gone, cancelled, back)]
+    got = [(r.label, r.notice, r.label_note, r.changed_back) for r in rows(gone, ahead, cancelled, back)]
+    early = ("The airport removed this flight {} hours early without saying why. "
+             "It may have been cancelled or moved to another time.")
     assert got == [
-        ("UNKNOWN", None, None, "Removed from the airport's list 6 hours before it was scheduled, with no final "
-                                "status. Not necessarily cancelled; it may have moved to another time.", None),
-        ("CANCELLED", "at least 23 hours", "The earliest record already showed it as cancelled.", None, None),
-        ("LANDED", None, None, None, "Shown as cancelled for a while, then changed back."),
+        ("UNKNOWN", None, early.format(47), None),
+        ("UNKNOWN", None, early.format(34) + " Check with your airline.", None),  # still ahead of the last record
+        ("CANCELLED", words.Notice("Cancelled with at least 23 hours' notice. It was already cancelled when it "
+                                   "first appeared.", "23+ hours"), None, None),
+        ("LANDED", None, None, "Marked cancelled for a while, then back on."),
     ]
 
 
-def test_no_final_update_decided_in_utc(israeli_machine):
-    """23:55 Israel time is 21:55 UTC, before the 22:02 UTC last record: no final update. Deciding with the
+def test_a_row_keeps_the_airports_last_expected_time_and_last_record():
+    f = flight("a", est_local_final=local(29, 17, 9), last_seen_at=utc(29, 12, 0))
+    r = rows(f)[0]
+    assert (r.est_final, r.last_seen_at) == (local(29, 17, 9), utc(29, 12, 0))
+
+
+def test_no_news_yet_decided_in_utc(israeli_machine):
+    """23:55 Israel time is 21:55 UTC, before the 22:02 UTC last record: no news yet. Deciding with the
     Israel wall-clock value would call it UPCOMING."""
     f = flight("late", local(29, 23, 55), outcome="open")
     assert (f["sched_local_final"], f["sched_utc_final"]) == (local(29, 23, 55), utc(29, 21, 55))
-    assert flights.make_rows([f], [first(f)], LAST_FETCH, 1)[0].label == "NO FINAL UPDATE"
+    got = flights.make_rows([f], [first(f)], LAST_FETCH, 1)[0]
+    assert (got.label, got.label_note) == ("NO NEWS YET", "Its time has passed, and the airport hasn't said how it ended.")
 
 
 # --- flights ---------------------------------------------------------------------------------------
@@ -240,25 +293,24 @@ def test_one_group_id_on_two_days_is_two_flights():
 
 def test_a_list_labels_a_flight_by_c10():
     """LH 0691A, listed as cancelled, with LH 695, which departed, is one flight labelled DEPARTED (C10, rule 1),
-    and DELAYED because LH 695 showed it; with LH 695 still listed it is UPCOMING (rule 2 before rule 3)."""
-    gone = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695")]
+    and DELAYED because LH 695 is an hour late; with LH 695 still listed it is UPCOMING (rule 2 before rule 3)."""
+    gone = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"),
+            lh("lh695", local(29, 9, 0), "695", est_local_final=local(29, 10, 0))]
     ahead = [lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open")]
-    start = first(gone[1])
-    obs = [first(gone[0]), start, then(start, utc(29, 6, 2, 45), status="DELAYED"), *(first(f) for f in ahead)]
-    assert [(r.label, r.delayed) for r in rows(*gone, *ahead, obs=obs)] == [
+    assert [(r.label, r.delayed) for r in rows(*gone, *ahead)] == [
         ("CANCELLED", False), ("DEPARTED", True), ("CANCELLED", False), ("UPCOMING", False)]
-    assert [(fl.label, fl.delayed) for fl in lists(*gone, *ahead, obs=obs)] == [("DEPARTED", True), ("UPCOMING", False)]
+    assert [(fl.label, fl.delayed) for fl in lists(*gone, *ahead)] == [("DEPARTED", True), ("UPCOMING", False)]
 
 
-def test_a_cancelled_flights_warning_is_c9s():
-    """A cancelled flight leads with its number listed as cancelled first (C9), whose warning the lists show: LY
+def test_a_cancelled_flights_notice_is_c9s():
+    """A cancelled flight leads with its number listed as cancelled first (C9), whose notice the lists show: LY
     9614, though EY 607 comes first in the row. A flight whose result is not cancelled (C2) leads with its first
     row."""
     got = lists(*ey_ly(), lh("lh0691a", local(29, 10, 0), "0691A", "canceled"), lh("lh695", local(29, 10, 0), "695"))
-    assert [(ids([fl])[0], fl.label, fl.lead.flight_id, fl.lead.warning) for fl in got] == [
-        (["ey", "ly"], "CANCELLED", "ly", "at least 23 hours"),
-        (["lh0691a", "lh695"], "DEPARTED", "lh0691a", "at least 6 hours")]
-    assert [r.warning for r in got[0].rows] == ["at least 6 hours", "at least 23 hours"]
+    assert [(ids([fl])[0], fl.label, fl.lead.flight_id, fl.lead.notice.short) for fl in got] == [
+        (["ey", "ly"], "CANCELLED", "ly", "23+ hours"),
+        (["lh0691a", "lh695"], "DEPARTED", "lh0691a", "6+ hours")]
+    assert [r.notice.short for r in got[0].rows] == ["6+ hours", "23+ hours"]
 
 
 def test_partners_share_time_terminal_and_desks():
@@ -290,7 +342,7 @@ def test_partners_read_a_missing_terminal_and_empty_desks_as_equal():
 
 def test_others_name_who_departed_landed_or_is_still_listed():
     """For each number listed as cancelled in a flight that is not (C2, C10): the numbers that departed, landed, or
-    are still listed (UPCOMING or NO FINAL UPDATE), and only those. LH 697, still listed beside LH 695, is not named
+    are still listed (UPCOMING or NO NEWS YET), and only those. LH 697, still listed beside LH 695, is not named
     for the flight that departed. A cancelled flight's numbers, and numbers not listed as cancelled, get none."""
     fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695"),
           lh("lh697", local(29, 9, 0), "697", "open"),
@@ -298,7 +350,7 @@ def test_others_name_who_departed_landed_or_is_still_listed():
           lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"), lh("lh695-31", local(31, 9, 0), "695", "open"),
           lh("lh0691a-late", local(29, 23, 55), "0691A", "canceled"), lh("lh695-late", local(29, 23, 55), "695", "open"),
           *ey_ly()]
-    assert [fl.label for fl in lists(*fs)] == ["DEPARTED", "LANDED", "UPCOMING", "NO FINAL UPDATE", "CANCELLED"]
+    assert [fl.label for fl in lists(*fs)] == ["DEPARTED", "LANDED", "UPCOMING", "NO NEWS YET", "CANCELLED"]
     got = {fid: (verb, [r.flight_id for r in named]) for fid, (verb, named) in flights.others(lists(*fs)).items()}
     assert got == {"lh0691a": ("departed", ["lh695"]), "os1083": ("landed", ["os083"]),
                    "lh0691a-31": ("is still listed", ["lh695-31"]),

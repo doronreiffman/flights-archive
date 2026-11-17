@@ -1,12 +1,13 @@
 """Every sentence and label of the site, and the time helpers they use (docs/site-redesign.md, "Words").
 
 Pure functions from model values to text. Model times (`*_at`, `*_utc`) are naive UTC; the airport's times
-(`*_local`) are Israel wall-clock as published. Ranges and lower bounds only: a warning is never a measured
-moment, and nothing here turns an expected time into a delay.
+(`*_local`) are Israel wall-clock as published. Ranges and lower bounds only: a notice is never a measured
+moment, and no delay is shown under an hour (display.delayed_an_hour).
 """
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -28,12 +29,14 @@ MEANS_ANCHOR = "what-the-numbers-mean"
 PLACEHOLDER = "[owner's wording]"  # the upload check refuses a site that still contains it
 BUILT_BY = "Doron Reiffman (linkedin.com/in/doronreiffman)"
 CODE_URL = "https://github.com/doronreiffman/flights-archive"
-DELAY_SENTENCE = ("Expected times are the airport's own. This site doesn't turn them into delay figures, "
-                  "because the airport doesn't say whether they mean leaving the gate or taking off.")
+EXPECTED_NOTE = ("Expected times are the airport's own. Delays under an hour aren't counted, because the airport "
+                 "doesn't say whether its time means leaving the gate or taking off.")
+FINAL_NOTE = "“Final” and “not final” are the airport's own words. It doesn't explain them."
+NOTICE_GIVEN = "Notice given"  # the column and phone label for a cancellation's notice, in lists
 
-DEPARTED, LANDED, CANCELLED, UPCOMING, NO_FINAL_UPDATE, UNKNOWN = (
-    "DEPARTED", "LANDED", "CANCELLED", "UPCOMING", "NO FINAL UPDATE", "UNKNOWN")
-LABEL_ORDER = (DEPARTED, LANDED, CANCELLED, UPCOMING, NO_FINAL_UPDATE, UNKNOWN)
+DEPARTED, LANDED, CANCELLED, UPCOMING, NO_NEWS_YET, UNKNOWN = (
+    "DEPARTED", "LANDED", "CANCELLED", "UPCOMING", "NO NEWS YET", "UNKNOWN")
+LABEL_ORDER = (DEPARTED, LANDED, CANCELLED, UPCOMING, NO_NEWS_YET, UNKNOWN)
 
 
 # --- times -----------------------------------------------------------------------------------------
@@ -80,108 +83,116 @@ def main_label(outcome: str, sched_utc_final: datetime, last_fetch: datetime) ->
         case "canceled":
             return CANCELLED
         case "open":
-            return UPCOMING if sched_utc_final > last_fetch else NO_FINAL_UPDATE
+            return UPCOMING if sched_utc_final > last_fetch else NO_NEWS_YET
         case "gap" | "vanished" | "dropped":
             return UNKNOWN
     raise ValueError(f"unknown outcome {outcome!r}")
 
 
-def label_note(f: dict) -> str | None:
-    """The line under an UNKNOWN label: why the outcome is unknown."""
+def label_note(f: dict, label: str, ahead: bool) -> str | None:
+    """The line under a NO NEWS YET or UNKNOWN label (docs/site-redesign.md, "Labels"); `ahead` is whether the
+    flight's day is still ahead of the last sighting, which adds a sentence to a vanished flight's."""
+    if label == NO_NEWS_YET:
+        return "Its time has passed, and the airport hasn't said how it ended."
     match f["outcome"]:
         case "gap":
-            return "No records for the time it left the airport's list."
+            return "There's no record of how this flight ended."
         case "vanished":
-            ahead = _down((f["sched_utc_final"] - f["last_seen_at"]).total_seconds() / 60)
-            return (f"Removed from the airport's list {hours(ahead)} before it was scheduled, with no final status. "
-                    "Not necessarily cancelled; it may have moved to another time.")
+            early = _down((f["sched_utc_final"] - f["last_seen_at"]).total_seconds() / 60)
+            note = (f"The airport removed this flight {hours(early)} early without saying why. "
+                    "It may have been cancelled or moved to another time.")
+            return f"{note} Check with your airline." if ahead else note
         case "dropped":
-            return "Removed from the airport's list with no final status."
+            return "The airport removed this flight without saying why."
     return None
 
 
 def changed_back(f: dict, label: str) -> str | None:
-    """A line under the final label when the flight was shown as cancelled, then as something else."""
+    """A line under the final label when the flight was marked cancelled, then back on."""
     if not f["uncanceled"]:  # NULL (cancelled from its earliest record on) counts as false
         return None
     if label == CANCELLED:
-        return "Cancelled, changed back, then cancelled again."
-    return "Shown as cancelled for a while, then changed back."
+        return "Cancelled, back on, then cancelled again."
+    return "Marked cancelled for a while, then back on."
 
 
 def scheduled(direction: str, local: datetime, page_date: date | None) -> str:
-    return f"scheduled to {_verb(direction)} {clock(local, page_date)}"
+    return f"scheduled to {_verb(direction)} at {clock(local, page_date)}"
 
 
-def last_expected(f: dict, page_date: date | None) -> str | None:
-    """The airport's last expected time, shown beside the scheduled one when they differ. No difference is computed."""
-    est, sched = f["est_local_final"], f["sched_local_final"]
-    if est is None or sched is None or est == sched:
+def shows_expected(est: datetime | None, sched: datetime, label: str) -> bool:
+    """Whether a day's time line says "landed around", "left around" or "expected" (and so needs EXPECTED_NOTE)."""
+    if est is None:
+        return False
+    return label in (LANDED, DEPARTED) or (label in (UPCOMING, NO_NEWS_YET, UNKNOWN) and est != sched)
+
+
+def time_line(direction: str, sched: datetime, est: datetime | None, label: str, page_date: date) -> str:
+    """A day's time line, from Israel wall-clock times (docs/site-redesign.md, "Labels"). A day that landed or left
+    shows both times, even when they are the same; a day with no final word shows the expected time when it differs
+    from the scheduled one; no difference is computed on the line."""
+    if not shows_expected(est, sched, label):
+        return scheduled(direction, sched, page_date)
+    if label in (LANDED, DEPARTED):
+        said = "left" if direction == "D" else "landed"
+        return f"scheduled {clock(sched, page_date)} · {said} around {clock(est, page_date)}"
+    return f"scheduled {clock(sched, page_date)} · expected {clock(est, page_date)}"
+
+
+# --- notice ----------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Notice:
+    """How long before its scheduled time the airport's list already showed the flight as cancelled: the sentence
+    for a flight page, and the short form for a list's "Notice given"."""
+    sentence: str
+    short: str
+
+
+def _at_least(lo: float) -> str:
+    """"Cancelled with at least 23 hours' notice." ("at least" always follows "with"); "1 hour's notice" for one."""
+    h = _down(lo)
+    return f"Cancelled with at least {h} hour's notice." if h == 1 else f"Cancelled with at least {h} hours' notice."
+
+
+def notice(f: dict) -> Notice | None:
+    """The notice table of docs/site-redesign.md ("Notice"), in order; the first matching rule wins, so each condition
+    leaves out what an earlier rule already took. `lo` is from the first record showing the flight cancelled to its
+    scheduled time, `hi` from the record before that (None when the earliest record already showed it cancelled)."""
+    if f["outcome"] != "canceled":
         return None
-    return f"last expected {clock(est, page_date)}"
-
-
-# --- warning ---------------------------------------------------------------------------------------
-
-def _warning_rule(f: dict) -> tuple[int, str]:
-    """The spec's warning table, in order; the first matching rule wins, so each condition leaves out what an
-    earlier rule already took. `lo` is from the first record showing the flight cancelled to its scheduled time,
-    `hi` from the record before that (None when the earliest record already showed it cancelled); hi >= lo."""
     lo, hi, censored = f["cancel_lead_min"], f["cancel_lead_max_min"], f["cancel_lead_censored"]
-    after = f"after it was scheduled to {_verb(f['direction'])}"
+    gap = "(There's a gap in the records then.)"
     if hi is None:
-        return (1, f"at least {hours(_down(lo))}") if lo >= 60 else (2, "unknown")
+        if lo >= 60:  # rule 1
+            return Notice(f"{_at_least(lo)} It was already cancelled when it first appeared.", f"{_down(lo)}+ hours")
+        return Notice("How much notice is unknown: it was already cancelled when it first appeared.", "unknown")
     if hi < 0 and not censored:  # a non-censored range is at most an hour wide; -hi is its nearer end
+        should = f"it should have {'left' if f['direction'] == 'D' else 'landed'}"
         if -lo < 60:
-            return 3, f"none: listed as cancelled less than an hour {after}"
-        if -hi < 120:
-            return 3, f"none: listed as cancelled about an hour {after}"
-        return 3, f"none: listed as cancelled about {hours(_down(-hi))} {after}"
+            amount = "less than an hour"
+        elif -hi < 120:
+            amount = "about an hour"
+        else:
+            amount = f"about {hours(_down(-hi))}"
+        return Notice(f"Cancelled with no notice: it was marked cancelled {amount} after {should}.", "none")
     if hi < 0:
-        return 4, f"none: listed as cancelled {after}"
+        return Notice("Cancelled with no notice: it was only marked cancelled after its scheduled time. " + gap, "none")
     if censored and lo >= 60:
-        return 5, f"between {_down(lo)} and {hours(_up(hi))}"
+        return Notice(f"Cancelled between {_down(lo)} and {hours(_up(hi))} before its scheduled time. {gap}",
+                      f"{_down(lo)} to {hours(_up(hi))}")
     if censored and lo >= 0:
-        return 6, f"up to {hours(_up(hi))}"
+        return Notice(f"Cancelled up to {hours(_up(hi))} before its scheduled time. {gap}",
+                      f"up to {hours(_up(hi))}")
     if censored:
-        return 7, "unknown: no records for that time"
+        return Notice("How much notice is unknown: there's a gap in the records then.", "unknown")
     if lo >= 60:
-        return 8, f"at least {hours(_down(lo))}"
+        return Notice(_at_least(lo), f"{_down(lo)}+ hours")
     if lo >= 0 and hi < 60:
-        return 9, "less than an hour"
+        return Notice("Cancelled less than an hour before its scheduled time.", "under an hour")
     if lo >= 0:
-        return 10, "about an hour"
-    return 11, "around the scheduled time"
-
-
-def warning(f: dict) -> str | None:
-    """How long before its scheduled time the airport's list already showed the flight as cancelled."""
-    if f["outcome"] != "canceled":
-        return None
-    return _warning_rule(f)[1]
-
-
-def warning_note(f: dict) -> str | None:
-    """The flight page's extra sentence for a warning that rests on missing records."""
-    if f["outcome"] != "canceled":
-        return None
-    rule = _warning_rule(f)[0]
-    if rule in (1, 2):
-        return "The earliest record already showed it as cancelled."
-    if 4 <= rule <= 6:  # rule 7's own text already says "no records for that time"
-        return "No records for part of that time."
-    return None
-
-
-def warning_sentence(text: str) -> str:
-    """A warning text as the flight page's sentence."""
-    if text.startswith("none: "):
-        return f"No warning: {text.removeprefix('none: ')}."
-    if text.startswith("unknown: "):
-        return f"Warning unknown: {text.removeprefix('unknown: ')}."
-    if text == "unknown":
-        return "Warning unknown."
-    return f"Warning: {text}."
+        return Notice("Cancelled about an hour before its scheduled time.", "about an hour")
+    return Notice("Cancelled around its scheduled time.", "almost none")
 
 
 # --- what changed ----------------------------------------------------------------------------------

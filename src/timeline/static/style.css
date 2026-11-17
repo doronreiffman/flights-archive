@@ -106,7 +106,7 @@ h1 + .stats { margin-top: 16px; }
 }
 .l-departed, .l-landed { color: var(--ok-fg); background: var(--ok-bg); }
 .l-cancelled { color: var(--cancel-fg); background: var(--cancel-bg); }
-.l-upcoming, .l-no-final-update { color: var(--plain-fg); background: var(--plain-bg); }
+.l-upcoming, .l-no-news-yet { color: var(--plain-fg); background: var(--plain-bg); }
 .l-unknown { color: var(--unknown-fg); border-color: currentColor; border-style: dashed; }
 .l-delayed { color: var(--delay-fg); background: var(--delay-bg); }
 
@@ -250,7 +250,7 @@ summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: 
   .cancellations td { padding: 0; border: 0; }
   .cancellations td:nth-child(2) { order: -1; }
   .cancellations td:nth-child(3), .cancellations td:nth-child(4) { flex-basis: 100%; }
-  .cancellations td:nth-child(4)::before { content: "Warning: "; color: var(--muted); }
+  .cancellations td:nth-child(4)::before { content: "Notice given: "; color: var(--muted); }
   /* Each point of the from-here table stacks too, every figure after its column's head. */
   .fromhere, .fromhere tbody, .fromhere tr, .fromhere td { display: block; }
   .fromhere thead {
