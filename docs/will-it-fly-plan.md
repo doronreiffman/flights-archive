@@ -31,7 +31,7 @@ What holds from `docs/flight-lookup-plan.md` (lines 31 to 46), and what q27 chan
 - **Claims (changed by q27).** The flight-lookup plan's "a rate is always '1 in N' with its range, never a percentage" and "none of chance, odds, … on a reader page" no longer hold. Now:
   - figures are percentages, and no range stands on a traveller's page;
   - "chance" and "chances" are allowed, and every other odds word stays refused on a traveller's page ("odds" among them);
-  - a chance reads "about" or "under" and is never "0%";
+  - a flight's chance reads "about" or "under" and is never "0%";
   - "cancelled", not "listed as cancelled", and "marked cancelled" where a sentence says when;
   - a cancellation never gets a clock time, and notice is a range or a bound;
   - a delay is "an hour or more", and nothing under an hour is shown;
@@ -1114,7 +1114,7 @@ Implementer: transcription (Sonnet). Every claim is checked against the code as 
 - [ ] **Step 4:** Build the site on the latest model and run `timeline.check site`. Expected: exit 0.
 - [ ] **Step 5:** Write Steps 1 and 2's counts into `README.md:27`, `README.md:56` and `docs/operations.md:97`, and commit (`q27: test and mutation counts`).
 - [ ] **Step 6:** The push and the merge, each run by the main session on the owner's go, after `gh auth status` shows the project's own GitHub account. Then the upload: the owner reads the terms page's update date (`docs/terms.md:44`) and runs `! sh scripts/publish.sh` at the terminal.
-- [ ] **Step 7:** After the upload, on the owner's go, retake the README's two screenshots from the live site and rewrite their alt text, in a commit of their own. "Unverified" in `docs/site-redesign.md:413` (a font served through CloudFront) is then settled by that upload: record it.
+- [ ] **Step 7:** After the upload, on the owner's go, retake the README's two screenshots from the live site and rewrite their alt text, in a commit of their own. "Unverified" in `docs/site-redesign.md:414` (a font served through CloudFront) is then settled by that upload: record it.
 
 ## Back-test record
 
@@ -1158,5 +1158,5 @@ The executor appends here whenever reality forces a change from this plan: what 
 - Task 16, the page script (2026-11-17, 3a06f5b): `fromhere.js` works the page's age and the top day out again whenever the page is shown again, not only when it loads: on `DOMContentLoaded`, on `pageshow` (a page the browser brings back from memory) and on `visibilitychange` once the tab is visible. Each step reads the page as it stands, so a second run moves only the days that have passed since the first. `showNoneAhead` now also sets the all-airlines line back to its form without a time, which an earlier run could have left in a timed form. The script still writes no text but the age.
 - Page weights in bytes (Minor 9 of the review): Task 0 counted bytes, while Tasks 11 and 15 gave `du`'s KB, which counts disk blocks. Measured in bytes with `find site -type f` (the build's 55-byte marker included), the site at 3a06f5b, built from `data/model-2026-11-17-2032`, holds 1,118 files and 24,166,896 bytes (`du -sk`: 25,960 KB), about 35% more than Task 0's 17,960,040. Its largest flight pages are `flight/LY8391-D.html` and `flight/VY5284-D.html`, 42,955 bytes each (Task 0: 34,953).
 - The suite and the mutation entries, beside the baseline of "Global Constraints": 1,210 tests and 510 entries at 0f1b7e8; 1,407 tests and 673 entries at 29c43ee; 1,453 tests and 678 entries at 3a06f5b (`PYTHONPATH=src .venv/bin/pytest -o addopts="" -q`: 1,453 passed; `len(mutation_check.MUTATIONS)`: 678). The final counts are Task 18's.
-- Task 17 (2026-11-18): this task's file list was behind the build. With the fonts' licence, step 5 of `docs/publishing.md` has five syncs and an upload five more PUT requests, not four. Task 9's markup (`day_list`'s wrapper and the search results' live region) and Task 7's test names were brought up to the build in their steps above.
+- Task 17 (2026-11-18): this task's file list was behind the build. With the fonts' licence, step 5 of `docs/publishing.md` has five syncs and an upload five more PUT requests, not four. Task 9's markup (`day_list`'s wrapper and the search results' live region) and Task 7's test names were brought up to the build in their steps above. The documents' review found the approved "A chance is never "0%". Below 1%, it reads "under 1%"." untrue of the front page's table, which gives the chance for all airlines to one decimal (0.8%); I scoped it to "A flight's chance" on 2026-11-18, in `docs/terms.md` and `docs/flight-lookup.md`.
 
