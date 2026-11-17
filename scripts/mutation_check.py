@@ -70,6 +70,7 @@ FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
+BACKTEST = ("src/timeline/backtest.py", ["tests/test_backtest.py"])
 # The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
 NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
 VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
@@ -606,6 +607,16 @@ COLLECTOR_MUTATIONS = {
     "blend: flat check below the floor": (BLEND, "            if row.clears_floor and 100 * abs(", "            if 100 * abs("),
     "blend: no guard on an airport with no counted flight": (BLEND, "    if not airport.total.flights:\n        return None\n", ""),
     "blend: no guard on a direction with none flown": (BLEND, "    if not airport.delay[direction].flights:\n        return None\n", ""),
+    "backtest: the week holds a day not closed": (BACKTEST, "    last = edge.date() - timedelta(days=1)\n", "    last = edge.date()\n"),
+    "backtest: counts not cut": (BACKTEST, "before=_start(first))", "before=None)"),
+    "backtest: scored on the 3-hour row": (BACKTEST, "ROW = 24  #", "ROW = 3  #"),
+    "backtest: flights outside the 24-hour row": (BACKTEST, "if first <= f.day <= last and f.key in row]", 'if first <= f.day <= last and f.closed and f.result != "unknown"]'),
+    "backtest: top tenth rounded down": (BACKTEST, "    n = (len(ranked) + 9) // 10\n", "    n = len(ranked) // 10\n"),
+    "backtest: double flag at twice": (BACKTEST, "(every.expected_cancelled > 2 * every.cancelled,", "(every.expected_cancelled >= 2 * every.cancelled,"),
+    "backtest: half flag off": (BACKTEST, "             2 * every.expected_cancelled < every.cancelled,\n", "             False,\n"),
+    "backtest: top-tenth flag reversed": (BACKTEST, "top.cancelled * rest.flights <= rest.cancelled * top.flights)", "top.cancelled * rest.flights >= rest.cancelled * top.flights)"),
+    "backtest: ties broken against the flight key": (BACKTEST, "key=lambda i: (-chance(i), i.key))", "key=lambda i: (chance(i), i.key), reverse=True)"),
+    "backtest: a flight with no delay chance not counted": (BACKTEST, "no_delay_chance=sum(i.flew and i.delay is None for i in items))", "no_delay_chance=0)"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
