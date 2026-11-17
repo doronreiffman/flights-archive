@@ -433,8 +433,8 @@ def records(table, obs, snaps, before: datetime | None = None) -> Records
 def pull(k: int, n: int, toward: float, weight: int) -> float          # (k + weight * toward) / (n + weight)
 def row_for(hours_left: float | None) -> int                          # STRETCHES' checkpoint; 70 above 48 h and for None
 def scaling(airport: Airport, h: int) -> float | None                 # the clearing row's rate over the total's; None
-def cancel_chance(number: Tally, airline: Tally, airport: Airport, h: int) -> float
-def delay_chance(number: Tally, airline: Tally, airport: Airport, direction: str) -> float
+def cancel_chance(number: Tally, airline: Tally, airport: Airport, h: int) -> float | None   # None: no counted flight at the airport
+def delay_chance(number: Tally, airline: Tally, airport: Airport, direction: str) -> float | None   # None: none of the direction's flights flew
 def bad_week(t: Tally) -> tuple[date, date] | None                    # two or more, all within BAD_WEEK_DAYS
 def lead(f: counting.Flight, by_id: dict[str, dict]) -> dict           # C8's grouping number: min by _number_order
 def flat_delays(table, obs, snaps, airport: Airport) -> None
@@ -1133,4 +1133,5 @@ The executor appends here whenever reality forces a change from this plan: what 
   - The response headers, read from the live policy (`aws cloudfront get-response-headers-policy --id 67f7725c-6f97-4210-82d7-5512b31e9d03`, read-only): `Managed-SecurityHeadersPolicy` sets no Content-Security-Policy, so it cannot block a font from the site's own address. It sends `X-Content-Type-Options: nosniff` (Override true), so every upload sets its content type, as `publish.sh` already does. Nothing new on AWS.
   - Change to Task 7: the build also writes `fonts/LICENSE.txt`; `publish.sh` gets a fifth upload, `upload '*.txt' 'text/plain; charset=utf-8'`; the file-type test admits it.
 - Task 2 (2026-11-17, 7ea2fe8): `words.shows_expected` added, the one rule for the time line's "expected" form and for where the expected-times note stands; `style.css` changed for the renamed label (`.l-no-news-yet`) and the phone prefix "Notice given: " (design `docs/site-redesign.md:109`), needed by the renames; `ListFlight.delayed` has no separate CANCELLED or UNKNOWN guard, since under C10 such a flight's rows are never delayed (a comment says so; a guard would be an equivalent mutant); the entry "display: DELAYED from the airport's word" targets `flights.py`, where the status word was read. Still on the pages until later tasks: the flight page's summary "with no final update" (Task 10) and the "How this works" glossary's old labels and "How much warning" (Task 14).
+- Task 4, review (2026-11-17): the chance functions divided by zero on an airport with no counted flight, or a direction with none that flew; the build's tests run such small models. Both now return `None` there. A day whose chances are `None` carries no chances (Task 11, the structure of Question 1, so no new words), and the back-test leaves such a flight unscored (Task 5).
 
