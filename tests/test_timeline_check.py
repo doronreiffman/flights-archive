@@ -413,8 +413,9 @@ def test_the_partner_line_is_not_the_worked_out_line(tmp_path):
     assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
 
 
-def test_only_a_worked_out_line_counts(tmp_path):
-    site = make(tmp_path, {"flight/a.html": "<p>Chance it's cancelled: about 15%</p><p>Worked a lot out.</p>" + FOOTER})
+@pytest.mark.parametrize("line", ["Worked a lot out.", "Worked out by hand."])
+def test_only_a_worked_out_line_counts(tmp_path, line):
+    site = make(tmp_path, {"flight/a.html": f"<p>Chance it's cancelled: about 15%</p><p>{line}</p>" + FOOTER})
     assert check.missing_notices(site) == [("flight/a.html", "worked-out line")]
 
 

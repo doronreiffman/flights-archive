@@ -1,7 +1,7 @@
 """Check a built site before upload (docs/site-redesign.md, "Anti-goals" and "Footer (every page)"): no wording
 that claims more than the airport's list showed, no voice of an institution, no data-collection words outside
-how-it-works.html, not the built-by placeholder, and the source line and the unofficial line on every page
-(docs/terms.md, clauses 6 and 8), with the full attribution on how-it-works.html.
+how-it-works.html, not the built-by placeholder, and the source line, the unofficial line (docs/terms.md, clauses
+6 and 8) and the estimates line on every page, with the full attribution on how-it-works.html.
 
     PYTHONPATH=src .venv/bin/python -m timeline.check site
 
@@ -16,9 +16,9 @@ built before a footer change lacks the current wording and fails.
 
 Rules for chances (docs/flight-lookup.md, "Tests and checks"): "chance" and "chances" and a percent sign are
 allowed; every other odds word (odds, probability, likely, risk, forecast, predict and their forms) is refused
-outside how-it-works.html, after the airport's data (DATA) is skipped; a page under flight/ whose text holds "Chance
-it's cancelled" or "Chance its next flight is cancelled" must hold a "Worked out from" line (one per page, not per
-chance); and the footer's estimates line is required on every page.
+outside how-it-works.html, after the airport's data (DATA) is skipped; and a page under flight/ whose text holds a
+chance headline ("Chance it's cancelled", "Chance its next flight is delayed an hour or more" and the like, CHANCE)
+must hold a "Worked out from" line (one per page, not per chance).
 
 Exit 0 clean, 1 on a hit or a missing line, 2 when there are no pages to check.
 """
@@ -43,7 +43,8 @@ PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)  # every file
 I_WORD = re.compile(r"\bI\b")  # pages other than EXPLAINER, outside the built-by line
 # pages other than EXPLAINER, the built-by line included
 COLLECTION = re.compile(r"\b(?:board|boards|snapshot|snapshots|stored|observed|receipt|receipts)\b", re.I)
-# pages other than EXPLAINER, after the DATA mask; "chance" and "chances" are allowed (docs/flight-lookup.md, "Tests")
+# pages other than EXPLAINER, after the DATA mask; "chance" and "chances" are allowed (docs/flight-lookup.md, "Tests
+# and checks")
 ODDS_WORDS = re.compile(r"\b(?:odds|probability|probable|likely|unlikely|risks?|risky"
                         r"|forecasts?|forecasting|predicts?|predicted|prediction)\b", re.I)
 # a flight page's chance headline, read on flatten(strip_tags(page)): it needs the "Worked out from" line

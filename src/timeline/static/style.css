@@ -132,6 +132,7 @@ h3 a { text-decoration-thickness: 2px; }
   padding: 10px 0; border-bottom: 1px solid var(--hair);
 }
 .changes .t { padding-right: 28px; color: var(--soft); }
+li.is-cancel .w { color: var(--red); }
 .story .changes { margin-top: 14px; font-size: 1.25rem; }
 
 /* --- cancelled flights: date, flight, route, notice; a card that scrolls on its own if something is still too wide - */

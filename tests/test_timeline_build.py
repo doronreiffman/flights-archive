@@ -341,6 +341,24 @@ def test_the_total_counts_closed_flights(tmp_path):
     assert total_counts(read(site, "index.html")) == (1, 1)
 
 
+def test_the_front_pages_late_line_and_left_out_line(tmp_path):
+    """docs/flight-lookup.md, "Front page: the total", end to end. LY 001, due at 08:00 UTC on 27 October, was still
+    listed at 08:15 and marked cancelled only at 08:30, after its scheduled time; LY 003, due at 07:00 UTC, left the
+    list at 07:30 without saying how it ended. The last record, 08:45 UTC on 29 October, closes both (C4): the total
+    counts LY 001, the late line names it, and LY 003 is left out."""
+    ly1, ly3 = dict(sched_local="2026-10-27T10:00:00"), dict(flight_no="003", sched_local="2026-10-27T09:00:00")
+    site = make_site(tmp_path, [
+        (at(6, 45), [row(**ly1), row(**ly3)]), (at(7, 15), [row(**ly1), row(**ly3)]), (at(7, 30), [row(**ly1)]),
+        (at(8, 0), [row(**ly1)]), (at(8, 15), [row(**ly1)]), (at(8, 30), [row(**ly1, status="CANCELED")]),
+        (at(8, 45, day=29), [row(flight_no="005", sched_local="2026-10-30T10:00:00")])])
+    index = read(site, "index.html")
+    assert total_counts(index) == (1, 1)
+    total = index[index.index('<section class="sec s-total">'):]
+    notes = [html.unescape(n) for n in re.findall(r'<p class="note">(.*?)</p>', total[:total.index("</section>")])]
+    assert notes == ["Some flights (at least 1 of the 1) were only marked cancelled after their scheduled time had "
+                     "passed.", "1 flight is left out because there's no record of how it ended."]
+
+
 # --- the counts, site-wide (docs/flight-lookup.md, "Tests and checks", words and pages) ---------------
 
 def closing_model() -> list:

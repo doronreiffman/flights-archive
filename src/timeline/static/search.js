@@ -32,6 +32,11 @@ function rank(query, entries) {
   return { shown, more: found.length - shown.length };
 }
 
+// A count with thousands separators, as every count on the site is written: 1,234.
+function count(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function line(cls, text) {
   const item = document.createElement("li");
   item.setAttribute("class", cls);
@@ -50,7 +55,7 @@ function show(list, query, found) {
     item.appendChild(link);
     return item;
   });
-  if (found.more > 0) items.push(line("more", found.more + MORE));
+  if (found.more > 0) items.push(line("more", count(found.more) + MORE));
   else if (items.length === 0 && normalise(query) !== "") items.push(line("none", NONE));
   list.replaceChildren(...items);
   list.hidden = items.length === 0;

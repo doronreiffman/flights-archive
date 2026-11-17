@@ -454,6 +454,44 @@ def test_the_first_lines_four_forms(israeli_machine):
         ("Already on the list at 20:04", "already cancelled, terminal 3")]
 
 
+# The line that says a flight was cancelled, as _change writes it, around its word: the sheet colours the word red
+# (docs/site-redesign.md, "Look A", "Red only for 'cancelled'").
+MOVED = "Moved to a new scheduled time: 30 Oct 23:30 → 01:10"
+CANCEL_SPLITS = [
+    ("Cancelled", ("", "Cancelled", "")),
+    ("Cancelled, expected to leave at 17:38 instead, terminal 3", ("", "Cancelled", ", expected to leave at 17:38 "
+                                                                  "instead, terminal 3")),
+    (f"{MOVED}, cancelled", (f"{MOVED}, ", "cancelled", "")),
+    (f"{MOVED}, cancelled, check-in desks 1, 2", (f"{MOVED}, ", "cancelled", ", check-in desks 1, 2")),
+    # no cancellation: the earliest record's "already cancelled" is when the record was made, not a change
+    ("already cancelled, terminal 3", None), ("Status “not final”", None), ("Expected to leave at 17:38 instead", None),
+    (f"{MOVED}, expected to leave at 01:25 instead", None), ("on time, terminal 1", None),
+]
+
+
+@pytest.mark.parametrize("line, split", CANCEL_SPLITS)
+def test_a_cancellation_lines_word(line, split):
+    assert words.cancel_split(line) == split
+    if split is not None:
+        assert "".join(split) == line
+
+
+def test_every_cancellation_line_change_lines_writes_is_split(israeli_machine):
+    """A record that cancels, alone, with other changes, or after a move: its line's word is found; no other line's."""
+    cancel = then(ON_TIME, utc(29, 17, 32, 45), utc(29, 17, 31, 50), status="CANCELED")
+    with_more = then(ON_TIME, utc(29, 17, 32, 45), utc(29, 17, 31, 50), status="CANCELED", est_local=local(29, 17, 38),
+                     terminal=3)
+    moved = then(RETIMED, utc(30, 20, 32, 45), utc(30, 20, 16, 45), kind="retime", sched_local=local(31, 1, 10),
+                 est_local=local(31, 1, 25), status="CANCELED", terminal=3)
+    found = []
+    for obs, page_date in [([ON_TIME, cancel], DAY), ([ON_TIME, with_more], DAY), ([RETIMED, moved], date(2026, 10, 31)),
+                           *((o, p) for o, _, p, _ in CHANGE_CASES), (TO3459_OBS, DAY)]:
+        found += [words.cancel_split(text) for _, text in words.change_lines(obs, "D", page_date, 1, frozenset())]
+    assert [split[1] for split in found if split] == ["Cancelled", "Cancelled", "cancelled", "Cancelled", "Cancelled"]
+    assert found[3] == ("", "Cancelled", ", expected to leave at 17:38 instead, terminal 3")
+    assert found[5] == (f"{MOVED}, ", "cancelled", ", expected to leave at 01:25 instead, terminal 3")
+
+
 @pytest.mark.parametrize("changed", [
     {"status_he": "בזמן"}, {"airline_name": "TRANSAVIA  FRANCE"}, {"airport_name": "ORLY"},
     {"city_en": "PARIS"}, {"city_he": "פריז"}, {"country_en": "FRANCE"}, {"country_he": "צרפת"},
@@ -476,6 +514,8 @@ def test_status_words():
 def test_rounding():
     assert words.about(0.0099999) == "under 1%"
     assert words.about(0.01) == "about 1%"
+    assert words.about(0.03 * (1 / 3)) == "about 1%"  # exactly 1%, which the float holds as 0.009999999999999998
+    assert words.about(0.00999999999) == "under 1%"  # just under 1%, past the snap's nine decimals
     assert words.about(0) == "under 1%"
     assert words.about(0.095003) == "about 10%"
     assert words.about(0.154306) == "about 15%"
@@ -611,8 +651,9 @@ def test_every_worked_out_from_form():
         "Lufthansa's history, and how soon it leaves.", True, False)
     assert line(LO155, LOT, "LOT", ahead=False) == words.Worked(
         f"{FLIGHT_ONLY} (none of its 22 flights was cancelled) and LOT's history.", False, False)
-    assert line(hist("LH 695", 21, 3), LH, "Lufthansa", ahead=False).text == (  # Question 6b
-        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled) and Lufthansa's history.")
+    # Question 6b; 14 flights or more, no bad week of its own, under an airline with one: no dates given
+    assert line(hist("LH 695", 21, 3), LH, "Lufthansa", ahead=False) == words.Worked(
+        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled) and Lufthansa's history.", False, False)
     assert line(LH694, LH, "Lufthansa", ahead=False, listed_since=True) == words.Worked(
         f"{FLIGHT_ONLY}: 4 of its 19 flights were cancelled, all between 6 and 9 November.", True, False)
     assert line(hist("LH 694", 14, 4, 0, LH694.week), LH, "Lufthansa", ahead=False, listed_since=False).text == (
@@ -852,5 +893,11 @@ def test_no_text_trips_the_upload_check():
 def test_a_name_ending_in_a_lowercase_s_takes_a_bare_apostrophe(name, possessive):
     assert possessive in words.worked_out(LO155, LOT, name, True, True).text
     assert words.partner("LY 9255", "LO 155", name).endswith(f"worked out from {possessive}.")
-    assert words.worked_out(LO155, LOT, name, True, True, lambda s: s.replace("'", "’"),
-                            lambda s: f"<{s}>").text.count(f"<{name}>" + possessive.removeprefix(name).replace("'", "’")) == 1
+    mark = (lambda s: s.replace("'", "’"), lambda s: f"<{s}>")  # text, data
+    marked = f"<{name}>" + possessive.removeprefix(name).replace("'", "’")
+    assert words.worked_out(LO155, LOT, name, True, True, *mark).text.count(marked) == 1
+    assert words.worked_out(hist("LO 157", 5), LOT, name, True, True, *mark).text == (
+        f"Worked out mostly from {marked}, because <LO 157> has only 5 flights so far. <{name}> cancelled none of its "
+        "127 flights.")
+    assert words.partner("LY 9255", "LO 155", name, *mark) == (
+        f"<LY 9255> is also sold as <LO 155>, so the numbers here are worked out from {marked}.")
