@@ -1228,7 +1228,8 @@ def test_front_page_order():
              '<table class="fromhere">', '<p class="stats">', "Since 27 October, 104 of 6,115 flights",
              "<h2>A recent cancellation, step by step</h2>", "<h2>Recent cancellations</h2>",
              '<table class="cancellations">', 'href="cancellations.html"', "<h2>Flights each day</h2>",
-             '<ol class="chart">', '<p class="days-h">', '<ol class="days" id="days">', 'id="flights-data"', "</main>",
+             '<ol class="chart">', '<div class="pick" id="days">', '<p class="days-h">', '<ol class="days">',
+             'id="flights-data"', "</main>",
              "<footer>"]
     at = [page.index(part) for part in order]
     assert at == sorted(at)
@@ -1246,9 +1247,9 @@ def test_the_introduction():
 FIND = ('<div class="find" id="find" hidden>\n'
         '<label class="find-l" for="search">Find your flight</label>\n'
         '<input id="search" type="search" placeholder="Flight number or city, like LY 001 or Paris" '
-        'aria-label="Find a flight by number or city">\n'
-        '<ul id="search-results" hidden></ul>\n'
-        '<p class="find-hint">Your flight number is on your ticket or booking email.</p>\n'
+        'aria-describedby="find-hint">\n'
+        '<ul id="search-results" aria-live="polite" hidden></ul>\n'
+        '<p class="find-hint" id="find-hint">Your flight number is on your ticket or booking email.</p>\n'
         "</div>\n"
         '<p class="find-off" id="find-off">To find your flight, <a href="#days">pick its day below</a>.</p>')
 
@@ -1263,7 +1264,27 @@ def test_without_scripts_the_search_is_replaced_by_the_day_list_link():
     assert "hidden" in els["find"].attrs and "hidden" not in els["find-off"].attrs
     assert "hidden" not in els["search"].attrs  # the wrapper hides it
     assert [k.tag for k in els["find"].kids] == ["label", "input", "ul", "p"]
-    assert els["days"].tag == "ol" and "day/2026-10-26.html" in section(page, 'id="days"', "</ol>")
+    # the link leads to "Pick a day:" with the list under it, so the line it names stays in view
+    assert [(k.tag, k.classes) for k in els["days"].kids] == [("p", ["days-h"]), ("ol", ["days"])]
+    assert "day/2026-10-26.html" in section(page, 'id="days"', "</ol>")
+
+
+def test_the_search_box_is_named_by_its_visible_label():
+    """WCAG 2.5.3 (Label in Name): no aria-label overrides "Find your flight", the label for the box; the hint under
+    the box describes it."""
+    els = {el.attrs["id"]: el for el in main_of(front()).walk() if "id" in el.attrs}
+    box = els["search"]
+    assert "aria-label" not in box.attrs and "aria-labelledby" not in box.attrs
+    labels = [el for el in main_of(front()).walk() if el.tag == "label"]
+    assert [el.attrs["for"] for el in labels] == ["search"]
+    assert box.attrs["aria-describedby"] == "find-hint" and els["find-hint"].classes == ["find-hint"]
+
+
+def test_the_results_are_announced_as_they_change():
+    """A screen reader hears the results list's lines as the script writes them, "No flight found" and the "more" line
+    among them."""
+    els = {el.attrs["id"]: el for el in main_of(front()).walk() if "id" in el.attrs}
+    assert els["search-results"].attrs["aria-live"] == "polite"
 
 
 def test_search_data_in_the_page():
@@ -1363,10 +1384,14 @@ def test_the_line_under_the_table_takes_the_mean_of_the_rows_shown_to_the_neares
     assert "from about 12,500 flights since" in text(chance(airport(rows=rows_of(12250))))
 
 
+BELOW_DELAY = ("Chance of a delay of an hour or more: about 2% for departures and under 1% for arrivals. It's about "
+               "the same however soon you fly.")  # BELOW's 1 of 50 and 0 of 40
+
+
 def test_with_no_row_shown_the_line_under_the_table_is_left_out():
     part = chance(BELOW)
     assert [row[1] for row in table_cells(part)[1:]] == ["Not enough flights yet"] * 6
-    assert lines_of(part) == ["Chance of cancellation, by how soon you fly"]
+    assert lines_of(part) == ["Chance of cancellation, by how soon you fly", BELOW_DELAY]
 
 
 def test_the_delay_line_from_the_delay_rates():
@@ -1378,12 +1403,20 @@ def test_the_delay_line_from_the_delay_rates():
         "same however soon you fly.")
 
 
+def test_the_delay_line_stands_on_a_small_archive():
+    """The design gives the delay line no floor, and Question 6e's form is for small archives: 9 delayed in 100 and
+    none in 30 still read."""
+    assert lines_of(chance(airport(delay={"D": made(9, 100), "A": made(0, 30)})))[-1] == (
+        "Chance of a delay of an hour or more: about 9% for departures and under 1% for arrivals. It's about the same "
+        "however soon you fly.")
+
+
 @pytest.mark.parametrize("direction", ["D", "A"])
-def test_the_delay_line_is_left_out_while_a_directions_delays_are_below_the_floor(direction):
-    """A delay rate is C8's (docs/flight-lookup.md:340), so, as a row of the table and the total, it shows a figure
-    only once its delayed flights clear the floor; with no flight that flew there is none to show."""
-    for thin in (made(9, 100), made(0, 0)):
-        assert "Chance of a delay" not in text(chance(airport(delay={direction: thin})))
+def test_the_delay_line_is_left_out_only_while_a_direction_has_no_flight_that_flew(direction):
+    """With no flight of a direction that flew there is no figure to give for it (the coordinator's ruling, fix round
+    1); one flight is enough."""
+    assert "Chance of a delay" not in text(chance(airport(delay={direction: made(0, 0)})))
+    assert "Chance of a delay" in text(chance(airport(delay={direction: made(0, 1)})))
 
 
 # --- the total -----------------------------------------------------------------------------------------------------
@@ -1594,7 +1627,8 @@ def test_the_day_list():
     """"Pick a day:" and every day the site has, linked, so that no flight is out of reach without JavaScript; the list
     is the target of the line in the search box's place."""
     got = views.day_list(ALL_DAYS)
-    assert got.startswith('<p class="days-h">Pick a day:</p>\n<ol class="days" id="days">\n') and got.endswith("</ol>")
+    assert got.startswith('<div class="pick" id="days">\n<p class="days-h">Pick a day:</p>\n<ol class="days">\n')
+    assert got.endswith("</ol>\n</div>")
     assert re.findall(r'<li><a href="(day/[\d-]+\.html)">([^<]*)</a></li>', got) == [
         (f"day/{x.day:%Y-%m-%d}.html", f"{x.day:%a} {x.day.day} {x.day:%b}") for x in ALL_DAYS]
     assert '<li><a href="day/2026-10-26.html">Mon 26 Oct</a></li>' in got
@@ -1622,7 +1656,7 @@ def test_front_page_without_cancellations(israeli_machine):
     page = views.front_page(summary_of(NONE_YET), NONE_YET, None, [], CHART_DAYS, CHART_DAYS, entries(), LAST_FETCH)
     assert 'class="sec story"' not in page
     assert '<table class="fromhere">' in page and "Since 27 October, 0 of 900 flights" in text(page)
-    assert FIND in page and '<ol class="days" id="days">' in page
+    assert FIND in page and '<div class="pick" id="days">' in page
     assert 'id="flights-data"' in page and '<ol class="chart">' in page
     assert "<h2>Recent cancellations</h2>" in page and "<p>No cancelled flights so far.</p>" in page
     assert 'class="cancellations"' not in page and "All cancelled flights" in text(page)
@@ -1631,10 +1665,12 @@ def test_front_page_without_cancellations(israeli_machine):
 
 
 def test_a_model_below_the_floor_everywhere():
-    """Review Focus 3: a fresh archive clears the floor nowhere. No figure anywhere on the page: each row reads "Not
-    enough flights yet", the total says why it has no percentage, and the late line, at zero, is left out."""
+    """Review Focus 3: a fresh archive clears the floor nowhere. No cancellation figure on the page: each row reads
+    "Not enough flights yet", the total says why it has no percentage, and the late line, at zero, is left out. The
+    delay line, which has no floor, is the only figure."""
     page = front(BELOW, s=summary_of(BELOW, late_after=0))
-    assert "%" not in text(page) and "None" not in text(page)
+    assert BELOW_DELAY in text(page)
+    assert "%" not in text(page).replace(BELOW_DELAY, "") and "None" not in text(page)
     assert [row[1] for row in table_cells(page)[1:]] == ["Not enough flights yet"] * 6
     assert "Not enough flights yet for a percentage." in text(page)
 

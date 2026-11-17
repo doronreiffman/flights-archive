@@ -422,14 +422,15 @@ def test_a_closed_flight_still_listed(tmp_path):
 
 
 def test_a_fresh_small_model_passes_the_upload_check(tmp_path):
-    """Review Focus 3: a model too small to clear the floor anywhere prints no range, says "too few so far to say", and
-    passes the upload check."""
+    """Review Focus 3: a model too small to clear the floor anywhere prints no range, says "Not enough flights yet",
+    and passes the upload check. Its departures flew but no arrival did, so the delay line, the one figure with no
+    floor, has no arrivals' figure to give and is left out: no percentage stands on the page."""
     site = make_site(tmp_path, closing_model())
     upload_check(site)
     pages = all_pages(site)
     assert [name for name, page in pages.items() if "(between" in text(page)] == []
     assert "Not enough flights yet for a percentage." in text(pages["index.html"])
-    assert "%" not in text(pages["index.html"])
+    assert "Chance of a delay" not in text(pages["index.html"]) and "%" not in text(pages["index.html"])
 
 
 # --- what the build hands to the pages (each page's own words are pinned in tests/test_timeline_views.py) ------------
@@ -648,7 +649,7 @@ def test_the_chart_shows_the_last_14_days_with_flights_and_every_later_day(tmp_p
     index = read(site, "index.html")
     drawn = re.findall(r'<a href="day/([\d-]+)\.html" class=', chart(index))
     assert drawn == [f"2026-10-{d}" for d in (13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 29, 30)]
-    listed = re.findall(r'<a href="day/([\d-]+)\.html">', index[index.index('<ol class="days" id="days">'):])
+    listed = re.findall(r'<a href="day/([\d-]+)\.html">', index[index.index('<div class="pick" id="days">'):])
     assert listed == [f"2026-10-{d}" for d in days]
 
 
