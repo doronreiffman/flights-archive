@@ -763,9 +763,9 @@ Implementer: integration (Opus). Design: `docs/site-redesign.md`, "Front page" (
 ```html
 <div class="find" id="find" hidden>
   <label class="find-l" for="search">Find your flight</label>
-  <input id="search" type="search" placeholder="Flight number or city, like LY 001 or Paris" aria-label="Find a flight by number or city">
+  <input id="search" type="search" placeholder="Flight number or city, like LY 001 or Paris" aria-describedby="find-hint">
   <ul id="search-results" hidden></ul>
-  <p class="find-hint">Your flight number is on your ticket or booking email.</p>
+  <p class="find-hint" id="find-hint">Your flight number is on your ticket or booking email.</p>
 </div>
 <p class="find-off" id="find-off">To find your flight, <a href="#days">pick its day below</a>.</p>
 ```
@@ -1142,4 +1142,5 @@ The executor appends here whenever reality forces a change from this plan: what 
 - Task 2 (2026-11-17, 7ea2fe8): `words.shows_expected` added, the one rule for the time line's "expected" form and for where the expected-times note stands; `style.css` changed for the renamed label (`.l-no-news-yet`) and the phone prefix "Notice given: " (design `docs/site-redesign.md:109`), needed by the renames; `ListFlight.delayed` has no separate CANCELLED or UNKNOWN guard, since under C10 such a flight's rows are never delayed (a comment says so; a guard would be an equivalent mutant); the entry "display: DELAYED from the airport's word" targets `flights.py`, where the status word was read. Still on the pages until later tasks: the flight page's summary "with no final update" (Task 10) and the "How this works" glossary's old labels and "How much warning" (Task 14).
 - Task 4, review (2026-11-17): the chance functions divided by zero on an airport with no counted flight, or a direction with none that flew; the build's tests run such small models. Both now return `None` there. A day whose chances are `None` carries no chances (Task 11, the structure of Question 1, so no new words), and the back-test leaves such a flight unscored (Task 5).
 - Task 6, Step 8 (2026-11-17, main session): `python -m timeline.names` on `data/model-2026-11-17` lists 60 airlines: the 54 grouping airlines (as Question 5 counted them) and 6 more with 100 or more flights under their numbers (Aeromexico, Aerolineas Argentinas, Iberia, SAS, TAP, Virgin Atlantic), whose flights are always grouped under another airline, so no sentence names them. 57 had no spoken name; the main session drafted all 57 (76729d3 on q27-t4), four marked "check" for the owner (One Click, Sky Up Nistru, the Royal Australian Air Force, Transaero).
+- Task 9, review (2026-11-17): the search box's `aria-label` overrode its new visible label "Find your flight" (WCAG 2.5.3, Label in Name), so the markup drops it and points `aria-describedby` at the hint. The delay line had a floor the design does not give, which made Question 6e's "under 1%" form unreachable in the small archives it was approved for; it is now left out only when a direction has no flight that flew.
 
