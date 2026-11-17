@@ -473,7 +473,7 @@ def from_here(summary: Summary) -> str:
     table = ('<div class="table-card">\n<table class="fromhere">\n<thead><tr>'
              + "".join(f"<th>{e(head)}</th>" for head in heads) + "</tr></thead>\n<tbody>\n" + "\n".join(rows)
              + "\n</tbody>\n</table>\n</div>")
-    late = words.late_line(summary)
+    late = words.late_line(summary.late_after, summary.figures.total.cancelled)
     return "\n".join([f"<h2>{e(words.FROM_HERE_HEADING)}</h2>", f"<p>{e(words.FROM_HERE_FIRST)}</p>", table,
                       f"<p>{e(words.PAST_ONLY)}</p>",
                       *(f'<p class="note">{e(line)}</p>' for line in words.UNDER_TABLE),

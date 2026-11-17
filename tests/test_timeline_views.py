@@ -347,7 +347,8 @@ PAIR_24 = ("This flight has between 12 and 24 hours to go. So far, of all flight
            "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
 CONDITION = ("The figure is for flights the airport's list showed normally. This page was last updated 30 Oct 2026, "
              "00:02 and cannot say what the list shows now. Check the airport's own list.")
-PASSED = ("This flight's scheduled time has passed. The row below shows the list as it was on 30 Oct 2026, 00:02.")
+PASSED = ("This flight's time has passed. The page was last updated on 30 Oct at 00:02, so it may not show "
+          "what happened.")
 
 
 def pairs_block(page: str) -> str:
@@ -896,7 +897,7 @@ NONE_YET = figures(rate(0, 900, None, None, None, floor=False),
 COUNT_LINE = ("Counted: 4,658 flights with a known outcome, scheduled up to two days before the last update, in a "
               "record kept since 27 October 2026. Not counted: 269 flights with no known outcome. 240 of them left "
               "the list while nothing was recorded, and 29 left it with no final status.")
-LATE_LINE = "At least 9 of the 81 cancelled flights were listed as cancelled only after their scheduled time."
+LATE_LINE = "Some flights (at least 9 of the 81) were only marked cancelled after their scheduled time had passed."
 HEADS = ["Time to go", "Flights still listed normally", "Later listed as cancelled", "That's about"]
 
 

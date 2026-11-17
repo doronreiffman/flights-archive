@@ -464,7 +464,7 @@ def test_above_the_floor_an_upcoming_row_gets_the_block_as_of_the_last_sighting(
     assert f"{last.day} {last:%b %Y, %H:%M}" == "27 Oct 2026, 08:15"
     assert ("The figure is for flights the airport's list showed normally. This page was last updated 27 Oct 2026, "
             "08:15 and cannot say what the list shows now.") in text(page)
-    assert "The row below shows the list as it was on 27 Oct 2026, 08:15." in text(page)
+    assert "The page was last updated on 27 Oct at 08:15, so it may not show what happened." in text(page)
     assert "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200)" in text(page)
     assert check.scan(site) == [] and check.missing_notices(site) == []
 

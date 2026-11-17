@@ -7,6 +7,7 @@ moment, and no delay is shown under an hour (display.delayed_an_hour).
 from __future__ import annotations
 
 import math
+import string
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -304,7 +305,6 @@ UNDER_TABLE = (
     "cancelled when it reaches the list is not in this table.",
 )
 TOO_FEW = "too few so far to say"
-MORE_THAN_3_DAYS = "More than 3 days to go: the airport's list does not show the flight yet."
 LEAD_INS = {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
             12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
 A_FLIGHT = (
@@ -341,13 +341,6 @@ def count_line(s: Summary) -> str:
             f"{_n(s.unknown_no_final)} left it with no final status.")
 
 
-def late_line(s: Summary) -> str | None:
-    if s.late_after == 0:
-        return None
-    return (f"At least {_n(s.late_after)} of the {_n(s.figures.total.cancelled)} cancelled flights were listed as "
-            f"cancelled only after their scheduled time.")
-
-
 def pair(h: int, rate: Rate) -> str | None:
     figure = one_in_range(rate)
     if figure is None:
@@ -366,11 +359,6 @@ def condition(updated: datetime) -> str:
             f"{_updated(updated)} and cannot say what the list shows now. Check the airport's own list.")
 
 
-def has_passed(updated: datetime) -> str:
-    return (f"This flight's scheduled time has passed. The row below shows the list as it was on "
-            f"{_updated(updated)}.")
-
-
 # --- other numbers of one flight (docs/flight-lookup.md, "Flight page: other situations") -----------------------
 
 ALSO_SOLD = "Also sold as"  # then the partners' numbers, linked, and SAME_PLANE
@@ -384,3 +372,277 @@ def twin(verb: str) -> tuple[str, str]:
     """The twin line's words before and after the linked numbers, for what the flight's other numbers did
     (flights.others: "departed", "landed" or "is still listed")."""
     return _TWIN[verb]
+
+
+# --- numbers (docs/flight-lookup.md, "Words": How numbers are written) --------------------------------------------
+
+def pct1(k: int, n: int) -> str:
+    """k of n as a percentage to one decimal, halves up, worked in integers so that 3 of 2,000 is 0.2%, not the
+    float's 0.1% (the table, the tiles)."""
+    tenths = (2000 * k + n) // (2 * n)
+    return f"{tenths // 10}.{tenths % 10}%"
+
+
+def average(k: int, n: int) -> str:
+    """"under 1%" below 1%, else the table's one decimal (the all-airlines figures, the total's sentence)."""
+    return "under 1%" if 100 * k < n else pct1(k, n)
+
+
+def about(x: float) -> str:
+    """A share as a chance: "under 1%" below 0.01, else "about N%", whole, halves up; never "0%"."""
+    return "under 1%" if x < 0.01 else f"about {math.floor(x * 100 + 0.5)}%"
+
+
+def _outward(one_in: float, up: bool) -> str:
+    tenths = round(1000 / one_in, 6)  # the end's share in tenths of a percent, past float noise
+    tenths = math.ceil(tenths) if up else math.floor(tenths)
+    return f"{tenths // 10}.{tenths % 10}%"
+
+
+def pct_range(rate: Rate) -> str | None:
+    """"1.7% (between 1.1% and 2.9%)": one decimal, the ends outward; None below the floor and for a rate with no
+    range (as one_in_range)."""
+    if one_in_range(rate) is None:
+        return None
+    return (f"{pct1(rate.cancelled, rate.flights)} (between {_outward(rate.one_in_to, False)} "
+            f"and {_outward(rate.one_in_from, True)})")
+
+
+def _fill(text: Callable[[str], str], template: str, **names: str) -> str:
+    """A sentence whose fixed words go through `text` and whose names (already marked by `data`) stand as given:
+    the views pass html.escape and views.d, the tests the identity."""
+    out = []
+    for literal, field, _, _ in string.Formatter().parse(template):
+        out.append(text(literal))
+        if field is not None:
+            out.append(names[field])
+    return "".join(out)
+
+
+def _flights(n: int) -> str:
+    return "1 flight" if n == 1 else f"{_n(n)} flights"
+
+
+def _day_month(day: date) -> str:
+    return f"{day.day} {day:%B}"
+
+
+# --- the front page: the table and the total ---------------------------------------------------------------------
+
+TABLE_HEADING = "Chance of cancellation, by how soon you fly"
+TABLE_COLUMNS = ("Your flight is…", "Chance it's cancelled")
+NOT_ENOUGH = "Not enough flights yet"
+ROW_NAMES = {70: "3 days away", 48: "2 days away", 24: "1 day away", 12: "12 hours away", 6: "6 hours away",
+             3: "3 hours away"}
+DELAY_LEAD = "Chance of a delay of an hour or more:"
+
+
+def table_first(first: str, last: str) -> str:
+    return f"If your flight is still on 3 days before, there's about a {first} chance it gets cancelled. By 3 hours before, it's {last}."
+
+
+def under_table(mean_flights: int, since: date) -> str:
+    return (f"These are averages for all airlines, from about {_n(mean_flights)} flights since {_day_month(since)}. "
+            "A delayed flight still counts as “still on”.")
+
+
+def delay_line(departures: float, arrivals: float) -> str:
+    """"about 8% for departures and 5% for arrivals": the second "about" is dropped after a first one."""
+    first, second = about(departures), about(arrivals)
+    if first.startswith("about "):
+        second = second.removeprefix("about ")
+    return f"{first} for departures and {second} for arrivals. It's about the same however soon you fly."
+
+
+def total_tiles(rate: Rate) -> list[tuple[str, str]]:
+    """(figure, label) per tile; the third tile is the percentage alone, so its label is empty. Below the floor
+    there are two tiles."""
+    tiles = [(_n(rate.flights), "flights"), (_n(rate.cancelled), "cancelled")]
+    if rate.clears_floor:
+        tiles.append((pct1(rate.cancelled, rate.flights), ""))
+    return tiles
+
+
+def total_sentence(rate: Rate, since: date) -> str:
+    were = "was" if rate.cancelled == 1 else "were"
+    first = f"Since {_day_month(since)}, {_n(rate.cancelled)} of {_n(rate.flights)} flights at Ben Gurion {were} cancelled"
+    if rate.clears_floor:
+        return f"{first} ({average(rate.cancelled, rate.flights)})."
+    return f"{first}. Not enough flights yet for a percentage."
+
+
+def late_line(late: int, cancelled: int) -> str | None:
+    if late == 0:
+        return None
+    return (f"Some flights (at least {_n(late)} of the {_n(cancelled)}) were only marked cancelled after their "
+            "scheduled time had passed.")
+
+
+def left_out(n: int) -> str | None:
+    if n == 0:
+        return None
+    if n == 1:
+        return "1 flight is left out because there's no record of how it ended."
+    return f"{_n(n)} flights are left out because there's no record of how they ended."
+
+
+# --- the flight page: the headline, "Worked out from", the lines in smaller type ---------------------------------
+
+def headline(cancel: float, delay: float, ahead: bool) -> tuple[tuple[str, str], tuple[str, str]]:
+    """(label, figure) for the cancellation and the delay; without a flight ahead both say "its next flight"."""
+    it = "it's" if ahead else "its next flight is"
+    return ((f"Chance {it} cancelled:", about(cancel)), (f"Chance {it} delayed an hour or more:", about(delay)))
+
+
+@dataclass(frozen=True)
+class History:
+    """A number's or an airline's counted flights. `week` is the first and last Israel day of a bad week: set when
+    two or more of its cancelled flights all fall within 7 days."""
+    name: str
+    flights: int
+    cancelled: int
+    delayed: int
+    week: tuple[date, date] | None
+
+
+@dataclass(frozen=True)
+class Worked:
+    """A "Worked out from" line, and whether it already gives the number's and the airline's bad-week dates."""
+    text: str
+    names_number_week: bool
+    names_airline_week: bool
+
+
+MOSTLY_BELOW_NUMBER, MOSTLY_BELOW_AIRLINE = 14, 100  # fewer counted flights than this: the next record leads
+
+
+def _all_in(week: tuple[date, date]) -> str:
+    first, last = week
+    if first == last:
+        return f"all on {_day_month(first)}"
+    if (first.year, first.month) == (last.year, last.month):
+        return f"all between {first.day} and {_day_month(last)}"
+    return f"all between {_day_month(first)} and {_day_month(last)}"
+
+
+def _bracket(h: History) -> str:
+    if h.cancelled == 0:
+        return f"(none of its {_n(h.flights)} flights was cancelled)"
+    if h.cancelled == 1:
+        return f"(1 of its {_n(h.flights)} flights was cancelled)"
+    return f"({_n(h.cancelled)} of its {_n(h.flights)} flights were cancelled)"
+
+
+def _whose(spoken: str | None, text: Callable[[str], str], data: Callable[[str], str]) -> str:
+    return _fill(text, "{s}'s history", s=data(spoken)) if spoken else text("its airline's history")
+
+
+def worked_out(number: History, airline: History, spoken: str | None, ahead: bool, listed_since: bool,
+               text: Callable[[str], str] = str, data: Callable[[str], str] = str) -> Worked:
+    """The line under a headline, in the form docs/flight-lookup.md picks: a number with 14 counted flights or more
+    leads; below that its airline does ("mostly from"), and below 100 flights of its own, all airlines. `spoken` is
+    the airline's spoken name, None for "its airline"; `listed_since` is whether a flight of the number is
+    scheduled after its last cancelled one."""
+    num = data(number.name)
+    if number.flights >= MOSTLY_BELOW_NUMBER:
+        whose = _whose(spoken, text, data)
+        if number.week is not None:
+            line = text(f"Worked out from this flight's history: {_n(number.cancelled)} of its {_n(number.flights)} "
+                        f"flights were cancelled, {_all_in(number.week)}.")
+            if ahead:
+                line += text(" Also from ") + whose + text(", and how soon it leaves.")
+            elif not listed_since:
+                line += text(" It hasn't been on the airport's list since.")
+            return Worked(line, True, False)
+        line = text(f"Worked out from this flight's history {_bracket(number)}")
+        if ahead:
+            return Worked(line + text(", ") + whose + text(", and how soon it leaves."), False, False)
+        return Worked(line + text(" and ") + whose + text("."), False, False)
+    have = "has no flights so far" if number.flights == 0 else f"has only {_flights(number.flights)} so far"
+    if airline.flights < MOSTLY_BELOW_AIRLINE:
+        if number.flights == 0 and airline.flights == 0:
+            return Worked(_fill(text, "Worked out from all airlines at Ben Gurion, because {n} and its airline have "
+                                      "no flights so far.", n=num), False, False)
+        return Worked(_fill(text, "Worked out mostly from all airlines at Ben Gurion, because {n} {have} and its "
+                                  "airline only {a}.", n=num, have=text(have), a=_n(airline.flights)), False, False)
+    who = data(spoken or airline.name)
+    first = _fill(text, "Worked out mostly from {p}, because {n} {have}.", p=_whose(spoken, text, data), n=num, have=text(have))
+    if airline.cancelled == 0:
+        second = text(" ") + who + text(f" cancelled none of its {_n(airline.flights)} flights.")
+    else:
+        tail = f", {_all_in(airline.week)}" if airline.week is not None else ""
+        second = text(" ") + who + text(f" cancelled {_n(airline.cancelled)} of its {_n(airline.flights)} flights{tail}.")
+    return Worked(first + second, False, airline.week is not None)
+
+
+def so_far(h: History, with_week: bool, text: Callable[[str], str] = str,
+           data: Callable[[str], str] = str) -> tuple[str, str]:
+    """(bold part, rest) of a "so far" line; `with_week` adds the bad week's dates to the cancelled count."""
+    cancelled = "none cancelled" if h.cancelled == 0 else f"{_n(h.cancelled)} cancelled"
+    if with_week and h.week is not None and h.cancelled:
+        cancelled += f", {_all_in(h.week)}"
+    delayed = ("none delayed an hour or more" if h.delayed == 0
+               else f"{_n(h.delayed)} delayed an hour or more")
+    return _fill(text, "{n} so far:", n=data(h.name)), text(f"{_flights(h.flights)} · {cancelled} · {delayed}")
+
+
+def partner(number: str, lead: str, spoken: str, text: Callable[[str], str] = str,
+            data: Callable[[str], str] = str) -> str:
+    """The line above an airline's "so far" line on the page of a number sold with another airline's flight."""
+    return _fill(text, "{a} is also sold as {b}, so the numbers here are worked out from {s}'s history.",
+                 a=data(number), b=data(lead), s=data(spoken))
+
+
+STRETCH_NAMES = {70: "2 to 3 days", 48: "1 to 2 days", 24: "12 to 24 hours", 12: "6 to 12 hours", 6: "3 to 6 hours",
+                 3: "less than 3 hours"}
+
+
+def all_airlines(h: int | None, cancel: str, delay: str, direction: str) -> tuple[str, str]:
+    """(bold part, rest) of the all-airlines line: `h` is the checkpoint of the stretch, None without a time left;
+    `cancel` and `delay` are the figures as written ("under 1%", "1.6%", "about 5%")."""
+    when = "" if h is None else f", {STRETCH_NAMES[h]} before a flight"
+    of = "departures" if direction == "D" else "arrivals"
+    return (f"All airlines at Ben Gurion{when}:", f"{cancel} cancelled · {delay} of {of} delayed an hour or more")
+
+
+# --- freshness and other situations ------------------------------------------------------------------------------
+
+def updated_at(t: datetime) -> str:
+    local = il_time(t)
+    return f"Updated {local.day} {local:%b} at {local:%H:%M}"
+
+
+FRESH_REST = "Things may have changed, so check with your airline."
+MORE_THAN_3_DAYS = ("Your flight is more than 3 days away. Flights show up on the airport's list about 3 days "
+                    "ahead, so check back closer to the date.")
+MARKED_CANCELLED = ("This flight is marked cancelled.", "Contact your airline.")
+
+
+def has_passed(updated: datetime) -> str:
+    local = il_time(updated)
+    return (f"This flight's time has passed. The page was last updated on {local.day} {local:%b} at {local:%H:%M}, "
+            "so it may not show what happened.")
+
+
+def not_listed(number: str, last: date, still_listed: bool, text: Callable[[str], str] = str,
+               data: Callable[[str], str] = str) -> str:
+    """No flight ahead: the number is off the airport's list, or its last flight is still on it."""
+    state = "has no upcoming flight on the airport's list right now" if still_listed else (
+        "isn't on the airport's list right now")
+    return _fill(text, "{n} " + state + f". The last one was on {last:%A} {_day_month(last)}.", n=data(number))
+
+
+# --- the strip of days -------------------------------------------------------------------------------------------
+
+def strip_heading(number: str, text: Callable[[str], str] = str, data: Callable[[str], str] = str) -> str:
+    return _fill(text, "{n}, day by day", n=data(number))
+
+
+def strip_key(counts: dict[str, int]) -> list[str]:
+    """"landed 22", "upcoming 3": each kind of mark with its count, in LABEL_ORDER, none for a count of 0."""
+    return [f"{label.lower()} {counts[label]}" for label in LABEL_ORDER if counts.get(label)]
+
+
+def mark_name(day: date, label: str) -> str:
+    """A mark's name for a screen reader and a tooltip: "Tuesday 17 November, upcoming"."""
+    return f"{day:%A} {_day_month(day)}, {label.lower()}"

@@ -313,7 +313,6 @@ def test_constants_are_the_approved_words():
         "More than 3 days to go: the airport's list does not show the flight yet. A flight already listed as "
         "cancelled when it reaches the list is not in this table.")
     assert words.TOO_FEW == "too few so far to say"
-    assert words.MORE_THAN_3_DAYS == "More than 3 days to go: the airport's list does not show the flight yet."
     assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
                               12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
     assert words.A_FLIGHT == (
@@ -384,13 +383,11 @@ def test_no_pair_below_the_floor():
     assert words.pair(24, rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
 
 
-def test_condition_and_has_passed_read_the_update_in_israel_time(israeli_machine):
+def test_condition_reads_the_update_in_israel_time(israeli_machine):
     updated = datetime(2026, 11, 12, 10, 16, 45)
     assert words.condition(updated) == (
         "The figure is for flights the airport's list showed normally. This page was last updated 12 Nov 2026, "
         "12:16 and cannot say what the list shows now. Check the airport's own list.")
-    assert words.has_passed(updated) == (
-        "This flight's scheduled time has passed. The row below shows the list as it was on 12 Nov 2026, 12:16.")
 
 
 class FakeSummary:
@@ -417,22 +414,6 @@ def test_count_line_carries_thousands_separators():
 def test_total_cancelled_count_carries_thousands_separators():
     assert words.total(rate(1200, 90000, 75.0, 60.0, 90.0)).startswith(
         "So far, 1,200 of 90,000 flights with a known outcome")
-
-
-def test_late_line_counts_carry_thousands_separators():
-    s = FakeSummary()
-    s.late_after = 1500
-    s.figures = type("F", (), {"total": rate(2500, 90000, 36.0, 30.0, 40.0)})()
-    assert words.late_line(s) == ("At least 1,500 of the 2,500 cancelled flights were listed as cancelled only "
-                                  "after their scheduled time.")
-
-
-def test_late_line():
-    assert words.late_line(FakeSummary()) == (
-        "At least 9 of the 81 cancelled flights were listed as cancelled only after their scheduled time.")
-    s = FakeSummary()
-    s.late_after = 0
-    assert words.late_line(s) is None
 
 
 def test_also_sold_as_and_the_twin_lines_words():
@@ -611,6 +592,311 @@ def test_status_words():
     }
 
 
+# --- the words that carry figures (docs/flight-lookup.md, "Words") ------------------------------------------------
+
+def test_rounding():
+    assert words.about(0.0099999) == "under 1%"
+    assert words.about(0.01) == "about 1%"
+    assert words.about(0) == "under 1%"
+    assert words.about(0.095003) == "about 10%"
+    assert words.about(0.154306) == "about 15%"
+    assert words.about(0.125) == "about 13%"
+    assert words.about(231 / 2982) == "about 8%"
+    assert words.about(149 / 3029) == "about 5%"
+    assert words.pct1(3, 2000) == "0.2%"
+    assert words.pct1(1, 2000) == "0.1%"
+    assert words.pct1(39, 5069) == "0.8%"
+    assert words.pct1(104, 6115) == "1.7%"
+    assert words.average(39, 5069) == "under 1%"
+    assert words.average(71, 4472) == "1.6%"
+    assert words.average(1, 100) == "1.0%"  # 1% is not "under 1%"
+
+
+def test_pct_range_rounds_outward():
+    assert words.pct_range(rate(104, 6115, 58.8, 34.9, 90.1)) == "1.7% (between 1.1% and 2.9%)"
+    assert words.pct_range(rate(104, 6115, 58.8, 34.9, 100.0)).endswith("(between 1.0% and 2.9%)")
+    assert words.pct_range(rate(104, 6115, 58.8, 100.0, 90.1)).endswith("and 1.0%)")
+    assert words.pct_range(rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
+    assert words.pct_range(rate(12, 12, 1.0, None, None)) is None
+
+
+def test_the_front_pages_table_words():
+    assert words.TABLE_HEADING == "Chance of cancellation, by how soon you fly"
+    assert words.TABLE_COLUMNS == ("Your flight is…", "Chance it's cancelled")
+    assert words.NOT_ENOUGH == "Not enough flights yet"
+    assert words.ROW_NAMES == {70: "3 days away", 48: "2 days away", 24: "1 day away", 12: "12 hours away",
+                               6: "6 hours away", 3: "3 hours away"}
+    assert words.table_first("1.6%", "0.4%") == ("If your flight is still on 3 days before, there's about a 1.6% "
+                                                "chance it gets cancelled. By 3 hours before, it's 0.4%.")
+    assert words.under_table(5000, date(2026, 10, 27)) == (
+        "These are averages for all airlines, from about 5,000 flights since 27 October. "
+        "A delayed flight still counts as “still on”.")
+    assert words.DELAY_LEAD == "Chance of a delay of an hour or more:"
+
+
+def test_the_delay_line():
+    assert words.delay_line(231 / 2982, 149 / 3029) == (
+        "about 8% for departures and 5% for arrivals. It's about the same however soon you fly.")
+    assert words.delay_line(0.001, 149 / 3029) == (  # Question 6e
+        "under 1% for departures and about 5% for arrivals. It's about the same however soon you fly.")
+
+
+def test_the_total_in_both_forms():
+    big = rate(104, 6115, 58.8, 34.9, 90.1)
+    assert words.total_tiles(big) == [("6,115", "flights"), ("104", "cancelled"), ("1.7%", "")]
+    assert words.total_sentence(big, date(2026, 10, 27)) == (
+        "Since 27 October, 104 of 6,115 flights at Ben Gurion were cancelled (1.7%).")
+    small = rate(3, 420, 140.0, 40.0, 300.0, floor=False)
+    assert words.total_tiles(small) == [("420", "flights"), ("3", "cancelled")]
+    assert words.total_sentence(small, date(2026, 10, 27)) == (
+        "Since 27 October, 3 of 420 flights at Ben Gurion were cancelled. Not enough flights yet for a percentage.")
+    one = rate(1, 420, 420.0, None, None, floor=False)  # Question 6f
+    assert words.total_sentence(one, date(2026, 10, 27)) == (
+        "Since 27 October, 1 of 420 flights at Ben Gurion was cancelled. Not enough flights yet for a percentage.")
+    assert words.total_sentence(rate(60, 9000, 150.0, 100.0, 200.0), date(2026, 10, 27)).endswith("(under 1%).")
+
+
+def test_the_late_and_left_out_lines():
+    assert words.late_line(15, 104) == ("Some flights (at least 15 of the 104) were only marked cancelled after "
+                                        "their scheduled time had passed.")
+    assert words.late_line(1500, 2500) == ("Some flights (at least 1,500 of the 2,500) were only marked cancelled "
+                                           "after their scheduled time had passed.")
+    assert words.late_line(0, 104) is None
+    assert words.left_out(285) == "285 flights are left out because there's no record of how they ended."
+    assert words.left_out(1) == "1 flight is left out because there's no record of how it ended."
+    assert words.left_out(0) is None
+
+
+def test_the_headline():
+    assert words.headline(0.004, 0.012, True) == (("Chance it's cancelled:", "under 1%"),
+                                                 ("Chance it's delayed an hour or more:", "about 1%"))
+    assert words.headline(0.154306, 0.03, False) == (
+        ("Chance its next flight is cancelled:", "about 15%"),
+        ("Chance its next flight is delayed an hour or more:", "about 3%"))
+
+
+def hist(name, flights, cancelled=0, delayed=0, week=None):
+    return words.History(name, flights, cancelled, delayed, week)
+
+
+LO155 = hist("LO 155", 22)
+LOT = hist("LOT POLISH AIRLINES", 127, 0, 2)
+LH694 = hist("LH 694", 19, 4, 0, (date(2026, 11, 6), date(2026, 11, 9)))
+LH = hist("LUFTHANSA", 183, 11, 7, (date(2026, 11, 6), date(2026, 11, 10)))
+FLIGHT_ONLY = "Worked out from this flight's history"
+
+
+def line(number, airline, spoken, ahead=True, listed_since=True):
+    return words.worked_out(number, airline, spoken, ahead, listed_since)
+
+
+def test_every_worked_out_from_form():
+    assert line(LO155, LOT, "LOT") == words.Worked(
+        f"{FLIGHT_ONLY} (none of its 22 flights was cancelled), LOT's history, and how soon it leaves.", False, False)
+    assert line(hist("LH 695", 21, 3), LH, "Lufthansa").text == (
+        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled), Lufthansa's history, and how soon it leaves.")
+    assert line(hist("LH 695", 20, 1), LH, "Lufthansa").text == (
+        f"{FLIGHT_ONLY} (1 of its 20 flights was cancelled), Lufthansa's history, and how soon it leaves.")
+    assert line(LH694, LH, "Lufthansa") == words.Worked(
+        f"{FLIGHT_ONLY}: 4 of its 19 flights were cancelled, all between 6 and 9 November. Also from "
+        "Lufthansa's history, and how soon it leaves.", True, False)
+    assert line(LO155, LOT, "LOT", ahead=False) == words.Worked(
+        f"{FLIGHT_ONLY} (none of its 22 flights was cancelled) and LOT's history.", False, False)
+    assert line(hist("LH 695", 21, 3), LH, "Lufthansa", ahead=False).text == (  # Question 6b
+        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled) and Lufthansa's history.")
+    assert line(LH694, LH, "Lufthansa", ahead=False, listed_since=True) == words.Worked(
+        f"{FLIGHT_ONLY}: 4 of its 19 flights were cancelled, all between 6 and 9 November.", True, False)
+    assert line(hist("LH 694", 14, 4, 0, LH694.week), LH, "Lufthansa", ahead=False, listed_since=False).text == (
+        f"{FLIGHT_ONLY}: 4 of its 14 flights were cancelled, all between 6 and 9 November. "
+        "It hasn't been on the airport's list since.")
+
+
+def test_a_short_history_leads_with_its_airline_or_all_airlines():
+    assert line(hist("LH 697", 2, 1), LH, "Lufthansa") == words.Worked(
+        "Worked out mostly from Lufthansa's history, because LH 697 has only 2 flights so far. "
+        "Lufthansa cancelled 11 of its 183 flights, all between 6 and 10 November.", False, True)
+    assert line(hist("LO 157", 5), hist("LOT", 127), "LOT", ahead=False).text == (
+        "Worked out mostly from LOT's history, because LO 157 has only 5 flights so far. "
+        "LOT cancelled none of its 127 flights.")
+    assert line(hist("LY 5", 5), hist("EL AL", 1624, 10), "El Al").text == (
+        "Worked out mostly from El Al's history, because LY 5 has only 5 flights so far. "
+        "El Al cancelled 10 of its 1,624 flights.")
+    assert line(hist("IZ 992", 2), hist("ARKIA", 40), None) == words.Worked(
+        "Worked out mostly from all airlines at Ben Gurion, because IZ 992 has only 2 flights so far and its "
+        "airline only 40.", False, False)
+    # no spoken name
+    assert line(hist("IZ 992", 22), hist("ARKIA ISRAELI AIRLINES", 140), None).text == (
+        f"{FLIGHT_ONLY} (none of its 22 flights was cancelled), its airline's history, and how soon it leaves.")
+    assert line(hist("IZ 992", 2), hist("ARKIA ISRAELI AIRLINES", 140), None) == words.Worked(
+        "Worked out mostly from its airline's history, because IZ 992 has only 2 flights so far. "
+        "ARKIA ISRAELI AIRLINES cancelled none of its 140 flights.", False, False)
+    # how many flights
+    assert "has only 1 flight so far" in line(hist("LO 157", 1), LOT, "LOT").text
+    assert "because LO 157 has no flights so far." in line(hist("LO 157", 0), LOT, "LOT").text
+    assert line(hist("XX 123", 0), hist("XX", 0), None).text == (  # Question 6d
+        "Worked out from all airlines at Ben Gurion, because XX 123 and its airline have no flights so far.")
+    assert "has no flights so far and its airline only 40." in line(hist("XX 123", 0), hist("XX", 40), None).text
+
+
+def test_the_picker():
+    # a flight ahead or none
+    assert "how soon it leaves" in line(LO155, LOT, "LOT", ahead=True).text
+    assert "how soon it leaves" not in line(LO155, LOT, "LOT", ahead=False).text
+    # 13 and 14 flights, under an airline of 100 and of 99
+    assert line(hist("LO 157", 13), hist("LOT", 100), "LOT").text.startswith("Worked out mostly from LOT's history")
+    assert line(hist("LO 157", 14), hist("LOT", 100), "LOT").text.startswith(FLIGHT_ONLY)
+    assert line(hist("LO 157", 14), hist("LOT", 99), "LOT").text.startswith(FLIGHT_ONLY)  # keeps the first forms
+    assert line(hist("LO 157", 13), hist("LOT", 99), "LOT").text.startswith(
+        "Worked out mostly from all airlines at Ben Gurion")
+    # "how soon it leaves" stays out of every "mostly from" form, with a flight ahead or without
+    assert "how soon" not in line(hist("LO 157", 13), hist("LOT", 100), "LOT", ahead=True).text
+    assert "how soon" not in line(hist("LO 157", 13), hist("LOT", 99), "LOT", ahead=True).text
+    # a bad week: with a flight since and with none
+    bad = hist("LH 694", 14, 4, 0, LH694.week)
+    assert "since" not in line(bad, LH, "Lufthansa", ahead=False, listed_since=True).text
+    assert line(bad, LH, "Lufthansa", ahead=False, listed_since=False).text.endswith(
+        "It hasn't been on the airport's list since.")
+    assert "since" not in line(bad, LH, "Lufthansa", ahead=True, listed_since=False).text
+    # a spoken name or none
+    assert "Lufthansa's history" in line(bad, LH, "Lufthansa", ahead=True).text
+    assert "its airline's history" in line(bad, LH, None, ahead=True).text
+    # the dates, named exactly where the line gives them
+    got = line(bad, LH, "Lufthansa")
+    assert (got.names_number_week, got.names_airline_week) == (True, False)
+    short = line(hist("LH 697", 2, 1), LH, "Lufthansa")
+    assert (short.names_number_week, short.names_airline_week) == (False, True)
+    clean_short = line(hist("LO 157", 5), LOT, "LOT")
+    assert (clean_short.names_number_week, clean_short.names_airline_week) == (False, False)
+    assert line(LO155, LOT, "LOT").names_number_week is False
+    # a short history with a bad week of its own: its dates are the "so far" line's (Question 6c)
+    own = line(hist("LH 697", 5, 2, 0, LH694.week), LH, "Lufthansa")
+    assert own.names_number_week is False and "6 and 9 November" not in own.text
+
+
+def test_a_bad_weeks_dates():
+    def dates(a, b):
+        return line(hist("LH 1", 20, 2, 0, (a, b)), LH, "Lufthansa", ahead=False).text
+    assert "2 of its 20 flights were cancelled, all on 6 November." in dates(date(2026, 11, 6), date(2026, 11, 6))
+    assert "all between 30 October and 2 November." in dates(date(2026, 10, 30), date(2026, 11, 2))
+    assert "all between 6 and 9 November." in dates(date(2026, 11, 6), date(2026, 11, 9))
+
+
+def test_the_lines_in_smaller_type():
+    assert words.so_far(LO155, False) == ("LO 155 so far:", "22 flights · none cancelled · none delayed an hour or more")
+    assert words.so_far(hist("LH 694", 14, 4), False) == (
+        "LH 694 so far:", "14 flights · 4 cancelled · none delayed an hour or more")
+    assert words.so_far(hist("LH 697", 2, 1), False) == (
+        "LH 697 so far:", "2 flights · 1 cancelled · none delayed an hour or more")
+    assert words.so_far(LOT, False) == (
+        "LOT POLISH AIRLINES so far:", "127 flights · none cancelled · 2 delayed an hour or more")
+    assert words.so_far(LH, False) == ("LUFTHANSA so far:", "183 flights · 11 cancelled · 7 delayed an hour or more")
+    assert words.so_far(LH, True) == (
+        "LUFTHANSA so far:", "183 flights · 11 cancelled, all between 6 and 10 November · 7 delayed an hour or more")
+    assert words.so_far(hist("LH 697", 5, 2, 0, LH694.week), True) == (  # Question 6c
+        "LH 697 so far:", "5 flights · 2 cancelled, all between 6 and 9 November · none delayed an hour or more")
+    assert words.so_far(hist("LY", 1624, 10, 1000), True)[1] == (
+        "1,624 flights · 10 cancelled · 1,000 delayed an hour or more")
+    assert words.so_far(hist("LY 9", 1), False)[1].startswith("1 flight ·")
+    assert words.partner("LY 9255", "LO 155", "LOT") == (
+        "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history.")
+
+
+def test_names_go_through_data_and_the_rest_through_text():
+    def data(s):
+        return f"<{s}>"
+
+    def text(s):
+        return s.replace("'", "’")
+    assert words.partner("LY 9255", "LO 155", "LOT", text, data) == (
+        "<LY 9255> is also sold as <LO 155>, so the numbers here are worked out from <LOT>’s history.")
+    assert words.worked_out(LO155, LOT, "LOT", True, True, text, data).text == (
+        "Worked out from this flight’s history (none of its 22 flights was cancelled), <LOT>’s history, "
+        "and how soon it leaves.")
+    assert words.worked_out(hist("IZ 992", 2), hist("ARKIA", 140), None, True, True, text, data).text == (
+        "Worked out mostly from its airline’s history, because <IZ 992> has only 2 flights so far. "
+        "<ARKIA> cancelled none of its 140 flights.")
+    assert words.so_far(LH, False, text, data)[0] == "<LUFTHANSA> so far:"
+    assert words.not_listed("LH 694", date(2026, 11, 10), False, text, data).startswith("<LH 694> isn’t on")
+    assert words.strip_heading("LO 155", text, data) == "<LO 155>, day by day"
+
+
+def test_the_six_stretches_of_the_all_airlines_line():
+    assert words.STRETCH_NAMES == {70: "2 to 3 days", 48: "1 to 2 days", 24: "12 to 24 hours", 12: "6 to 12 hours",
+                                   6: "3 to 6 hours", 3: "less than 3 hours"}
+    figures = {70: "1.6%", 48: "1.4%", 24: "1.1%", 12: "under 1%", 6: "under 1%", 3: "under 1%"}
+    for h, name in words.STRETCH_NAMES.items():
+        assert words.all_airlines(h, figures[h], "about 5%", "A") == (
+            f"All airlines at Ben Gurion, {name} before a flight:",
+            f"{figures[h]} cancelled · about 5% of arrivals delayed an hour or more")
+    assert words.all_airlines(None, "1.7%", "about 5%", "A") == (
+        "All airlines at Ben Gurion:", "1.7% cancelled · about 5% of arrivals delayed an hour or more")
+    assert words.all_airlines(None, "1.7%", "about 8%", "D")[1] == (
+        "1.7% cancelled · about 8% of departures delayed an hour or more")
+    assert words.all_airlines(12, "under 1%", "under 1%", "A")[1] == (  # Question 6e
+        "under 1% cancelled · under 1% of arrivals delayed an hour or more")
+
+
+def test_updated_at_is_israel_time(israeli_machine):
+    assert words.updated_at(datetime(2026, 11, 17, 7, 46, 12)) == "Updated 17 Nov at 09:46"
+    assert words.updated_at(datetime(2026, 7, 5, 7, 46)) == "Updated 5 Jul at 10:46"  # summer time, UTC+3
+
+
+def test_has_passed_reads_the_update_in_israel_time(israeli_machine):
+    assert words.has_passed(datetime(2026, 11, 17, 7, 46)) == (
+        "This flight's time has passed. The page was last updated on 17 Nov at 09:46, so it may not show "
+        "what happened.")
+
+
+def test_freshness_and_other_situations():
+    assert words.FRESH_REST == "Things may have changed, so check with your airline."
+    assert words.MORE_THAN_3_DAYS == ("Your flight is more than 3 days away. Flights show up on the airport's list "
+                                      "about 3 days ahead, so check back closer to the date.")
+    assert words.MARKED_CANCELLED == ("This flight is marked cancelled.", "Contact your airline.")
+    last = date(2026, 11, 10)
+    assert words.not_listed("LH 694", last, False) == (
+        "LH 694 isn't on the airport's list right now. The last one was on Tuesday 10 November.")
+    assert words.not_listed("LH 694", last, True) == (
+        "LH 694 has no upcoming flight on the airport's list right now. The last one was on Tuesday 10 November.")
+
+
+def test_the_strip_key_names_each_kind_with_its_count():
+    assert words.strip_key({"LANDED": 22, "UPCOMING": 3}) == ["landed 22", "upcoming 3"]
+    assert words.strip_key({"UNKNOWN": 1, "CANCELLED": 4, "LANDED": 10, "DEPARTED": 0}) == [
+        "landed 10", "cancelled 4", "unknown 1"]  # LH 694, in LABEL_ORDER, a zero left out
+
+
+def test_the_strip_words():
+    assert words.strip_heading("LO 155") == "LO 155, day by day"
+    assert words.mark_name(date(2026, 11, 17), "UPCOMING") == "Tuesday 17 November, upcoming"
+
+
+def figure_texts() -> list[str]:
+    """What the figure-carrying lines say over this section's cases, for the upload check."""
+    day = date(2026, 10, 27)
+    big = rate(104, 6115, 58.8, 34.9, 90.1)
+    small = rate(3, 420, 140.0, 40.0, 300.0, floor=False)
+    texts = [words.TABLE_HEADING, *words.TABLE_COLUMNS, words.NOT_ENOUGH, *words.ROW_NAMES.values(),
+             words.table_first("1.6%", "0.4%"), words.under_table(5000, day), words.DELAY_LEAD,
+             words.delay_line(0.077, 0.049), words.delay_line(0.001, 0.049), words.pct_range(big),
+             words.total_sentence(big, day), words.total_sentence(small, day), words.late_line(15, 104),
+             words.left_out(285), words.left_out(1), words.FRESH_REST, words.MORE_THAN_3_DAYS,
+             *words.MARKED_CANCELLED, words.has_passed(datetime(2026, 11, 17, 7, 46)),
+             words.updated_at(datetime(2026, 11, 17, 7, 46)),
+             words.not_listed("LH 694", date(2026, 11, 10), False), words.not_listed("LH 694", date(2026, 11, 10), True),
+             words.strip_heading("LO 155"), *words.strip_key({"LANDED": 22, "CANCELLED": 4}),
+             words.mark_name(date(2026, 11, 17), "UPCOMING"), words.partner("LY 9255", "LO 155", "LOT"),
+             *(t for h in words.STRETCH_NAMES for t in words.all_airlines(h, "under 1%", "about 5%", "D"))]
+    for h in words.STRETCH_NAMES.values():
+        texts.append(h)
+    for q, w, spoken in [(LO155, LOT, "LOT"), (LH694, LH, "Lufthansa"), (hist("LH 697", 2, 1), LH, "Lufthansa"),
+                         (hist("IZ 992", 2), hist("ARKIA", 40), None), (hist("XX 1", 0), hist("XX", 0), None),
+                         (hist("IZ 992", 2), hist("ARKIA", 140), None)]:
+        for ahead in (True, False):
+            texts.append(words.worked_out(q, w, spoken, ahead, False).text)
+        texts += words.so_far(q, True)
+    return texts
+
+
 # --- the upload check ------------------------------------------------------------------------------
 
 def site_texts() -> list[str]:
@@ -624,14 +910,15 @@ def site_texts() -> list[str]:
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
     texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
-              words.late_line(FakeSummary()), words.PAST_ONLY, words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
+              words.PAST_ONLY, words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
               words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),
-              words.condition(datetime(2026, 11, 12, 10, 16, 45)), words.has_passed(datetime(2026, 11, 12, 10, 16, 45)),
+              words.condition(datetime(2026, 11, 12, 10, 16, 45)),
               words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
               words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
               *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())
+    texts += figure_texts()
     # a day's lines as the page reads them: left column and text, line after line, as one run
     for obs, direction, page_date in [(TO3459_OBS, "D", DAY), *((o, d, p) for o, d, p, _ in CHANGE_CASES)]:
         texts.append(" ".join(f"{left} {text}" for left, text in words.change_lines(obs, direction, page_date, 1,
