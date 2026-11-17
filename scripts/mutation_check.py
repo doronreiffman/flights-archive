@@ -69,6 +69,7 @@ FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
+BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
 # The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
 NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
 VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
@@ -588,6 +589,21 @@ COLLECTOR_MUTATIONS = {
     "display: censored brackets counted as after": (DISPLAY, '    if r["cancel_lead_censored"]:\n        return "unplaced"\n    if r["cancel_lead_max_min"] < 0:\n        return "after"\n', '    if r["cancel_lead_max_min"] < 0:\n        return "after"\n    if r["cancel_lead_censored"]:\n        return "unplaced"\n'),
     "display: gap and no-final-status counts swapped": (DISPLAY, 'unknown_gap=gap, unknown_no_final=len(unknown) - gap,', 'unknown_gap=len(unknown) - gap, unknown_no_final=gap,'),
     "display: first record from the UTC date": (DISPLAY, 'first_record=words.il_time(snaps[0]["fetched_at"]).date()', 'first_record=snaps[0]["fetched_at"].date()'),
+    # the blend: a number's, an airline's and the airport's records, and the two chances (docs/flight-lookup.md, "The blend")
+    "blend: number weight 13": (BLEND, "NUMBER_WEIGHT = 14", "NUMBER_WEIGHT = 13"),
+    "blend: airline weight 99": (BLEND, "AIRLINE_WEIGHT = 100", "AIRLINE_WEIGHT = 99"),
+    "blend: weights swapped": (BLEND, "_share(airport.total), AIRLINE_WEIGHT)\n    chance = pull(number.cancelled, number.flights, airline_rate, NUMBER_WEIGHT)", "_share(airport.total), NUMBER_WEIGHT)\n    chance = pull(number.cancelled, number.flights, airline_rate, AIRLINE_WEIGHT)"),
+    "blend: scaling dropped": (BLEND, "    return chance if factor is None else chance * factor\n", "    return chance\n"),
+    "blend: delay scaled": (BLEND, "    return pull(number.delayed, number.flew, airline_rate, NUMBER_WEIGHT)\n", "    return pull(number.delayed, number.flew, airline_rate, NUMBER_WEIGHT) * scaling(airport, row_for(None))\n"),
+    "blend: a boundary in the upper stretch": (BLEND, "STRETCHES = ((48, 72, 70),", "STRETCHES = ((47, 72, 70),"),
+    "blend: no floor fallback": (BLEND, "    tried = [h, *sorted(c for c in airport.rows if c > h), *sorted((c for c in airport.rows if c < h), reverse=True)]\n", "    tried = [h]\n"),
+    "blend: delays of both directions": (BLEND, 'if f.closed and f.result == "operated" and f.key[0] == direction])', 'if f.closed and f.result == "operated"])'),
+    "blend: counts from the number's own outcome": (BLEND, "            own[f.key] = f\n", "            own[f.key] = counting.flights([r], last)[0]\n"),
+    "blend: a flight still listed counted": (BLEND, "for f in flights_ if known(lab := display.label(f, by_id, last))]", 'for f in flights_ if (lab := display.label(f, by_id, last)) and f.result != "unknown"]'),
+    "blend: delays over every flight": (BLEND, "pull(airline.delayed, airline.flew, _share(airport.delay[direction]), AIRLINE_WEIGHT)\n    return pull(number.delayed, number.flew,", "pull(airline.delayed, airline.flights, _share(airport.delay[direction]), AIRLINE_WEIGHT)\n    return pull(number.delayed, number.flights,"),
+    "blend: bad week at 7 days": (BLEND, "BAD_WEEK_DAYS = 6", "BAD_WEEK_DAYS = 7"),
+    "blend: airline of the number's own": (BLEND, "            per_airline[f.airline][f.key] = f\n", '            per_airline.setdefault(r["airline"], {})[f.key] = f\n'),
+    "blend: flat check below the floor": (BLEND, "            if row.clears_floor and 100 * abs(", "            if 100 * abs("),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
