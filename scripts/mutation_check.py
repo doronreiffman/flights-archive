@@ -59,6 +59,7 @@ SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
 FROMHERE = ("src/timeline/static/fromhere.js", ["tests/test_timeline_fromhere.py"])
 STYLE = ("src/timeline/static/style.css", ["tests/test_timeline_style.py"])
+ATTRIBUTES = (".gitattributes", ["tests/test_timeline_style.py"])  # the fonts and their licence kept byte for byte
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
@@ -255,6 +256,8 @@ COLLECTOR_MUTATIONS = {
     "fromhere: the form without a time left showing": (FROMHERE, "[...line.children].forEach((el) => { el.hidden = el !== shown; });", '[...line.children].forEach((el) => { el.hidden = el !== shown && !el.classList.contains("off"); });'),
     "fromhere: no-flight-ahead headline kept hidden": (FROMHERE, '  kids(support, "none-ahead").forEach((el) => { el.hidden = false; });\n', ""),
     "fromhere: the flight-ahead line left showing with no flight ahead": (FROMHERE, '  kids(support, "worked").forEach((el) => { if (!el.classList.contains("none-ahead")) el.hidden = true; });\n', ""),
+    "fromhere: an empty past list taken for none": (FROMHERE, "if (leaving.length && !past) return;", 'if (leaving.length && !kid(past, "day")) return;'),
+    "fromhere: a bad all-airlines bound hides the line": (FROMHERE, "  if (result === null) return;\n", ""),
     "fromhere: reads an id the page does not carry": (FROMHERE_NAMES, 'getElementById("now")', 'getElementById("top")'),
     "fromhere: finds a day's lines by a class the page does not carry": (FROMHERE_NAMES, 'kid(head, "own")', 'kid(head, "mine")'),
     "fromhere: tests a class the page does not carry": (FROMHERE_NAMES, 'classList.contains("later")', 'classList.contains("next")'),
@@ -334,6 +337,10 @@ COLLECTOR_MUTATIONS = {
     "style: an image in the sheet": (STYLE, "  margin: 0; background: var(--paper); color: var(--ink);", '  margin: 0; background: var(--paper) url("plane.png"); color: var(--ink);'),
     "style: the Hebrew face for every character": (STYLE, " unicode-range: U+0590-05FF;", ""),
     "style: the faces left out of the font stack": (STYLE, '--sans: "FA Sans Cond", "FA Hebrew Sans", ', "--sans: "),
+    "style: another sheet imported": (STYLE, '@font-face { font-family: "FA Sans Cond"; font-weight: 300;', '@import "other.css";\n@font-face { font-family: "FA Sans Cond"; font-weight: 300;'),
+    "style: a font as a data: address": (STYLE, 'url("fonts/sans-cond-400.woff2")', 'url("data:font/woff2;base64,d09GMgABAAAAAA")'),
+    "style: a face without font-display: swap": (STYLE, "font-weight: 600; font-display: swap; ", "font-weight: 600; "),
+    "style: the licence's line ends left to git": (ATTRIBUTES, "src/timeline/static/fonts/LICENSE.txt -text\n", ""),
     "words: warning rules out of order": (WORDS, "    if hi < 0 and not censored:", '    if lo >= 60:\n        return 8, f"at least {hours(_down(lo))}"\n    if hi < 0 and not censored:'),
     "words: censored range rounded down at the top": (WORDS, "    return math.ceil(minutes / 60)", "    return math.floor(minutes / 60)"),
     "words: first sight treated as censored range": (WORDS, "    if hi is None:", "    if False:"),
@@ -733,6 +740,7 @@ COLLECTOR_MUTATIONS = {
     "names: the printed count without separators": (NAME_LIST, "{flights_n:,}", "{flights_n}"),
     "names: one flight printed in the plural": (NAME_LIST, "'flight' if flights_n == 1 else 'flights'", "'flights'"),
     "names: no model exits 0": (NAME_LIST, "        return 2\n", "        return 0\n"),
+    "names: the header does not say the count is not the pages' figure": (NAME_LIST, " (not the figure on the pages)", ""),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

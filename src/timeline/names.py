@@ -76,8 +76,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     table, obs, snaps = load(args.model)
     missing = 0
-    print("code  published name  flights with a known result, any airline with a number on them, closed or not  why  "
-          "spoken name")
+    print("code  published name  flights with a known result, closed or not, counted for every airline with a number "
+          "on the flight (not the figure on the pages)  why  spoken name")
     for code, published, flights_n, why in needed(blend.records(table, obs, snaps), table,
                                                   counting.flights(table, counting.last_sighting(snaps))):
         name = spoken(code)

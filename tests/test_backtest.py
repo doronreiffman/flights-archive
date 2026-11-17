@@ -205,7 +205,7 @@ TEXT = """\
 The back-test of the blend, on the week of 2026-11-15 to 2026-11-21 (Israel days)
 Scored: the week's closed flights with a known result in the 24-hour row, each by its lead number.
 The counts are cut at the week's start.
-A flight scheduled before it counts with its result as known at the last update, even one decided after the week began.
+A flight scheduled before the start counts with its result as known at the last update, even one decided after the week began.
 Not scored, with no chance worked out: 0 for cancelling, 0 of those that flew for a delay of an hour or more.
 
 Cancelled: actual against expected

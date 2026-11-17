@@ -37,21 +37,32 @@ PAIRS = (("--ink", "--paper"), ("--ink", "--tint"), ("--soft", "--paper"), ("--s
 
 
 def rules(css: str) -> list[tuple[tuple[str, ...], str, dict[str, str]]]:
-    """(enclosing at-rules, selector, declarations) for every rule, comments dropped and whitespace collapsed."""
+    """(enclosing at-rules, selector, declarations) for every rule, comments dropped and whitespace collapsed. A ";" or
+    a brace inside quotes or brackets is part of its value (a `data:` address in `url(...)` holds a ";"), and a
+    statement outside any rule (`@import "other.css";`) is no rule: the font tests refuse both in the sheet's text."""
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    out, stack, buf = [], [], ""
+    out, stack, decls, buf, quote, depth = [], [], [], "", "", 0
     for ch in css:
-        if ch == "{":
+        if quote or depth or ch not in "{};":
+            buf += ch
+            if quote:
+                quote = "" if ch == quote else quote
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "()":
+                depth += 1 if ch == "(" else -1
+        elif ch == "{":
             stack.append(" ".join(buf.split()))
-            buf = ""
-        elif ch == "}":
-            if buf.strip():
-                decls = dict(part.split(":", 1) for part in buf.split(";") if part.strip())
-                out.append((tuple(stack[:-1]), stack[-1], {k.strip(): " ".join(v.split()) for k, v in decls.items()}))
-            stack.pop()
+            buf, decls = "", []
+        elif ch == ";":
+            decls += [buf] if stack else []  # outside any rule: a statement, passed over
             buf = ""
         else:
-            buf += ch
+            pairs = [part.split(":", 1) for part in [*decls, buf] if part.strip()]
+            if pairs:
+                out.append((tuple(stack[:-1]), stack[-1], {k.strip(): " ".join(v.split()) for k, v in pairs}))
+            stack.pop()
+            buf, decls = "", []
     return out
 
 
@@ -86,6 +97,16 @@ def luminance(hex_color: str) -> float:
 def contrast(a: str, b: str) -> float:
     hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
     return (hi + 0.05) / (lo + 0.05)
+
+
+def test_the_parser_reads_a_data_address_and_passes_over_a_statement():
+    """A ";" inside `url(...)` belongs to its value, so a sheet holding a `data:` address fails the font tests'
+    assertions instead of stopping their collection; a statement outside any rule (`@import "other.css";`) is not
+    part of the next rule's selector, so only the `@import` refusal reads it."""
+    assert rules('@import "other.css";\n.a { color: red; }') == [((), ".a", {"color": "red"})]
+    face = '@font-face { font-family: "X"; src: url("data:font/woff2;base64,AA==") format("woff2"); }'
+    assert rules(face) == [((), "@font-face", {"font-family": '"X"',
+                                               "src": 'url("data:font/woff2;base64,AA==") format("woff2")'})]
 
 
 def test_contrast_formula_known_values():
@@ -470,11 +491,22 @@ FACES = [decls for _, sel, decls in RULES if sel == "@font-face"]
 URL = re.compile(r"""url\(\s*(["']?)(.*?)\1\s*\)""", re.I)
 
 
-def test_the_four_font_files_are_pinned():
+def test_the_four_font_files_and_their_licence_are_pinned():
     """A changed or missing file fails here, not at an upload. Hidden files (a Finder .DS_Store) are never built."""
     found = {p.name: (p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest())
              for p in FONT_DIR.iterdir() if not p.name.startswith(".")}
     assert found == FONTS | LICENCE
+
+
+def test_git_keeps_the_fonts_and_the_licence_byte_for_byte():
+    """The licence's pinned bytes end their lines in CRLF, which a checkout that converts line ends would change: the
+    repository's attribute file tells git the licence is not text and the fonts are binary."""
+    attributes = Path(__file__).parent.parent / ".gitattributes"
+    lines = {tuple(line.split()) for line in attributes.read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.lstrip().startswith("#")}
+    assert ("src/timeline/static/fonts/LICENSE.txt", "-text") in lines
+    assert ("*.woff2", "binary") in lines
+    assert b"\r\n" in (FONT_DIR / "LICENSE.txt").read_bytes()
 
 
 def test_fonts_load_only_from_the_sites_own_folder():
