@@ -193,14 +193,15 @@ def partners(lists: list[ListFlight], table: list[dict]) -> dict[str, tuple[Row,
             for fl in lists for r in fl.rows}
 
 
+# A flight with no news yet may have gone ahead: "probably still on" is for a twin still ahead (Question 6h).
 _OTHERS = {words.DEPARTED: "departed", words.LANDED: "landed", words.UPCOMING: "is still listed",
-           words.NO_NEWS_YET: "is still listed"}
+           words.NO_NEWS_YET: "has no news yet"}
 
 
 def others(lists: list[ListFlight]) -> dict[str, tuple[str, tuple[Row, ...]]]:
     """flight_id of each number labelled CANCELLED in a flight that is not -> what the flight's other numbers did, as
-    the flight's label says ("departed", "landed" or "is still listed"), and the numbers that did it. A flight
-    labelled UNKNOWN holds no number listed as cancelled (C10, rule 3 comes before rule 4)."""
+    the flight's label says ("departed", "landed", "is still listed" or "has no news yet"), and the numbers that did
+    it. A flight labelled UNKNOWN holds no number listed as cancelled (C10, rule 3 comes before rule 4)."""
     out = {}
     for fl in lists:
         cancelled = [r for r in fl.rows if r.label == words.CANCELLED]

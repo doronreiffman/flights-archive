@@ -101,7 +101,8 @@ def label_note(f: dict, label: str, ahead: bool) -> str | None:
             return "There's no record of how this flight ended."
         case "vanished":
             early = _down((f["sched_utc_final"] - f["last_seen_at"]).total_seconds() / 60)
-            note = (f"The airport removed this flight {hours(early)} early without saying why. "
+            how = "less than an hour" if early < 1 else hours(early)  # Question 6g, never "0 hours"
+            note = (f"The airport removed this flight {how} early without saying why. "
                     "It may have been cancelled or moved to another time.")
             return f"{note} Check with your airline." if ahead else note
         case "dropped":
@@ -366,12 +367,13 @@ ALSO_SOLD = "Also sold as"  # then the partners' numbers, linked, and SAME_PLANE
 SAME_PLANE = "(probably the same plane)."
 _TWIN = {"departed": ("This number was cancelled, but the flight probably left as", "."),
          "landed": ("This number was cancelled, but the flight probably landed as", "."),
-         "is still listed": ("This number is marked cancelled, but the flight is probably still on, as", ".")}
+         "is still listed": ("This number is marked cancelled, but the flight is probably still on, as", "."),
+         "has no news yet": ("This number was cancelled, but the flight may have gone ahead as", ".")}  # Question 6h
 
 
 def twin(verb: str) -> tuple[str, str]:
     """The twin line's words before and after the linked numbers, for what the flight's other numbers did
-    (flights.others: "departed", "landed" or "is still listed")."""
+    (flights.others: "departed", "landed", "is still listed" ahead of their time or "has no news yet")."""
     return _TWIN[verb]
 
 

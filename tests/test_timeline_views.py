@@ -4,9 +4,9 @@ import dataclasses
 import html
 import json
 import re
+from collections import Counter
 from datetime import date, datetime
 from html.parser import HTMLParser
-from pathlib import Path
 
 import pytest
 
@@ -48,20 +48,77 @@ def others(*fs, obs=None):
     return flights.others(lists(*fs, obs=obs))
 
 
-def page_of(*fs, obs=None, only=None, summary=None, updated=LAST_FETCH):
+def page_of(*fs, obs=None, only=None, updated=LAST_FETCH):
     """The flight page of these numbers' rows, or of the row with flight_id `only` among them; their flights (C1) are
-    made of all of them. `summary` is the front page's figures (SUMMARY, the design's, by default) and `updated` the
-    last sighting."""
+    made of all of them. `updated` is the last sighting."""
     shown = [r for r in rows(*fs, obs=obs) if only in (None, r.flight_id)]
-    return views.flight_page(shown, partners(*fs, obs=obs), others(*fs, obs=obs),
-                             SUMMARY if summary is None else summary, updated)
+    return views.flight_page(shown, partners(*fs, obs=obs), others(*fs, obs=obs), updated)
 
 
-def row_block(page: str, anchor: str) -> str:
-    """One row of a flight page, from its opening tag to the next row's."""
-    start = page.index(f'<div class="row" id="{anchor}">')
-    end = page.find('<div class="row"', start + 1)
-    return page[start:] if end == -1 else page[start:end]
+def day_block(page: str, anchor: str) -> str:
+    """One day of a flight page, its section from the opening tag to the closing one (sections do not nest)."""
+    start = page.index(f'<section class="day" id="{anchor}"')
+    return page[start:page.index("</section>", start) + len("</section>")]
+
+
+@dataclasses.dataclass
+class El:
+    """An element of a page: its tag, its attributes and its child elements, in page order."""
+    tag: str
+    attrs: dict
+    kids: list
+
+    @property
+    def classes(self) -> list[str]:
+        return (self.attrs.get("class") or "").split()
+
+    @property
+    def name(self) -> str:
+        """Its id, else its first class, else its tag."""
+        return self.attrs.get("id") or (self.classes or [self.tag])[0]
+
+    def walk(self):
+        yield self
+        for kid in self.kids:
+            yield from kid.walk()
+
+
+VOID = {"br", "hr", "img", "input", "link", "meta", "source", "wbr"}
+
+
+def tree(page: str) -> El:
+    """The page's elements as a tree. A closing tag that does not close the element open last fails the test, so the
+    tree is the one a browser builds."""
+    root = El("", {}, [])
+    stack = [root]
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            el = El(tag, dict(attrs), [])
+            stack[-1].kids.append(el)
+            if tag not in VOID:
+                stack.append(el)
+
+        def handle_startendtag(self, tag, attrs):
+            stack[-1].kids.append(El(tag, dict(attrs), []))
+
+        def handle_endtag(self, tag):
+            assert stack[-1].tag == tag, (tag, stack[-1].tag)
+            stack.pop()
+
+    Parser().feed(page)
+    assert stack == [root]
+    return root
+
+
+def main_of(page: str) -> El:
+    (main,) = [el for el in tree(page).walk() if el.tag == "main"]
+    return main
+
+
+def outline(page: str) -> list[tuple[str, list[str]]]:
+    """<main>'s children in page order, each by its name, with the ids of the day sections directly inside it."""
+    return [(k.name, [d.attrs["id"] for d in k.kids if "day" in d.classes]) for k in main_of(page).kids]
 
 
 def to3459():
@@ -176,37 +233,214 @@ def test_d_escapes_and_marks_data():
     assert views.d(None) == ""
 
 
-# --- flight page -----------------------------------------------------------------------------------
+# --- flight page (docs/site-redesign.md, "Flight page"; docs/flight-lookup.md, "Pages", Flight page) ---------------
+
+AHEAD = local(30, 9, 0)  # 07:00 UTC on 30 October, after the last update (22:02 UTC on 29 October): a day ahead
+LATER = local(31, 9, 0)
+PASSED = ("This flight's time has passed. The page was last updated on 30 Oct at 00:02, so it may not show "
+          "what happened.")
+SCRIPT = '<script src="../fromhere.js" defer></script>'
+
 
 def test_flight_page_head():
     page = to3459_page()
     assert "<title>TO 3459 · Tel Aviv to Paris</title>" in page
-    assert '<h1><span class="d">TO 3459 · Tel Aviv to Paris</span></h1>' in page
     assert top_line("../") in page
-    assert '<span class="d">TRANSAVIA FRANCE</span> (as the airport lists it)' in page
-    assert "TRANSAVIA FRANCE (as the airport lists it) · lands at Paris (ORY) · פריז" in text(page)
-    assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in page
     assert '<link rel="stylesheet" href="../style.css">' in page
-    assert "Since 27 October: departed once, cancelled once, one upcoming." in text(page)
 
 
-def test_an_arrival_leaves_from_its_airport():
-    page = page_of(flight("in", local(29, 5, 0), flight_no="002", direction="A"))
-    assert "<title>LY 002 · New York to Tel Aviv</title>" in page
-    assert "leaves from New York (JFK)" in text(page)
-    assert "lands at" not in page
+LO = dict(airline="LO", flight_no="155", direction="A", airline_name="LOT POLISH AIRLINES", airport="WAW",
+          city_en="WARSAW", city_he="ורשה")
 
 
-def test_flight_rows_newest_first():
-    page = to3459_page()
-    assert (page.index('id="2026-11-01-1830-ORY"') < page.index('id="2026-10-29-1710-ORY"')
-            < page.index('id="2026-10-27-1645-ORY"'))
+def who(page: str) -> str:
+    """The line under the title, as written."""
+    return re.search(r'<p class="who">(.*?)</p>', page).group(1)
+
+
+def test_the_title_and_the_line_under_it():
+    """docs/site-redesign.md, "Flight page" and "Names": the title, then the airline as the airport publishes it and,
+    when the page has one city, where the flight comes from or goes to ("from Warsaw (WAW)", "to Paris (ORY)") and the
+    city in Hebrew, marked as Hebrew. A number with more than one city names its airline alone. "(as the airport lists
+    it)" is dropped (round 4)."""
+    arrival = page_of(flight("lo", local(29, 19, 45), **LO))
+    assert ('<div class="flight-h">\n<h1><span class="d">LO 155 · Warsaw to Tel Aviv</span></h1>\n'
+            '<p class="who"><span class="d">LOT POLISH AIRLINES</span> · from <span class="d">Warsaw</span> '
+            '(<span class="d">WAW</span>) · <span lang="he" dir="rtl"><span class="d">ורשה</span></span></p>\n'
+            "</div>") in arrival
+    assert "<title>LO 155 · Warsaw to Tel Aviv</title>" in arrival
+    departure = to3459_page()
+    assert '<h1><span class="d">TO 3459 · Tel Aviv to Paris</span></h1>' in departure
+    assert text(who(departure)) == "TRANSAVIA FRANCE · to Paris (ORY) · פריז"
+    assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in who(departure)
+    cities = page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
+                     flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI"))
+    assert '<h1><span class="d">LY 5115 · Tel Aviv to Batumi or Kutaisi</span></h1>' in cities
+    assert who(cities) == '<span class="d">EL AL  ISRAEL AIRLINES</span>'
+    for page in (arrival, departure, cities):
+        assert "as the airport lists it" not in page and "lands at" not in page and "leaves from" not in page
+
+
+def test_the_flight_page_order():
+    """docs/flight-lookup.md, "Pages", Flight page, "Days ahead": a day is ahead when its scheduled time is later than
+    the page's last update. The nearest stands at the top, once, in #now; the strip follows; then the later days ahead,
+    soonest first; then the past days, newest first, whatever order the rows come in. 23:55 on 29 October in Israel is
+    21:55 UTC, before the last update, so that day is past; 00:30 on 30 October (22:30 UTC) is the nearest ahead."""
+    fs = [flight("d28", local(28, 9, 0)), flight("n01", datetime(2026, 11, 1, 9, 0), outcome="open"),
+          flight("d27", local(27, 9, 0)), flight("n31", LATER, outcome="open"),
+          flight("x29", local(29, 23, 55), outcome="open"), flight("n30", local(30, 0, 30), outcome="open"),
+          flight("m30", AHEAD, outcome="open")]
+    page = page_of(*fs)
+    assert outline(page) == [
+        ("flight-h", []), ("now", ["2026-10-30-0030-JFK"]), ("record", []),
+        ("later", ["2026-10-30-0900-JFK", "2026-10-31-0900-JFK", "2026-11-01-0900-JFK"]),
+        ("past", ["2026-10-29-2355-JFK", "2026-10-28-0900-JFK", "2026-10-27-0900-JFK"])]
+    for r in rows(*fs):
+        assert page.count(f'id="{r.anchor}"') == 1, r.anchor
+
+
+MARKED = '<p class="marked"><b>This flight is marked cancelled.</b> Contact your airline.</p>'
+
+
+def test_a_day_ahead_stays_at_the_top_whatever_its_label():
+    """Question 2 and docs/flight-lookup.md, "Pages", Flight page: a day ahead stays the traveller's day whatever its
+    label, above a later day still labelled UPCOMING, which keeps the place of its chances. The traveller's day has
+    none: marked cancelled, it shows its notice sentence and "This flight is marked cancelled. Contact your airline.";
+    removed early, its UNKNOWN line; landed early, a past day's time line. Its hidden "has passed" line comes next."""
+    cases = [
+        ("D", AT_LEAST_23, "Friday 30 October scheduled to leave at 09:00 CANCELLED Cancelled with at least 23 hours' "
+         "notice. It was already cancelled when it first appeared. This flight is marked cancelled. Contact your "
+         "airline."),
+        ("D", dict(outcome="vanished", last_seen_at=utc(29, 20, 0)),
+         "Friday 30 October scheduled to leave at 09:00 UNKNOWN The airport removed this flight 11 hours early without "
+         "saying why. It may have been cancelled or moved to another time. Check with your airline."),
+        ("A", dict(outcome="landed", est_local_final=local(30, 8, 40)),
+         "Friday 30 October scheduled 09:00 · landed around 08:40 LANDED"),
+    ]
+    for direction, kw, lines in cases:
+        page = page_of(flight("top", AHEAD, direction=direction, **kw),
+                       flight("later", LATER, direction=direction, outcome="open"))
+        assert outline(page)[1:] == [("now", ["2026-10-30-0900-JFK"]), ("record", []),
+                                     ("later", ["2026-10-31-0900-JFK"]), ("past", [])], lines
+        top = day_block(page, "2026-10-30-0900-JFK")
+        assert text(top).startswith(f"{lines} {PASSED}"), text(top)
+        assert 'data-sched="2026-10-30T07:00:00Z"' in top and 'class="chances"' not in top
+        assert '<div class="chances">' in day_block(page, "2026-10-31-0900-JFK")
+        assert (MARKED in top) == (kw is AT_LEAST_23), lines
+
+
+def test_a_day_ahead_marked_cancelled_while_its_twin_is_still_on():
+    """Question 3: LH 0691A is marked cancelled on 31 October while its flight is still on as LH 695. Its day shows
+    the CANCELLED label, its notice sentence and the twin line, no chances, and not "This flight is marked cancelled.
+    Contact your airline.", which would say the opposite of the twin line."""
+    fs = [lh("lh0691a-31", LATER, "0691A", "canceled"), lh("lh695-31", LATER, "695", "open")]
+    page = page_of(*fs, only="lh0691a-31")
+    assert outline(page)[1] == ("now", ["2026-10-31-0900-FRA"])
+    day = day_block(page, "2026-10-31-0900-FRA")
+    assert text(day).startswith(
+        "Saturday 31 October scheduled to leave at 09:00 CANCELLED Cancelled with at least 6 hours' notice. This "
+        f"number is marked cancelled, but the flight is probably still on, as LH 695. {PASSED}"), text(day)
+    assert 'class="marked"' not in page and "Contact your airline" not in text(page)
+    assert 'class="chances"' not in day
+
+
+def test_a_number_marked_cancelled_whose_twin_has_no_news_yet():
+    """Question 6h: LH 695, due at 23:55 on 29 October, has no news yet at the last update; LH 0691A of its flight was
+    marked cancelled. The flight may have gone ahead: "probably still on" is for a twin still ahead."""
+    fs = [lh("lh0691a-late", local(29, 23, 55), "0691A", "canceled"), lh("lh695-late", local(29, 23, 55), "695", "open")]
+    page = page_of(*fs, only="lh0691a-late")
+    assert ('<p class="note">This number was cancelled, but the flight may have gone ahead as '
+            '<a href="../flight/LH695-D.html#2026-10-29-2355-FRA"><span class="d">LH 695</span></a>.</p>') in page
+    assert "probably still on" not in text(page) and 'class="marked"' not in page
+
+
+def test_with_no_day_ahead_the_not_listed_line_stands_in_its_place():
+    """docs/site-redesign.md, "Flight page", item 3: with no day ahead, #now holds the line saying the number is not on
+    the airport's list, with the day of its last flight, and the support; every day is a past day. LY 001's last flight
+    was last seen three hours before its time, long before the last update: it is off the list (the model-built case
+    of each form is in tests/test_timeline_build.py)."""
+    page = page_of(flight("d27", local(27, 9, 0)), flight("d28", local(28, 9, 0)))
+    now = [k for k in main_of(page).kids if k.name == "now"][0]
+    assert [k.name for k in now.kids] == ["none-line", "support"]
+    assert ('<div id="now">\n<p class="none-line"><span class="d">LY 001</span> isn&#x27;t on the airport&#x27;s list '
+            "right now. The last one was on Wednesday 28 October.</p>\n") in page
+    assert outline(page)[1:] == [("now", []), ("record", []), ("later", []),
+                                 ("past", ["2026-10-28-0900-JFK", "2026-10-27-0900-JFK"])]
+    still = page_of(flight("d28", local(28, 9, 0), last_seen_at=LAST_FETCH))
+    assert ("LY 001 has no upcoming flight on the airport's list right now. The last one was on Wednesday 28 "
+            "October.") in text(still)
+
+
+# The markup contract (the plan's Task 10, "Interfaces"), which the page script reads: each name, where it stands.
+CONTRACT_MAIN = ["flight-h", "now", "record", "later", "past"]
+CONTRACT_TITLE = ["h1", "who"]
+CONTRACT_STRIP = ["h2", "key", "strip"]
+CONTRACT_DAY_AHEAD = ["head", "chances", "passed", "support", "own"]  # in this order; chances and support not always
+CONTRACT_NONE_AHEAD = ["none-line", "support"]
+SCHED = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+
+def test_the_page_holds_every_name_of_the_contract():
+    """The plan's markup contract: <main> holds the title block, #now, the strip, .later and .past, in that order, so
+    .later and .past are siblings of #now, and .past stands even with no day in it. Each day ahead (in #now and .later)
+    is a section.day with data-sched, a UTC instant, holding its own p.passed (hidden) and .own, last; .chances stands
+    on a day labelled UPCOMING only and .support in the top day only, both in the contract's order. A past day carries
+    neither data-sched nor p.passed. Every [data-updated] holds text only. With no day ahead, #now holds the not-listed
+    line and the support."""
+    fs = [flight("up", AHEAD, outcome="open"), flight("gone", LATER, **AT_LEAST_23),
+          flight("up2", datetime(2026, 11, 1, 9, 0), outcome="open"), flight("past", local(28, 9, 0))]
+    labels = {r.anchor: r.label for r in rows(*fs)}
+    pages = {"days ahead and past": page_of(*fs), "no day ahead": page_of(fs[3]),
+             "no past day": page_of(fs[0])}
+    for name, page in pages.items():
+        main = main_of(page)
+        assert [k.name for k in main.kids] == CONTRACT_MAIN, name
+        title, now, record, later, past = main.kids
+        assert [k.name for k in title.kids] == CONTRACT_TITLE, name
+        assert [k.name for k in record.kids] == CONTRACT_STRIP, name
+        assert all(d.tag == "section" and "day" in d.classes for d in [*later.kids, *past.kids]), name
+        if not now.kids or now.kids[0].name == "none-line":
+            assert [k.name for k in now.kids] == CONTRACT_NONE_AHEAD and later.kids == [], name
+        ahead = [*now.kids, *later.kids] if now.kids[0].tag == "section" else []
+        for i, day in enumerate(ahead):
+            kids = [k.name for k in day.kids if k.name in CONTRACT_DAY_AHEAD]
+            wanted = [n for n in CONTRACT_DAY_AHEAD
+                      if (n != "chances" or labels[day.attrs["id"]] == words.UPCOMING) and (n != "support" or i == 0)]
+            assert kids == wanted, (name, day.attrs["id"], kids)
+            assert day.kids[0].name == "head" and day.kids[-1].name == "own", (name, day.attrs["id"])
+            assert SCHED.fullmatch(day.attrs["data-sched"]), day.attrs
+            (passed,) = [k for k in day.kids if k.name == "passed"]
+            assert "hidden" in passed.attrs
+        for day in past.kids:
+            assert "data-sched" not in day.attrs and day.kids[-1].name == "own", (name, day.attrs)
+            assert not {"passed", "chances", "support"} & {k.name for k in day.kids}, (name, day.attrs)
+        updated = [el.kids for el in tree(page).walk() if "data-updated" in el.attrs]
+        assert updated and all(kids == [] for kids in updated), name
+    assert [len(k.kids) for k in main_of(pages["days ahead and past"]).kids[3:]] == [2, 1]
+    assert main_of(pages["no past day"]).kids[4].kids == []
+
+
+def test_the_scheduled_instant_is_the_models_utc(israeli_machine):
+    """data-sched is the day's sched_utc_final, written as the UTC instant it is: 10:00 on 13 November in Israel is
+    08:00 UTC, on any machine."""
+    page = page_of(flight("up", datetime(2026, 11, 13, 10, 0), outcome="open"))
+    assert '<section class="day" id="2026-11-13-1000-JFK" data-sched="2026-11-13T08:00:00Z">' in page
+
+
+def test_each_day_ahead_holds_its_passed_line_hidden(israeli_machine):
+    """docs/flight-lookup.md, "Flight page: other situations": the "has passed" line, with the date and time of the last
+    update in Israel time, stands hidden in each day ahead, for the page script to show once the day has passed."""
+    page = page_of(flight("up", AHEAD, outcome="open"), flight("up2", LATER, outcome="open"), flight("d", local(28, 9, 0)))
+    for anchor in ("2026-10-30-0900-JFK", "2026-10-31-0900-JFK"):
+        assert f'<p class="passed" hidden>{html.escape(PASSED)}</p>' in day_block(page, anchor)
+    assert 'class="passed"' not in day_block(page, "2026-10-28-0900-JFK")
 
 
 def test_the_cancelled_row_is_open_with_its_notice_and_changes():
-    row = row_block(to3459_page(), "2026-10-29-1710-ORY")
+    row = day_block(to3459_page(), "2026-10-29-1710-ORY")
     assert "<details open>" in row
-    assert text(row).startswith("Thu 29 Oct scheduled to leave at 17:10 CANCELLED")
+    assert text(row).startswith("Thursday 29 October scheduled to leave at 17:10 CANCELLED")
+    assert 'class="marked"' not in row  # "This flight is marked cancelled. Contact your airline." is for a day ahead
     assert "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." in text(row)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
         "Already on the list on 27 Oct at 20:04 on time, terminal 1",
@@ -220,15 +454,16 @@ def test_the_cancelled_row_is_open_with_its_notice_and_changes():
 def test_other_rows_are_closed():
     page = to3459_page()
     for anchor in ("2026-10-27-1645-ORY", "2026-11-01-1830-ORY"):
-        row = row_block(page, anchor)
+        row = day_block(page, anchor)
         assert "<details>" in row and "<details open" not in row
 
 
 def test_landed_around_beside_the_scheduled_time_and_the_expected_note_once():
     page = to3459_page()
-    assert ("Tue 27 Oct scheduled 16:45 · left around 17:09 DEPARTED"
-            in text(row_block(page, "2026-10-27-1645-ORY")))
-    assert "around" not in row_block(page, "2026-11-01-1830-ORY") and "expected 1" not in row_block(page, "2026-11-01-1830-ORY")
+    assert ("Tuesday 27 October scheduled 16:45 · left around 17:09 DEPARTED"
+            in text(day_block(page, "2026-10-27-1645-ORY")))
+    upcoming = day_block(page, "2026-11-01-1830-ORY")
+    assert "around" not in upcoming and "expected 1" not in upcoming
     assert text(page).count(words.EXPECTED_NOTE) == 1  # two rows show a landed-around or expected time
 
 
@@ -245,48 +480,60 @@ def test_expected_on_a_day_with_no_final_word_and_no_note_without_an_expected_ti
 def test_no_expected_note_without_an_expected_time():
     page = page_of(flight("on time", est_local_final=None))
     assert "scheduled to leave at 16:45 DEPARTED" in text(page)
-    assert "around" not in text(row_block(page, "2026-10-29-1645-JFK")) and words.EXPECTED_NOTE not in text(page)
+    assert "around" not in text(day_block(page, "2026-10-29-1645-JFK")) and words.EXPECTED_NOTE not in text(page)
+
+
+def own_of(page: str, anchor: str) -> str:
+    """A day's own lines, from its .own block to the end of the day."""
+    day = day_block(page, anchor)
+    return day[day.index('<div class="own">'):]
+
+
+def test_the_two_once_a_page_notes_in_their_places():
+    """docs/site-redesign.md, "Labels" and "Words": the note on expected times stands once, on the first day in page
+    order that shows "expected", "landed around" or "left around", among its own lines and before "What changed"; the
+    note on "final" and "not final" stands once, under the first list of changes that is already open and quotes them,
+    or, when no open list quotes them, under the first that does."""
+    page = page_of(flight("top", AHEAD, outcome="open"),  # no expected time: its own is its scheduled one
+                   flight("later", LATER, outcome="open", est_local_final=local(31, 9, 20)),
+                   flight("past", local(28, 9, 0), est_local_final=local(28, 9, 10)))
+    assert text(page).count(words.EXPECTED_NOTE) == 1
+    assert own_of(page, "2026-10-31-0900-JFK").startswith(
+        f'<div class="own">\n<p class="note expected">{html.escape(words.EXPECTED_NOTE)}</p>\n<details>')
+    page = page_of(flight("top", AHEAD, outcome="open", est_local_final=local(30, 9, 5)),
+                   flight("past", local(28, 9, 0), est_local_final=local(28, 9, 10)))
+    assert text(page).count(words.EXPECTED_NOTE) == 1
+    assert words.EXPECTED_NOTE in text(own_of(page, "2026-10-30-0900-JFK"))
+
+    def quoting(f):
+        return first(f) | {"status": "NOT FINAL"}  # “not final” on the first line of what changed
+
+    note = f'</ol>\n<p class="note quoted">{html.escape(words.FINAL_NOTE)}</p>\n</details>'
+    fs = [flight("d29", local(29, 9, 0)), flight("c28", local(28, 9, 0), **CLEAN), flight("c27", local(27, 9, 0), **CLEAN)]
+    page = page_of(*fs, obs=[quoting(f) for f in fs])  # 29 October's list is closed; 28 and 27 October's are open
+    assert text(page).count(words.FINAL_NOTE) == 1 and note in day_block(page, "2026-10-28-0900-JFK")
+    fs = [flight("d29", local(29, 9, 0)), flight("d28", local(28, 9, 0)), flight("c27", local(27, 9, 0), **CLEAN)]
+    page = page_of(*fs, obs=[quoting(fs[0]), quoting(fs[1]), first(fs[2])])  # the open list does not quote them
+    assert text(page).count(words.FINAL_NOTE) == 1 and note in day_block(page, "2026-10-29-0900-JFK")
+    assert words.FINAL_NOTE not in text(to3459_page())
 
 
 def test_a_row_without_records_has_no_details():
-    row = row_block(page_of(flight("bare"), obs=[]), "2026-10-29-1645-JFK")
+    row = day_block(page_of(flight("bare"), obs=[]), "2026-10-29-1645-JFK")
     assert "DEPARTED" in row and "<details" not in row
 
 
-def summary_rows(kinds):
-    """One row per kind, each on its own day: departed, landed, cancelled, upcoming, no final update, unknown."""
-    made = {"departed": {}, "landed": {"outcome": "landed"}, "cancelled": CLEAN, "upcoming": {"outcome": "open"},
-            "no final update": {"outcome": "open"}, "unknown": {"outcome": "gap"}}
+def label_rows(kinds):
+    """One row per label, each on its own day: DEPARTED, LANDED, CANCELLED, UPCOMING (4 November), NO NEWS YET or
+    UNKNOWN."""
+    made = {words.DEPARTED: {}, words.LANDED: {"outcome": "landed"}, words.CANCELLED: CLEAN,
+            words.UPCOMING: {"outcome": "open"}, words.NO_NEWS_YET: {"outcome": "open"},
+            words.UNKNOWN: {"outcome": "gap"}}
     fs = []
     for i, kind in enumerate(kinds):
-        sched = datetime(2026, 11, 1 + i, 9, 0) if kind == "upcoming" else local(1 + i, 9, 0)
+        sched = datetime(2026, 11, 1 + i, 9, 0) if kind == words.UPCOMING else local(1 + i, 9, 0)
         fs.append(flight(f"f{i}", sched, **made[kind]))
     return fs
-
-
-@pytest.mark.parametrize("kinds, summary", [
-    (["departed"], "departed once"),
-    (["departed", "departed"], "departed twice"),
-    (["landed", "landed"], "landed twice"),
-    (["cancelled"] * 3, "cancelled 3 times"),
-    (["upcoming"], "one upcoming"),
-    (["upcoming"] * 2, "two upcoming"),
-    (["upcoming"] * 3, "3 upcoming"),
-    (["no final update"], "one with no final update"),
-    (["no final update"] * 2, "two with no final update"),
-    (["unknown"], "one unknown"),
-    (["unknown", "upcoming", "no final update", "cancelled", "landed", "departed"],  # in the labels' order
-     "departed once, landed once, cancelled once, one upcoming, one with no final update, one unknown"),
-])
-def test_summary_counts_each_label_in_order(kinds, summary):
-    assert f"Since 27 October: {summary}." in text(page_of(*summary_rows(kinds)))
-
-
-def test_the_summary_line_starts_at_the_summarys_first_record():
-    """The line starts at the front page's first record (display.Summary.first_record, the Israel date of the first
-    list), whatever it is: with records from 3 November it says so. Every other test's first record is 27 October."""
-    page = page_of(flight("ly"), summary=dataclasses.replace(SUMMARY, first_record=date(2026, 11, 3)))
-    assert "Since 3 November: departed once." in text(page)
 
 
 def test_a_number_with_two_cities():
@@ -294,9 +541,10 @@ def test_a_number_with_two_cities():
     page = page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
                    flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI"))
     assert '<h1><span class="d">LY 5115 · Tel Aviv to Batumi or Kutaisi</span></h1>' in page
-    assert "to Kutaisi (KUT)" in text(row_block(page, "2026-10-28-1630-KUT"))
-    assert "to Batumi (BUS)" in text(row_block(page, "2026-10-28-1630-BUS"))
-    assert 'lang="he"' not in page and "lands at" not in page
+    assert text(day_block(page, "2026-10-28-1630-KUT")).startswith(
+        "Wednesday 28 October scheduled 16:30 · left around 16:30 to Kutaisi (KUT) DEPARTED")
+    assert "to Batumi (BUS)" in text(day_block(page, "2026-10-28-1630-BUS"))
+    assert 'lang="he"' not in page
 
 
 def test_one_city_through_two_airports_names_each_rows_airport():
@@ -304,8 +552,8 @@ def test_one_city_through_two_airports_names_each_rows_airport():
     page = page_of(flight("orly", airport="ORY", **paris), flight("cdg", local(30, 16, 45), airport="CDG", **paris))
     assert '<h1><span class="d">LY 002 · Tel Aviv to Paris</span></h1>' in page
     assert '<span lang="he" dir="rtl"><span class="d">פריז</span></span>' in page
-    assert "to Paris (ORY)" in text(row_block(page, "2026-10-29-1645-ORY"))
-    assert "to Paris (CDG)" in text(row_block(page, "2026-10-30-1645-CDG"))
+    assert "to Paris (ORY)" in text(day_block(page, "2026-10-29-1645-ORY"))
+    assert "to Paris (CDG)" in text(day_block(page, "2026-10-30-1645-CDG"))
 
 
 def codeshare_page(*numbers):
@@ -323,18 +571,19 @@ LINK = '<a href="../flight/{page}#2026-10-29-1645-JFK"><span class="d">{number}<
     ([("LY", "9252"), ("LY", "9255"), ("DL", "7426")], "LY 9252, LY 9255 and DL 7426"),
 ])
 def test_also_sold_as_with_one_two_and_three_numbers(numbers, names):
-    """docs/site-redesign.md, "Codeshares": one line among the day's lines, each partner linked to its own page at
+    """docs/site-redesign.md, "Codeshares": one line among the day's own lines, each partner linked to its own page at
     that day's anchor, the reason left to "How this works"."""
     page = codeshare_page(*numbers)
     assert f"Also sold as {names} (probably the same plane)." in text(page)
     links = [LINK.format(page=f"{a}{n}-D.html", number=f"{a} {n}") for a, n in numbers]
-    assert f'<p class="note">Also sold as {views._names(links)} (probably the same plane).</p>' in page
+    line = f'<p class="note">Also sold as {views._names(links)} (probably the same plane).</p>'
+    assert line in own_of(page, "2026-10-29-1645-JFK")
     assert "Probably the same flight" not in page and "same time, terminal" not in page
 
 
 def test_no_codeshare_line_without_partners():
     page = to3459_page()
-    assert '<div class="row" id="2026-10-29-1710-ORY">' in page and "Also sold as" not in page
+    assert '<section class="day" id="2026-10-29-1710-ORY">' in page and "Also sold as" not in page
 
 
 def test_notes_under_a_row():
@@ -343,18 +592,20 @@ def test_notes_under_a_row():
                    flight("cancelled", local(30, 9, 0), **AT_LEAST_23))
     assert ("The airport removed this flight 6 hours early without saying why. "
             "It may have been cancelled or moved to another time."
-            in text(row_block(page, "2026-10-28-0900-JFK")))
-    assert "Marked cancelled for a while, then back on." in text(row_block(page, "2026-10-29-0900-JFK"))
+            in text(day_block(page, "2026-10-28-0900-JFK")))
+    assert "Marked cancelled for a while, then back on." in text(day_block(page, "2026-10-29-0900-JFK"))
     assert ("Cancelled with at least 23 hours' notice. It was already cancelled when it first appeared."
-            in text(row_block(page, "2026-10-30-0900-JFK")))
+            in text(day_block(page, "2026-10-30-0900-JFK")))
 
 
 def test_delayed_beside_the_main_label():
     """An expected time an hour after the scheduled one; the airport's own word DELAYED is not what labels."""
-    row = row_block(page_of(flight("late", direction="A", outcome="landed", est_local_final=local(29, 17, 45))),
+    row = day_block(page_of(flight("late", direction="A", outcome="landed", est_local_final=local(29, 17, 45))),
                     "2026-10-29-1645-JFK")
     assert "LANDED · DELAYED" in text(row) and "scheduled 16:45 · landed around 17:45" in text(row)
-    row = row_block(page_of(flight("close", direction="A", outcome="landed", est_local_final=local(29, 17, 44))),
+    assert ('<span class="labels"><span class="label l-landed">LANDED</span> · '
+            '<span class="label l-delayed">DELAYED</span></span>') in row
+    row = day_block(page_of(flight("close", direction="A", outcome="landed", est_local_final=local(29, 17, 44))),
                     "2026-10-29-1645-JFK")
     assert "DELAYED" not in text(row)
 
@@ -362,133 +613,95 @@ def test_delayed_beside_the_main_label():
 def test_airport_data_is_escaped():
     page = page_of(flight("x", airline_name="<B>&CO", city_en="<SCRIPT>", city_he="<i>"))
     assert page.count(SCRIPT) == 1  # the page's own script, which every page loads
-    assert "<script" not in page.replace(SCRIPT, "").lower() and "<b>" not in page.lower()
+    assert "<script" not in page.replace(SCRIPT, "").lower() and "<b>&" not in page.lower()
     assert '<span class="d">&lt;B&gt;&amp;CO</span>' in page
     assert '<span class="d">&lt;script&gt;</span>' in page  # string.capwords leaves "<script>" as it is
     assert '<span lang="he" dir="rtl"><span class="d">&lt;i&gt;</span></span>' in page
 
 
-# --- the flight page's from-here block (docs/flight-lookup.md, "Pages", Flight page) ---------------
+# --- the strip of days (docs/flight-lookup.md, "Flight page: the strip of days") ---------------------
 
-def upcoming(fid="up", sched=datetime(2026, 11, 13, 10, 0), **kw):
-    """LY 001, still listed normally, due to leave at 10:00 on 13 November in Israel: 08:00 UTC."""
-    return flight(fid, sched, outcome="open", **kw)
-
-
-UPCOMING_ROW = "2026-11-13-1000-JFK"
-BLOCK_TAG = '<div class="pairs" data-sched="2026-11-13T08:00:00Z" data-more-after="72">'
-SCRIPT = '<script src="../fromhere.js" defer></script>'
-# Each checkpoint's pair covers the hours to go after the next lower checkpoint, up to its own; the 70-hour pair up
-# to 72 (docs/flight-lookup-plan.md, "What this plan decided", Lead-in boundaries).
-BOUNDS = [(70, ' data-after="48" data-upto="72"'), (48, ' data-after="24" data-upto="48"'),
-          (24, ' data-after="12" data-upto="24"'), (12, ' data-after="6" data-upto="12"'),
-          (6, ' data-after="3" data-upto="6"'), (3, ' data-after="0" data-upto="3"')]
-PAIR_24 = ("This flight has between 12 and 24 hours to go. So far, of all flights at the airport still listed normally "
-           "with 24 hours to go, about 1 in 100 (between 1 in 45 and 1 in 200) were later listed as cancelled.")
-CONDITION = ("The figure is for flights the airport's list showed normally. This page was last updated 30 Oct 2026, "
-             "00:02 and cannot say what the list shows now. Check the airport's own list.")
-PASSED = ("This flight's time has passed. The page was last updated on 30 Oct at 00:02, so it may not show "
-          "what happened.")
+def strip(page: str) -> str:
+    start = page.index('<section class="record">')
+    return page[start:page.index("</section>", start) + len("</section>")]
 
 
-def pairs_block(page: str) -> str:
-    """A flight page's from-here block, from its opening tag to its closing one (it holds no other div)."""
-    start = page.index('<div class="pairs"')
-    return page[start:page.index("</div>", start) + len("</div>")]
+def marks(page: str) -> list[str]:
+    return re.findall(r"<li\b.*?</li>", strip(page))
 
 
-def pair_items(page: str) -> list[tuple[str, str]]:
-    """The block's pairs as (the list item's attributes, its text), in page order."""
-    return [(attrs, text(inner)) for attrs, inner in re.findall(r"<li([^>]*)>(.*?)</li>", pairs_block(page))]
+def mark(kind: str, anchor: str, name: str, day: int, month: str | None = None) -> str:
+    li = f'<li class="mo" data-mo="{month}">' if month else "<li>"
+    return f'{li}<a class="s-{kind}" href="#{anchor}" aria-label="{name}" title="{name}"><i></i><b>{day}</b></a></li>'
 
 
-def expected_pairs(*left_out: int) -> list[tuple[str, str]]:
-    """The design's pairs (A35_ROWS), each with its bounds, but those of the checkpoints `left_out`."""
-    return [(attrs, words.pair(h, A35_ROWS[h][0])) for h, attrs in BOUNDS if h not in left_out]
+def key(page: str) -> str:
+    return re.search(r'<p class="key">(.*?)</p>', page).group(1)
 
 
-def below_at(*hs: int) -> display.Summary:
-    """The design's figures, with the rates of the checkpoints `hs` below the floor."""
-    return figures(by_point={h: r for h, (r, _) in A35_ROWS.items()} | {h: FEW for h in hs})
+def test_the_strip_marks_every_day_oldest_first_and_links_it():
+    """Under the heading "TO 3459, day by day", one mark per day of the number, oldest first, each a link to that day
+    on the page (the traveller's day's to the top), named by its day and label for a screen reader and as a tooltip,
+    the day of the month under it. Each label has its own mark."""
+    page = to3459_page()
+    assert '<section class="record">\n<h2><span class="d">TO 3459</span>, day by day</h2>\n' in page
+    assert marks(page) == [
+        mark("departed", "2026-10-27-1645-ORY", "Tuesday 27 October, departed", 27, "Oct"),
+        mark("cancelled", "2026-10-29-1710-ORY", "Thursday 29 October, cancelled", 29),
+        mark("upcoming", "2026-11-01-1830-ORY", "Sunday 1 November, upcoming", 1, "Nov")]
+    assert outline(page)[1] == ("now", ["2026-11-01-1830-ORY"])
+    every = page_of(*label_rows(words.LABEL_ORDER))
+    found = re.findall(r'<a class="s-([a-z-]+)" href="#([^"]+)" aria-label="([^"]+)"', strip(every))
+    assert [(kind, name) for kind, _, name in found] == [
+        ("departed", "Thursday 1 October, departed"), ("landed", "Friday 2 October, landed"),
+        ("cancelled", "Saturday 3 October, cancelled"), ("no-news-yet", "Monday 5 October, no news yet"),
+        ("unknown", "Tuesday 6 October, unknown"), ("upcoming", "Wednesday 4 November, upcoming")]
+    days = [el.attrs["id"] for el in tree(every).walk() if "day" in el.classes]
+    assert sorted(anchor for _, anchor, _ in found) == sorted(days) and len(days) == 6
 
 
-def test_the_block_on_upcoming_rows_only():
-    """Only a row labelled UPCOMING, still listed normally, carries the block and the "has passed" line: rows labelled
-    DEPARTED, LANDED, CANCELLED, NO NEWS YET or UNKNOWN get none. The block sits above the row's change list."""
-    fs = summary_rows(["departed", "landed", "cancelled", "upcoming", "no final update", "unknown"])
+def test_the_strip_key_counts_its_own_marks():
+    """The key names each kind of mark in words with its count, in the labels' order, each beside its mark, so that it
+    matches the marks (LH 694's "landed 10 · cancelled 4 · unknown 1"); a kind with no mark is left out."""
+    arrival = dict(direction="A", airline="LH", flight_no="694", airport="FRA", city_en="FRANKFURT")
+    fs = [*(flight(f"l{d}", local(d, 19, 20), outcome="landed", **arrival) for d in (20, 21, 22)),
+          *(flight(f"c{d}", local(d, 19, 20), **CLEAN, **arrival) for d in (23, 24)),
+          flight("u25", local(25, 19, 20), outcome="gap", **arrival)]
     page = page_of(*fs)
-    assert sorted(r.label for r in rows(*fs)) == sorted(words.LABEL_ORDER)
-    for r in rows(*fs):
-        row = row_block(page, r.anchor)
-        assert ('<div class="pairs"' in row) == ('class="passed"' in row) == (r.label == words.UPCOMING), r.label
-    assert page.count('<div class="pairs"') == 1
-    row = row_block(page, "2026-11-04-0900-JFK")
-    assert row.index('<p class="head">') < row.index('<div class="pairs"') < row.index("<details>")
+    assert key(page) == ('<span class="k s-landed">landed 3</span><span class="sep"> · </span>'
+                         '<span class="k s-cancelled">cancelled 2</span><span class="sep"> · </span>'
+                         '<span class="k s-unknown">unknown 1</span>')
+    assert '<section class="record">\n<h2><span class="d">LH 694</span>, day by day</h2>\n<p class="key">' in page
+    assert Counter(re.findall(r'<a class="s-([a-z-]+)"', strip(page))) == {"landed": 3, "cancelled": 2, "unknown": 1}
 
 
-def test_the_scheduled_instant_is_the_models_utc(israeli_machine):
-    """data-sched is the row's sched_utc_final, written as the UTC instant it is: 10:00 on 13 November in Israel is
-    08:00 UTC, on any machine."""
-    assert BLOCK_TAG in page_of(upcoming())
+def test_two_flights_on_one_day_are_two_marks():
+    """Review Focus 5: one mark per row of the model's flights table, not per date. LY 5115 left twice at 16:30 on 28
+    October, to Batumi and to Kutaisi; IZ 992 is listed twice on 30 October. Each row has its own mark, linked to its
+    own day, and the key counts both."""
+    page = page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
+                   flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI"))
+    assert marks(page) == [mark("departed", "2026-10-28-1630-BUS", "Wednesday 28 October, departed", 28, "Oct"),
+                           mark("departed", "2026-10-28-1630-KUT", "Wednesday 28 October, departed", 28)]
+    assert text(key(page)) == "departed 2"
+    iz = dict(airline="IZ", flight_no="992", airport="ATH", city_en="ATHENS")
+    page = page_of(flight("iz2", local(30, 13, 50), outcome="open", **iz),
+                   flight("iz1", local(30, 6, 50), outcome="open", **iz))
+    assert [re.search(r'href="#([^"]+)"', m).group(1) for m in marks(page)] == [
+        "2026-10-30-0650-ATH", "2026-10-30-1350-ATH"]
+    assert text(key(page)) == "upcoming 2"
 
 
-def test_without_javascript_all_pairs_show(israeli_machine):
-    """docs/flight-lookup.md, "Pages", Flight page: without JavaScript the block shows the table's six rows as a list,
-    each the design's pair with its bounds; the "More than 3 days" line and the "has passed" line are hidden until
-    fromhere.js shows one."""
-    page = page_of(upcoming())
-    assert pair_items(page) == expected_pairs()
-    assert PAIR_24 in [t for _, t in pair_items(page)]
-    assert not [attrs for attrs, _ in pair_items(page) if "hidden" in attrs]
-    assert f'<p class="more" hidden>{html.escape(words.MORE_THAN_3_DAYS)}</p>' in pairs_block(page)
-    assert f'<p class="passed" hidden>{html.escape(PASSED)}</p>' in page
+def test_the_months_name_over_its_first_mark():
+    """A month's name stands over the first mark of each month and over no other: the page's first mark, whatever its
+    day, and 1 November's."""
+    page = page_of(*(flight(f"o{d}", local(d, 9, 0)) for d in (29, 30, 31)),
+                   *(flight(f"n{d}", datetime(2026, 11, d, 9, 0), outcome="open") for d in (1, 2)))
+    assert [re.match(r"<li[^>]*>", m).group(0) for m in marks(page)] == [
+        '<li class="mo" data-mo="Oct">', "<li>", "<li>", '<li class="mo" data-mo="Nov">', "<li>"]
 
 
-def test_the_block_holds_the_pairs_then_the_condition_and_the_record_line(israeli_machine):
-    """In order: the pairs, the "More than 3 days" line (its first sentence only, Question 4e), the condition line with
-    the last update in Israel time, and the record line."""
-    block = pairs_block(page_of(upcoming()))
-    parts = [text(inner) for _, inner in re.findall(r"<(ul|p)[^>]*>(.*?)</\1>", block, re.S)]
-    assert parts[1:] == [words.MORE_THAN_3_DAYS, CONDITION, words.PAST_ONLY]
-    assert parts[0] == " ".join(t for _, t in expected_pairs())
-
-
-def test_a_pair_below_the_floor_is_left_out():
-    """Question 4c, Review Focus 3: the 24-hour rate below the floor leaves its pair out. The other five keep their
-    bounds (the 48-hour pair still covers 24 to 48 hours), and every rate on the page keeps its range."""
-    page = page_of(upcoming(), summary=below_at(24))
-    assert pair_items(page) == expected_pairs(24) and len(pair_items(page)) == 5
-
-
-def test_the_block_carries_its_top_bound_whatever_pairs_are_present():
-    """With the 70-hour pair below the floor the highest pair ends at 48 hours: the block still says the "More than 3
-    days" line starts after 72, so that a flight 48 to 72 hours out shows no pair rather than that line."""
-    page = page_of(upcoming(), summary=below_at(70))
-    assert BLOCK_TAG in page
-    assert pair_items(page) == expected_pairs(70)
-
-
-def test_no_block_when_no_pair_clears_the_floor():
-    """Review Focus 3: a fresh archive clears the floor nowhere, so an upcoming row gets no block at all: no pair, no
-    condition or record line, no "has passed" line and no rate."""
-    page = page_of(upcoming(), summary=BELOW)
-    assert 'class="pairs"' not in page and 'class="passed"' not in page
-    assert words.PAST_ONLY not in text(page) and "cannot say what the list shows now" not in text(page)
-    assert not re.search(r"1 in \d", text(page))
-    assert "Since 27 October: one upcoming." in text(page)
-
-
-def test_the_passed_line_sits_outside_the_block(israeli_machine):
-    """The "has passed" line comes right after the block, hidden, so that fromhere.js can hide the whole block and show
-    the line (docs/flight-lookup.md, "Pages", Flight page); both sit above the row's change list."""
-    page = page_of(upcoming())
-    block = pairs_block(page)
-    passed = f'<p class="passed" hidden>{html.escape(PASSED)}</p>'
-    assert 'class="passed"' not in block and "has passed" not in block
-    assert page[page.index(block) + len(block):].startswith(f"\n{passed}\n")
-    row = row_block(page, UPCOMING_ROW)
-    assert row.index(block) < row.index(passed) < row.index("<details>")
-
+# --- the twin lines (docs/flight-lookup.md, "Flight page: other situations") -------------------------
 
 def test_the_twin_lines():
     """docs/flight-lookup.md, "Flight page: other situations": a number marked cancelled whose flight is not (C2, C10)
@@ -532,79 +745,12 @@ def test_the_partner_sentence_names_only_time_terminal_and_desks_partners():
 
 
 def test_every_flight_page_loads_fromhere_js_once():
-    """The script writes the page's age on every page, so it loads, once, on a flight page with a block and on one
-    without: one without an upcoming row, or one whose upcoming row has no block because no pair clears the floor."""
-    for page in (page_of(upcoming()), page_of(*summary_rows(["departed", "cancelled", "no final update", "unknown"])),
-                 page_of(upcoming(), summary=BELOW)):
+    """The script writes the page's age and keeps an old page reading right, so it loads, once, on a flight page with
+    a day ahead and on one without."""
+    for page in (page_of(flight("up", AHEAD, outcome="open")),
+                 page_of(*label_rows([words.DEPARTED, words.CANCELLED, words.NO_NEWS_YET, words.UNKNOWN]))):
         assert page.count(SCRIPT) == 1 and page.index(SCRIPT) < page.index("</head>")
         assert "<script" not in page.replace(SCRIPT, "")
-
-
-FROMHERE_JS = Path(views.__file__).parent / "static" / "fromhere.js"
-
-
-def children(fragment: str) -> list[tuple[str, dict, str]]:
-    """The direct children of the element `fragment` opens, as (tag, attributes, text inside, entities unescaped), in
-    page order."""
-    out: list[list] = []
-    depth = 0
-
-    class Parser(HTMLParser):
-        def handle_starttag(self, tag, attrs):
-            nonlocal depth
-            depth += 1
-            if depth == 2:
-                out.append([tag, dict(attrs), ""])
-
-        def handle_endtag(self, tag):
-            nonlocal depth
-            depth -= 1
-
-        def handle_data(self, data):
-            if depth >= 2:
-                out[-1][2] += data
-
-    Parser().feed(fragment)
-    return [(tag, attrs, inner) for tag, attrs, inner in out]
-
-
-def test_the_block_holds_every_name_fromhere_js_reads(israeli_machine):
-    """The names fromhere.js selects by, read out of the script itself, are the names the block is written with: the
-    block it selects with the two attributes it reads there, the list items with theirs, the class of the line it shows
-    above 72 hours, and the class of the line right after the block. Above 72 hours the script hides every direct child
-    of the block but that line ([...block.children]), so that line, the list of pairs, the condition line and the record
-    line are each a direct child. The script's own tests run it on a hand-made stand-in page, so this test is what ties
-    the two together."""
-    script = FROMHERE_JS.read_text(encoding="utf-8")
-    found = {"block": re.findall(r'document\.querySelectorAll\("([^"]+)"\)', script),
-             "items": re.findall(r'block\.querySelectorAll\("([^"]+)"\)', script),
-             "block attributes": re.findall(r'block\.getAttribute\("([^"]+)"\)', script),
-             "item attributes": re.findall(r'li\.getAttribute\("([^"]+)"\)', script),
-             "child classes": re.findall(r'child\.classList\.contains\("([^"]+)"\)', script),
-             "next classes": re.findall(r'line\.classList\.contains\("([^"]+)"\)', script)}
-    assert all(found.values()), found
-    # Every name the script selects by is one of these: a new one fails here until this test places it.
-    assert sum(map(len, found.values())) == len(re.findall(r'(?:querySelectorAll|getAttribute|classList\.contains)\(',
-                                                           script))
-    page = page_of(upcoming())
-    (selector,) = found["block"]
-    tag, cls = selector.split(".")
-    assert f'<{tag} class="{cls}"' in page
-    start = page.index(f'<{tag} class="{cls}"')
-    end = page.index(f"</{tag}>", start) + len(f"</{tag}>")
-    block, after = page[start:end], page[end:]
-    opening = block[:block.index(">") + 1]
-    assert [name for name in found["block attributes"] if f' {name}="' not in opening] == [], opening
-    (item,) = found["items"]
-    items = re.findall(rf"<{item}\b[^>]*>", block)
-    assert len(items) == 6
-    assert [(i, name) for i in items for name in found["item attributes"] if f' {name}="' not in i] == []
-    kids = children(block)
-    assert [name for name in found["child classes"] if not any(a.get("class") == name for _, a, _ in kids)] == [], kids
-    pairs = " ".join(t for _, t in pair_items(page))
-    kid_texts = [" ".join(inner.split()) for _, _, inner in kids]
-    assert [line for line in (pairs, CONDITION, words.PAST_ONLY) if line not in kid_texts] == [], kid_texts
-    assert [name for name in found["next classes"] if not re.match(rf'\s*<\w+ class="{name}"[ >]', after)] == []
 
 
 # --- day page --------------------------------------------------------------------------------------
@@ -1386,8 +1532,7 @@ def every_page() -> dict[str, str]:
         "two cities": page_of(flight("kut", local(28, 16, 30), flight_no="5115", airport="KUT", city_en="KUTAISI"),
                               flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI")),
         "codeshare": codeshare_page(("DL", "7426"), ("AM", "7895")),
-        "every label": page_of(*summary_rows(["departed", "landed", "cancelled", "upcoming", "no final update",
-                                              "unknown"])),
+        "every label": page_of(*label_rows(words.LABEL_ORDER)),
         "notes": page_of(flight("gone", local(28, 9, 0), outcome="vanished", last_seen_at=utc(28, 0, 40)),
                          flight("back", local(29, 9, 0), uncanceled=True),
                          flight("again", local(30, 9, 0), **AT_LEAST_23 | {"uncanceled": True}),
@@ -1410,15 +1555,26 @@ def every_page() -> dict[str, str]:
         "front page, below the floor everywhere": front(BELOW),
         "front page, a row below the floor": front(figures(by_point={h: r for h, (r, _) in A35_ROWS.items()}
                                                            | {3: rate(8, 3754, 469.25, 200.0, 1000.0, floor=False)})),
-        "a flight page with the block": page_of(upcoming()),
-        "a flight page, a pair below the floor": page_of(upcoming(), summary=below_at(24)),
-        "a flight page, below the floor everywhere": page_of(upcoming(), summary=BELOW),
+        "a day ahead marked cancelled": page_of(flight("top", AHEAD, **AT_LEAST_23), flight("up", LATER, outcome="open")),
+        "a day ahead removed early": page_of(flight("top", AHEAD, outcome="vanished", last_seen_at=utc(29, 20, 0))),
+        "a day ahead landed early": page_of(flight("top", AHEAD, direction="A", outcome="landed",
+                                                   est_local_final=local(30, 8, 40))),
+        "no day ahead, off the list": page_of(flight("d28", local(28, 9, 0))),
+        "no day ahead, still listed": page_of(flight("d28", local(28, 9, 0), last_seen_at=LAST_FETCH)),
+        "a strip across two months": page_of(flight("o31", LATER), flight("n01", datetime(2026, 11, 1, 9, 0),
+                                                                          outcome="open")),
+        "the notes on quoted words": page_of(*(fs := [flight("d29", local(29, 9, 0)),
+                                                     flight("c28", local(28, 9, 0), **CLEAN)]),
+                                             obs=[first(f) | {"status": "NOT FINAL"} for f in fs]),
         "another flight number departed": page_of(lh("lh0691a", local(29, 9, 0), "0691A", "canceled"),
                                                   lh("lh695", local(29, 9, 0), "695"), only="lh0691a"),
         "another flight number landed": page_of(*os_pair(), only="os1083"),
         "another flight number still listed": page_of(lh("lh0691a-31", local(31, 9, 0), "0691A", "canceled"),
                                                       lh("lh695-31", local(31, 9, 0), "695", "open"),
                                                       only="lh0691a-31"),
+        "another flight number with no news yet": page_of(lh("lh0691a-late", local(29, 23, 55), "0691A", "canceled"),
+                                                          lh("lh695-late", local(29, 23, 55), "695", "open"),
+                                                          only="lh0691a-late"),
         "day, numbers listed as cancelled in a flight that departed": bracket_day(),
         "cancellations, a warning by C9": views.cancellations_page(lists(*ey_ly()), LAST_FETCH),
         "cancellations, none": views.cancellations_page([], LAST_FETCH),

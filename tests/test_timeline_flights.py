@@ -351,10 +351,11 @@ def test_partners_read_a_missing_terminal_and_empty_desks_as_equal():
     assert got == {"a": ["b"], "b": ["a"]}
 
 
-def test_others_name_who_departed_landed_or_is_still_listed():
-    """For each number listed as cancelled in a flight that is not (C2, C10): the numbers that departed, landed, or
-    are still listed (UPCOMING or NO NEWS YET), and only those. LH 697, still listed beside LH 695, is not named
-    for the flight that departed. A cancelled flight's numbers, and numbers not listed as cancelled, get none."""
+def test_others_name_who_departed_landed_is_still_listed_or_has_no_news_yet():
+    """For each number listed as cancelled in a flight that is not (C2, C10): the numbers that departed, landed, are
+    still listed ahead of their time (UPCOMING) or have no news yet (NO NEWS YET, Question 6h: the flight may have gone
+    ahead), and only those. LH 697, still listed beside LH 695, is not named for the flight that departed. A cancelled
+    flight's numbers, and numbers not listed as cancelled, get none."""
     fs = [lh("lh0691a", local(29, 9, 0), "0691A", "canceled"), lh("lh695", local(29, 9, 0), "695"),
           lh("lh697", local(29, 9, 0), "697", "open"),
           *os_pair(),
@@ -365,7 +366,7 @@ def test_others_name_who_departed_landed_or_is_still_listed():
     got = {fid: (verb, [r.flight_id for r in named]) for fid, (verb, named) in flights.others(lists(*fs)).items()}
     assert got == {"lh0691a": ("departed", ["lh695"]), "os1083": ("landed", ["os083"]),
                    "lh0691a-31": ("is still listed", ["lh695-31"]),
-                   "lh0691a-late": ("is still listed", ["lh695-late"])}
+                   "lh0691a-late": ("has no news yet", ["lh695-late"])}
 
 
 # --- counts ----------------------------------------------------------------------------------------

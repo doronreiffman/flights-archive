@@ -71,10 +71,6 @@ FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
-# The one test that ties the block's markup to the names fromhere.js reads: each side's own tests pin it alone.
-NAMES = "tests/test_timeline_views.py::test_the_block_holds_every_name_fromhere_js_reads"
-VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
-FROMHERE_NAMES = ("src/timeline/static/fromhere.js", [NAMES])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -206,7 +202,7 @@ COLLECTOR_MUTATIONS = {
     "site: chart counted from numbers": (SITE, '    shown = [i for i in infos if i.state != "ahead"][-CHART_DAYS:]\n    chart_days = shown + [i for i in infos if i.state == "ahead"]', '    by_number = flights.day_infos([flights.ListFlight((r,), r.label, r.delayed, r, r.day, r.sched_utc_final, r.sched_utc_final) for r in rows], last_check, {i.day for i in infos if i.partial})\n    shown = [i for i in by_number if i.state != "ahead"][-CHART_DAYS:]\n    chart_days = shown + [i for i in by_number if i.state == "ahead"]'),
     "site: day counts from numbers": (SITE, "    infos = flights.day_infos(flights_, last_check,", "    infos = flights.day_infos([flights.ListFlight((r,), r.label, r.delayed, r, r.day, r.sched_utc_final, r.sched_utc_final) for r in rows], last_check,"),
     "site: chart cancelled from the counting result": (SITE, '    chart_days = shown + [i for i in infos if i.state == "ahead"]', '    chart_days = [flights.DayInfo(i.day, i.total, sum(f.day == i.day and f.result == "cancelled" for f in counting.flights(table, last_check)), i.unknown, i.state, i.partial) for i in shown + [i for i in infos if i.state == "ahead"]]'),
-    "site: flight pages updated at the first record": (SITE, "views.flight_page(page_rows, partners, others, summary, last_check)", "views.flight_page(page_rows, partners, others, summary, first_check)"),
+    "site: flight pages updated at the first record": (SITE, "views.flight_page(page_rows, partners, others, last_check)", "views.flight_page(page_rows, partners, others, first_check)"),
     "site: another-number lines not passed": (SITE, "partners, others = flights.partners(flights_, table), flights.others(flights_)", "partners, others = flights.partners(flights_, table), {}"),
     "site: counting start from the first record": (SITE, "gaps, record.TAG, record.COUNTING_START,", "gaps, record.TAG, first_check,"),
     "site: another tag on how-it-works": (SITE, "gaps, record.TAG, record.COUNTING_START,", 'gaps, "record-v2", record.COUNTING_START,'),
@@ -242,7 +238,6 @@ COLLECTOR_MUTATIONS = {
     "fromhere: an unreadable top bound not refused": (FROMHERE, " || !Number.isFinite(moreAfter)) return null;", ") return null;"),
     "fromhere: more line taken from the page, not the block": (FROMHERE, '!child.classList.contains("more"); });', 'child !== document.querySelector(".more"); });'),
     "fromhere: passed line taken from the page, not the block": (FROMHERE, "const line = block.nextElementSibling;", 'const line = document.querySelector(".passed");'),
-    "fromhere: reads a class the block does not carry": (FROMHERE_NAMES, 'line.classList.contains("passed")', 'line.classList.contains("gone")'),
     "tags left in before scanning": (CHECK, '    return re.sub(r"<[^>]*>", " ", text)', "    return text"),
     "text as written not scanned": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(strip_tags(raw)),)"),
     "tags stripped from pages only": (CHECK, "versions = (flatten(raw), flatten(strip_tags(raw)))", "versions = (flatten(raw), flatten(strip_tags(raw)) if path.suffix == '.html' else '')"),
@@ -388,8 +383,7 @@ COLLECTOR_MUTATIONS = {
     "flights: cancellation lists hold a flight with any number listed as cancelled": (FLIGHTS, "    return _newest_first([fl for fl in flights_ if fl.label == words.CANCELLED], lambda fl: fl.rows[0])[:n]", "    return _newest_first([fl for fl in flights_ if any(r.label == words.CANCELLED for r in fl.rows)], lambda fl: fl.rows[0])[:n]"),
     "views: data not escaped": (VIEWS, """f'<span class="d">{html.escape(str(value))}</span>'""", """f'<span class="d">{value}</span>'"""),
     "views: cancelled row closed": (VIEWS, 'out.append("<details open>" if r.label == words.CANCELLED else "<details>")', 'out.append("<details>")'),
-    "views: expected note on every row": (VIEWS, """f'<p class="head">{" ".join(head)}</p>']""", """f'<p class="head">{" ".join(head)}</p>', f'<p class="note">{e(words.EXPECTED_NOTE)}</p>']"""),
-    "views: Hebrew city without lang": (VIEWS, """who.append(f'<span lang="he" dir="rtl">{d(top.city_he)}</span>')""", """who.append(f'<span>{d(top.city_he)}</span>')"""),
+    "views: Hebrew city without lang": (VIEWS, """who.append(f'<span lang="he" dir="rtl">{d(latest.city_he)}</span>')""", """who.append(f'<span>{d(latest.city_he)}</span>')"""),
     "views: footer without the short source": (VIEWS, 'f"<p>{e(words.SOURCE_SHORT)} {e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\\n"', 'f"<p>{e(words.UNOFFICIAL)} {e(words.TIMES_NOTE)}</p>\\n"'),
     "views: noindex dropped": (VIEWS, """'<meta name="robots" content="noindex">\\n'""", "''"),
     "views: day link without anchor": (VIEWS, """f'<a href="{root}{e(r.page)}#{e(r.anchor)}">""", """f'<a href="{root}{e(r.page)}">"""),
@@ -418,24 +412,11 @@ COLLECTOR_MUTATIONS = {
     "views: cancellations notice from the first number": (VIEWS, "{e(fl.lead.notice.short)}</td></tr>'", "{e(fl.rows[0].notice.short)}</td></tr>'"),
     "views: search data before the table": (VIEWS, "    body.append(f'<script type=\"application/json\" id=\"flights-data\">", "    body.insert(2, f'<script type=\"application/json\" id=\"flights-data\">"),
     "views: cells without their column's head": (VIEWS, """f'<td data-label="{e(head)}">{e(cell)}</td>'""", """f'<td>{e(cell)}</td>'"""),
-    "views: block on a cancelled row": (VIEWS, "    return r.label == words.UPCOMING and bool(pairs)\n", "    return r.label in (words.UPCOMING, words.CANCELLED) and bool(pairs)\n"),
-    "views: scheduled instant in Israel time": (VIEWS, 'sched = f"{r.sched_utc_final:%Y-%m-%dT%H:%M:%SZ}"', 'sched = f"{words.il_time(r.sched_utc_final):%Y-%m-%dT%H:%M:%SZ}"'),
-    "views: pairs hidden without JavaScript": (VIEWS, """f'<li data-after="{e(after)}" """, """f'<li hidden data-after="{e(after)}" """),
-    "views: passed line inside the block": (VIEWS, """f"<p>{e(words.PAST_ONLY)}</p>", "</div>",\n            f'<p class="passed" hidden>{e(words.has_passed(updated))}</p>']""", """f"<p>{e(words.PAST_ONLY)}</p>",\n            f'<p class="passed" hidden>{e(words.has_passed(updated))}</p>', "</div>"]"""),
+    "views: scheduled instant in Israel time": (VIEWS, 'data-sched="{r.sched_utc_final:%Y-%m-%dT%H:%M:%SZ}"', 'data-sched="{words.il_time(r.sched_utc_final):%Y-%m-%dT%H:%M:%SZ}"'),
     "views: another-number line left out": (VIEWS, "    if other:  # the twin line", "    if False:  # the twin line"),
-    "views: condition line left out": (VIEWS, """            f"<p>{e(words.condition(updated))}</p>", """, "            "),
-    "views: a block with no pair": (VIEWS, "    return r.label == words.UPCOMING and bool(pairs)\n", "    return r.label == words.UPCOMING\n"),
-    "views: block's top bound from the pairs present": (VIEWS, 'data-more-after="{e(MORE_AFTER)}"', 'data-more-after="{e(pairs[0][1])}"'),
-    "views: bounds from the pairs present": (VIEWS, "    hs = sorted((h for h, _ in summary.figures.rows), reverse=True)\n", "    hs = sorted((h for h, rate in summary.figures.rows if words.pair(h, rate)), reverse=True)\n"),
     "views: counting start from the UTC date": (VIEWS, "    start = words.il_time(counting_start)\n", "    start = counting_start\n"),
     "views: passed line shown without JavaScript": (VIEWS, """f'<p class="passed" hidden>{e(words.has_passed(updated))}</p>'""", """f'<p class="passed">{e(words.has_passed(updated))}</p>'"""),
-    "views: more line shown without JavaScript": (VIEWS, """f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>'""", """f'<p class="more">{e(words.MORE_THAN_3_DAYS)}</p>'"""),
-    "views: the 70-hour pair up to 70": (VIEWS, "(lower, MORE_AFTER if i == 0 else h)", "(lower, h)"),
-    "views: record line left out of the flight page's block": (VIEWS, """f"<p>{e(words.PAST_ONLY)}</p>", "</div>",""", """"</div>","""),
     "views: cancellations page holds a flight with any number listed as cancelled": (VIEWS, "    cancelled = flights.recent_cancellations(flights_, n=len(flights_))", "    cancelled = flights._newest_first([fl for fl in flights_ if any(r.label == words.CANCELLED for r in fl.rows)], lambda fl: fl.rows[0])"),
-    "views: summary line from a fixed first record": (VIEWS, "_summary(rows, summary.first_record)", "_summary(rows, date(2026, 10, 27))"),
-    "views: the block's top bound renamed away from fromhere.js": (VIEWS_NAMES, 'data-more-after="{e(MORE_AFTER)}"', 'data-more="{e(MORE_AFTER)}"'),
-    "views: the more line inside the list": (VIEWS_NAMES, """"</ul>", f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>',""", """f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>', "</ul>","""),
     "style: pale cancel text": (STYLE, "--cancel-fg: #b3261e;", "--cancel-fg: #e8827a;"),
     "style: dim muted text in the dark": (STYLE, "--muted: #9aa3b2;", "--muted: #5c5c61;"),
     "style: dim band text": (STYLE, "--band-muted: #c5d1ea;", "--band-muted: #5f6f93;"),
@@ -629,6 +610,21 @@ COLLECTOR_MUTATIONS = {
     "views: day title keeps a zero": (WORDS_VIEWS, "*(part for n, part in counts if n)", "*(part for n, part in counts)"),
     "views: the sentence in the notice column": (VIEWS, "{e(fl.lead.notice.short)}</td></tr>'", "{e(fl.lead.notice.sentence)}</td></tr>'"),
     "site: day pages updated at the first record": (SITE, "views.day_page(info, by_day[info.day], last_check)", "views.day_page(info, by_day[info.day], first_check)"),
+    # the flight page: the traveller's day, the strip, the later and the past days (docs/flight-lookup.md, "Pages", Flight page)
+    "views: later days newest first": (VIEWS, "    later = ahead[1:]\n", "    later = ahead[:0:-1]\n"),
+    "views: past days oldest first": (VIEWS, "past = [r for r in reversed(by_time) if", "past = [r for r in by_time if"),
+    "views: traveller's day by its label": (VIEWS, "ahead = [r for r in by_time if r.sched_utc_final > updated]", "ahead = [r for r in by_time if r.label == words.UPCOMING]"),
+    "views: strip key counts the flights": (VIEWS, "counts = Counter(r.label for r in by_time)", "counts = Counter(r.label for r in {r.day: r for r in by_time}.values())"),
+    "views: a month's name on every mark": (VIEWS, """li = "<li>" if (r.day.year, r.day.month) == month else f'<li""", """li = f'<li"""),
+    "views: the expected note on every day": (VIEWS, "expected_note=r is expected,", "expected_note=words.shows_expected(r.est_final, r.sched_final, r.label),"),
+    "views: not-listed line while still listed": (VIEWS_SITE, "still = latest.last_seen_at >= updated", "still = latest.last_seen_at > updated"),
+    "views: marked-cancelled line beside the twin line": (VIEWS, "    elif ahead and r.label == words.CANCELLED:", "    if ahead and r.label == words.CANCELLED:"),
+    "views: marked-cancelled line on a past day": (VIEWS, "    elif ahead and r.label == words.CANCELLED:", "    elif r.label == words.CANCELLED:"),
+    "views: a past day carries data-sched": (VIEWS, """if ahead else ""  # the model's naive UTC, as itself""", """if True else ""  # the model's naive UTC, as itself"""),
+    "views: the final note under the first list that quotes them": (VIEWS, "final = next((r for r in quoting if r.label == words.CANCELLED), quoting[0] if quoting else None)", "final = quoting[0] if quoting else None"),
+    "views: support in every day": (VIEWS, "    if top:\n", "    if True:\n"),
+    "flights: a twin with no news yet read as still on": (FLIGHTS, 'words.NO_NEWS_YET: "has no news yet"}', 'words.NO_NEWS_YET: "is still listed"}'),
+    "words: removed under an hour early reads 0 hours": (WORDS, 'how = "less than an hour" if early < 1 else hours(early)', "how = hours(early)"),
     # the runner itself: only a failing test is a catch, a run past the limit is killed whole and counts as caught
     'runner: any non-zero exit counts as caught': (RUNNER, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
     'runner: an error does not fail the check': (RUNNER, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),

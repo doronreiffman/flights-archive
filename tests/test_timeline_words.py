@@ -121,6 +121,11 @@ LABEL_NOTE_CASES = [
     (lnote("vanished", SCHED - timedelta(hours=1, minutes=5)), "UNKNOWN", False,
      "The airport removed this flight 1 hour early without saying why. "
      "It may have been cancelled or moved to another time."),
+    # Question 6g: under an hour reads "less than an hour", never "0 hours" (the model's rule today calls a flight
+    # vanished only more than an hour early, so no page shows it yet)
+    (lnote("vanished", SCHED - timedelta(minutes=59)), "UNKNOWN", True,
+     "The airport removed this flight less than an hour early without saying why. "
+     "It may have been cancelled or moved to another time. Check with your airline."),
     (lnote("dropped"), "UNKNOWN", False, "The airport removed this flight without saying why."),
     (lnote("departed"), "DEPARTED", False, None), (lnote("landed"), "LANDED", False, None),
     (lnote("canceled"), "CANCELLED", False, None), (lnote("open"), "UPCOMING", True, None),
@@ -423,6 +428,8 @@ def test_also_sold_as_and_the_twin_lines_words():
     assert words.twin("landed") == ("This number was cancelled, but the flight probably landed as", ".")
     assert words.twin("is still listed") == (
         "This number is marked cancelled, but the flight is probably still on, as", ".")
+    assert words.twin("has no news yet") == (  # Question 6h
+        "This number was cancelled, but the flight may have gone ahead as", ".")
     assert not hasattr(words, "another_number") and not hasattr(words, "BRACKET")
 
 
@@ -922,7 +929,7 @@ def site_texts() -> list[str]:
               words.condition(datetime(2026, 11, 12, 10, 16, 45)),
               words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
               words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
-              *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed"))]
+              *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed", "has no news yet"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())
     texts += figure_texts()

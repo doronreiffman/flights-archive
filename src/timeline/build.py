@@ -80,7 +80,7 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
         by_page.setdefault(r.page, []).append(r)
     partners, others = flights.partners(flights_, table), flights.others(flights_)
     for page, page_rows in sorted(by_page.items()):
-        files[page] = views.flight_page(page_rows, partners, others, summary, last_check)
+        files[page] = views.flight_page(page_rows, partners, others, last_check)
     for name in ("search.js", "fromhere.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
     for name in FONT_FILES:
