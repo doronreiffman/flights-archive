@@ -16,7 +16,26 @@ from .load import load
 FLOOR = 100  # counted flights that make an airline needed even when no flight is grouped under it
 
 # The owner approves this list (the plan's Question 5); the three are the ones the approved lines use.
-SPOKEN_NAMES: dict[str, str] = {"LH": "Lufthansa", "LO": "LOT", "LY": "El Al"}
+# The name a traveller says aloud, by airline code. LH, LO and LY are the approved lines' own; the rest are the main
+# session's draft of 2026-11-17 from `python -m timeline.names` on the 2026-11-17 model, for the owner's approval at the
+# hand check. Marked "check": the airport's own name is odd or unknown to the drafter.
+SPOKEN_NAMES: dict[str, str] = {
+    "3E": "Electra Airways", "3F": "FlyOne Armenia", "4L": "One Click",  # check
+    "4V": "Sky Up Nistru",  # check
+    "5F": "FlyOne", "6H": "Israir", "A3": "Aegean", "A4": "Azimuth", "AF": "Air France", "AM": "Aeromexico",
+    "AR": "Aerolineas Argentinas", "ASY": "Royal Australian Air Force",  # check: the airport spells it AUSTALIAN
+    "AZ": "ITA Airways", "B2": "Belavia", "BA": "British Airways", "BT": "airBaltic", "BZ": "Bluebird Airways",
+    "C6": "Centrum Air", "CY": "Cyprus Airways", "DE": "Condor", "DL": "Delta", "E2": "Air Haifa",
+    "EAF": "Electra Airways", "ENT": "Enter Air", "ET": "Ethiopian Airlines", "EW": "Eurowings", "EY": "Etihad",
+    "FB": "Bulgaria Air", "GQ": "Sky Express", "H4": "HiSky Europe", "H7": "HiSky", "HH": "Qanot Sharq",
+    "HM": "Air Seychelles", "HY": "Uzbekistan Airways", "I2": "Iberia Express", "IB": "Iberia", "IZ": "Arkia",
+    "J2": "Azerbaijan Airlines", "KL": "KLM", "LH": "Lufthansa", "LO": "LOT", "LX": "Swiss", "LY": "El Al",
+    "NO": "Neos", "OS": "Austrian Airlines", "QS": "Smartwings", "RO": "Tarom", "SK": "SAS",
+    "SN": "Brussels Airlines", "TO": "Transavia", "TP": "TAP Air Portugal", "U8": "TUS Airways", "UA": "United",
+    "UN": "Transaero",  # check: the name of an airline the drafter believes stopped flying (unverified)
+    "UX": "Air Europa", "VS": "Virgin Atlantic", "W4": "Wizz Air Malta", "W6": "Wizz Air", "W9": "Wizz Air UK",
+    "WZ": "Red Wings",
+}
 
 
 def spoken(code: str) -> str | None:

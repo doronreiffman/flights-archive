@@ -34,7 +34,8 @@ def archive():
 
 
 def test_spoken_names():
-    assert names.SPOKEN_NAMES == {"LH": "Lufthansa", "LO": "LOT", "LY": "El Al"}
+    assert {c: names.SPOKEN_NAMES[c] for c in ("LH", "LO", "LY")} == {"LH": "Lufthansa", "LO": "LOT", "LY": "El Al"}
+    assert all(v and v == v.strip() and "  " not in v for v in names.SPOKEN_NAMES.values())
     assert names.spoken("LY") == "El Al"
     assert names.spoken("ZZ") is None
 
