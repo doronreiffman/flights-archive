@@ -671,7 +671,7 @@ What changed on 2026-11-17 is what the pages say. A flight page now gives a chan
 
 - A chance is an estimate from past flights, not a promise. Every page says so in its footer and links to "What the numbers mean", which defines "cancelled" and "delayed".
 - A flight page that gives a chance says what it was worked out from: the flight's own history with its counts, its airline's history, and how soon it leaves. History lines give counts, not percentages.
-- A chance is never "0%". A clean history reads "under 1%".
+- A chance is never "0%". Below 1%, it reads "under 1%".
 - When one bad week is behind a flight's or an airline's cancellations, the page gives its dates.
 - Delays under an hour are never counted.
 - Every page says when it was last updated, and a flight page tells the reader to check with their airline.
