@@ -1122,3 +1122,5 @@ Filled in by the main session after each run on the real model: the model, the w
 ## Deviations
 
 The executor appends here whenever reality forces a change from this plan: what changed, why, and the commit.
+
+- Task 0 (2026-11-17, main session): the baseline on `data/model-2026-11-17` (last sighting 2026-11-17 07:46:44Z), built at abe26ca, whose code is that of 0f1b7e8. `timeline.check site` exits 0. Largest flight page: `site/flight/KL461-A.html`, 34,953 bytes. Whole site: 1,109 files, 17,960,040 bytes. The timeline build took 4.3 s (peak footprint 206 MB).
