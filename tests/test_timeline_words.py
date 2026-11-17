@@ -514,6 +514,8 @@ def test_status_words():
 def test_rounding():
     assert words.about(0.0099999) == "under 1%"
     assert words.about(0.01) == "about 1%"
+    assert words.about(0.03 * (1 / 3)) == "about 1%"  # exactly 1%, which the float holds as 0.009999999999999998
+    assert words.about(0.00999999999) == "under 1%"  # just under 1%, past the snap's nine decimals
     assert words.about(0) == "under 1%"
     assert words.about(0.095003) == "about 10%"
     assert words.about(0.154306) == "about 15%"

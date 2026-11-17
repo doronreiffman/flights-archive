@@ -339,8 +339,11 @@ def average(k: int, n: int) -> str:
 
 
 def about(x: float) -> str:
-    """A share as a chance: "under 1%" below 0.01, else "about N%", whole, halves up; never "0%"."""
-    return "under 1%" if x < 0.01 else f"about {math.floor(round(x * 100, 9) + 0.5)}%"
+    """A share as a chance: "under 1%" below 0.01, else "about N%", whole, halves up; never "0%". The percentage is
+    read to nine decimals first, past float noise, at the 1% edge as at the halves: an exact 1% the float holds as
+    0.009999999999999998 reads "about 1%"."""
+    percent = round(x * 100, 9)
+    return "under 1%" if percent < 1 else f"about {math.floor(percent + 0.5)}%"
 
 
 def _outward(one_in: float, up: bool) -> str:

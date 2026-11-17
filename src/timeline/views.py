@@ -724,10 +724,21 @@ def chance_table(summary: Summary, airport: blend.Airport) -> str:
     decimal, or "Not enough flights yet" below the floor; the line under it, its flights the mean of the rows shown
     to the nearest 500, left out when no row is shown; the delay line, each direction's delays of an hour or more
     over its flights that flew, with no floor (Question 6e's "under 1%" is for a small archive), left out only while
-    a direction has no flight that flew, as there is no figure to give. Plain HTML, no script."""
+    a direction has no flight that flew, as there is no figure to give. Plain HTML, no script.
+
+    ValueError, naming the figure, when a row shown would read "0.0%" (a chance is never "0%") or the line under the
+    table "about 0 flights": no real model reaches either, and a page saying so would be wrong."""
     rows = [(name, airport.rows[h]) for h, name in words.ROW_NAMES.items()]
     (_, first), (_, last) = rows[0], rows[-1]
     shown = [r for _, r in rows if r.clears_floor]
+    for name, r in rows:
+        if r.clears_floor and _pct(r) == "0.0%":
+            raise ValueError(f"the table's row {name!r} would read 0.0% ({r.cancelled} of {r.flights} cancelled): "
+                             "a chance is never 0%")
+    if shown and _about_500(shown) == 0:
+        raise ValueError(f"the line under the table would read about 0 flights (a mean of "
+                         f"{sum(r.flights for r in shown) / len(shown):.1f} over the rows shown): the mean to the "
+                         "nearest 500 needs 250 or more")
     body = []
     if first.clears_floor and last.clears_floor:
         body.append(f'<p class="intro">{e(words.table_first(_pct(first), _pct(last)))}</p>')

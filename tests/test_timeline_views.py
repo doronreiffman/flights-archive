@@ -2269,6 +2269,27 @@ def test_the_line_under_the_table_takes_the_mean_of_the_rows_shown_to_the_neares
     assert "from about 12,500 flights since" in text(chance(airport(rows=rows_of(12250))))
 
 
+@pytest.mark.parametrize("h, name", [(70, "3 days away"), (12, "12 hours away"), (3, "3 hours away")])
+def test_a_row_that_would_read_0_0_percent_stops_the_build(h, name):
+    """A chance is never "0%": a row that clears the floor with under 0.05% cancelled would print "0.0%" in the table
+    (and, for the first or the last row, in the first line), so the build stops, naming the row. 10 of 20,000 is 0.1%,
+    10 of 20,001 is 0.0%."""
+    assert table_cells(chance(airport(rows={h: made(10, 20000)})))[1 + list(words.ROW_NAMES).index(h)] == [name, "0.1%"]
+    with pytest.raises(ValueError, match=f"{name}.*0\\.0%"):
+        chance(airport(rows={h: made(10, 20001)}))
+    with pytest.raises(ValueError, match=name):
+        front(airport(rows={h: made(10, 20001)}))
+
+
+def test_a_mean_that_would_read_about_0_flights_stops_the_build():
+    """The line under the table gives the mean of the rows shown to the nearest 500: below 250 it would read "about 0
+    flights", so the build stops. One row shown, of 250 flights, reads "about 500"; of 249, stops."""
+    below = dict.fromkeys(counting.CHECKPOINTS, made(9, 5000))
+    assert "from about 500 flights since" in text(chance(airport(rows=below | {24: made(10, 250)})))
+    with pytest.raises(ValueError, match="about 0 flights"):
+        chance(airport(rows=below | {24: made(10, 249)}))
+
+
 BELOW_DELAY = ("Chance of a delay of an hour or more: about 2% for departures and under 1% for arrivals. It's about "
                "the same however soon you fly.")  # BELOW's 1 of 50 and 0 of 40
 
