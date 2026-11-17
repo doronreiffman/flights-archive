@@ -16,14 +16,15 @@ from .load import load
 FLOOR = 100  # counted flights that make an airline needed even when no flight is grouped under it
 
 # The owner approves this list (the plan's Question 5); the three are the ones the approved lines use.
-# The name a traveller says aloud, by airline code. LH, LO and LY are the approved lines' own; the rest are the main
-# session's draft of 2026-11-17 from `python -m timeline.names` on the 2026-11-17 model, for the owner's approval at the
-# hand check. Marked "check": the airport's own name is odd or unknown to the drafter.
+# The name a traveller says aloud, by airline code: approved by the owner at the hand check, 2026-11-17 (LH, LO and LY
+# are the approved lines' own). Four keep the airport's own name, title-cased: One Click (4L), Sky Up Nistru (4V) and
+# Transaero (UN), which the drafter could not identify, and the Royal Australian Air Force as "RAAF" (ASY), which reads
+# in every sentence without "the".
 SPOKEN_NAMES: dict[str, str] = {
-    "3E": "Electra Airways", "3F": "FlyOne Armenia", "4L": "One Click",  # check
-    "4V": "Sky Up Nistru",  # check
+    "3E": "Electra Airways", "3F": "FlyOne Armenia", "4L": "One Click",
+    "4V": "Sky Up Nistru",
     "5F": "FlyOne", "6H": "Israir", "A3": "Aegean", "A4": "Azimuth", "AF": "Air France", "AM": "Aeromexico",
-    "AR": "Aerolineas Argentinas", "ASY": "Royal Australian Air Force",  # check: the airport spells it AUSTALIAN
+    "AR": "Aerolineas Argentinas", "ASY": "RAAF",
     "AZ": "ITA Airways", "B2": "Belavia", "BA": "British Airways", "BT": "airBaltic", "BZ": "Bluebird Airways",
     "C6": "Centrum Air", "CY": "Cyprus Airways", "DE": "Condor", "DL": "Delta", "E2": "Air Haifa",
     "EAF": "Electra Airways", "ENT": "Enter Air", "ET": "Ethiopian Airlines", "EW": "Eurowings", "EY": "Etihad",
@@ -32,7 +33,7 @@ SPOKEN_NAMES: dict[str, str] = {
     "J2": "Azerbaijan Airlines", "KL": "KLM", "LH": "Lufthansa", "LO": "LOT", "LX": "Swiss", "LY": "El Al",
     "NO": "Neos", "OS": "Austrian Airlines", "QS": "Smartwings", "RO": "TAROM", "SK": "SAS",
     "SN": "Brussels Airlines", "TO": "Transavia", "TP": "TAP Air Portugal", "U8": "TUS Airways", "UA": "United",
-    "UN": "Transaero",  # check: the name of an airline the drafter believes stopped flying (unverified)
+    "UN": "Transaero",
     "UX": "Air Europa", "VS": "Virgin Atlantic", "W4": "Wizz Air Malta", "W6": "Wizz Air", "W9": "Wizz Air UK",
     "WZ": "Red Wings",
 }
