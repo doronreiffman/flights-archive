@@ -1,0 +1,4 @@
+# Kept byte for byte: the font licence ends its lines in CRLF, and its size and SHA-256 are pinned
+# (tests/test_timeline_style.py); the fonts are binary.
+src/timeline/static/fonts/LICENSE.txt -text
+*.woff2 binary

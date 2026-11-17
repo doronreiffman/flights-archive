@@ -59,6 +59,7 @@ SITE = ("src/timeline/build.py", ["tests/test_timeline_build.py"])
 SEARCH = ("src/timeline/static/search.js", ["tests/test_timeline_search.py"])
 FROMHERE = ("src/timeline/static/fromhere.js", ["tests/test_timeline_fromhere.py"])
 STYLE = ("src/timeline/static/style.css", ["tests/test_timeline_style.py"])
+ATTRIBUTES = (".gitattributes", ["tests/test_timeline_style.py"])  # the fonts and their licence kept byte for byte
 CHECK = ("src/timeline/check.py", ["tests/test_timeline_check.py", "tests/test_publish.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 PUBLISH = ("scripts/publish.sh", ["tests/test_publish.py"])
@@ -334,6 +335,10 @@ COLLECTOR_MUTATIONS = {
     "style: an image in the sheet": (STYLE, "  margin: 0; background: var(--paper); color: var(--ink);", '  margin: 0; background: var(--paper) url("plane.png"); color: var(--ink);'),
     "style: the Hebrew face for every character": (STYLE, " unicode-range: U+0590-05FF;", ""),
     "style: the faces left out of the font stack": (STYLE, '--sans: "FA Sans Cond", "FA Hebrew Sans", ', "--sans: "),
+    "style: another sheet imported": (STYLE, '@font-face { font-family: "FA Sans Cond"; font-weight: 300;', '@import "other.css";\n@font-face { font-family: "FA Sans Cond"; font-weight: 300;'),
+    "style: a font as a data: address": (STYLE, 'url("fonts/sans-cond-400.woff2")', 'url("data:font/woff2;base64,d09GMgABAAAAAA")'),
+    "style: a face without font-display: swap": (STYLE, "font-weight: 600; font-display: swap; ", "font-weight: 600; "),
+    "style: the licence's line ends left to git": (ATTRIBUTES, "src/timeline/static/fonts/LICENSE.txt -text\n", ""),
     "words: warning rules out of order": (WORDS, "    if hi < 0 and not censored:", '    if lo >= 60:\n        return 8, f"at least {hours(_down(lo))}"\n    if hi < 0 and not censored:'),
     "words: censored range rounded down at the top": (WORDS, "    return math.ceil(minutes / 60)", "    return math.floor(minutes / 60)"),
     "words: first sight treated as censored range": (WORDS, "    if hi is None:", "    if False:"),
