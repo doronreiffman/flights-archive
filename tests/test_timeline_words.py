@@ -601,6 +601,9 @@ def test_rounding():
     assert words.about(0.095003) == "about 10%"
     assert words.about(0.154306) == "about 15%"
     assert words.about(0.125) == "about 13%"
+    assert words.about(29 / 200) == "about 15%"  # exact halves in decimal, below the float's
+    assert words.about(57 / 200) == "about 29%"
+    assert words.about(23 / 40) == "about 58%"
     assert words.about(231 / 2982) == "about 8%"
     assert words.about(149 / 3029) == "about 5%"
     assert words.pct1(3, 2000) == "0.2%"
@@ -768,6 +771,9 @@ def test_the_picker():
     clean_short = line(hist("LO 157", 5), LOT, "LOT")
     assert (clean_short.names_number_week, clean_short.names_airline_week) == (False, False)
     assert line(LO155, LOT, "LOT").names_number_week is False
+    # 14 flights or more, no bad week of its own, under an airline with one: the line does not give the airline's dates
+    assert line(hist("LH 695", 21, 3), LH, "Lufthansa") == words.Worked(
+        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled), Lufthansa's history, and how soon it leaves.", False, False)
     # a short history with a bad week of its own: its dates are the "so far" line's (Question 6c)
     own = line(hist("LH 697", 5, 2, 0, LH694.week), LH, "Lufthansa")
     assert own.names_number_week is False and "6 and 9 November" not in own.text
@@ -861,6 +867,7 @@ def test_freshness_and_other_situations():
 
 def test_the_strip_key_names_each_kind_with_its_count():
     assert words.strip_key({"LANDED": 22, "UPCOMING": 3}) == ["landed 22", "upcoming 3"]
+    assert words.strip_key({"LANDED": 1000}) == ["landed 1,000"]
     assert words.strip_key({"UNKNOWN": 1, "CANCELLED": 4, "LANDED": 10, "DEPARTED": 0}) == [
         "landed 10", "cancelled 4", "unknown 1"]  # LH 694, in LABEL_ORDER, a zero left out
 
