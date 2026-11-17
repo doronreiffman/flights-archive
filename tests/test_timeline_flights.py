@@ -168,7 +168,7 @@ def test_a_row_ready_to_show():
         lines=(("Already on the list on 27 Oct at 20:04", "on time, terminal 3"),))]
 
 
-def test_a_rows_first_line_reads_the_resumes():
+def test_a_rows_first_line_reads_the_resumes(israeli_machine):
     """make_rows hands its `resumes` to the change lines: a first record at one of them is "Already on the list"; one
     at another time is "First on the list"."""
     a, b = flight("a"), flight("b", flight_no="002")
@@ -176,6 +176,27 @@ def test_a_rows_first_line_reads_the_resumes():
     assert [r.lines[0][0] for r in got] == ["Already on the list on 27 Oct at 20:04",
                                             "First on the list on 28 Oct at 09:02"]
     assert rows(a, resumes=frozenset())[0].lines[0][0] == "First on the list on 27 Oct at 20:04"
+
+
+def test_the_day_ahead_sentence_is_decided_in_utc(israeli_machine):
+    """A flight removed early, scheduled at 23:55 on 29 October in Israel (21:55 UTC). With the last update at 22:00
+    UTC, 00:00 on 30 October in Israel, its time has passed: its line has no "Check with your airline.". With the last
+    update at 21:50 UTC it is still ahead and has it. On Israel wall-clock, 23:55 would be ahead of both."""
+    f = flight("v", local(29, 23, 55), outcome="vanished", last_seen_at=utc(29, 19, 55))
+    note = ("The airport removed this flight 2 hours early without saying why. It may have been cancelled or moved to "
+            "another time.")
+    assert rows(f, last_fetch=utc(29, 22, 0))[0].label_note == note
+    assert rows(f, last_fetch=utc(29, 21, 50))[0].label_note == f"{note} Check with your airline."
+
+
+def test_delayed_on_a_day_with_no_final_word():
+    """docs/flight-lookup.md, "The label DELAYED by the hour rule": the label is drawn from the airport's last expected
+    time on a day still ahead too. An UPCOMING row and a NO NEWS YET row, each expected an hour or more late, show
+    DELAYED."""
+    upcoming = flight("u", local(30, 10, 0), outcome="open", est_local_final=local(30, 11, 0))
+    no_news = flight("n", local(29, 20, 0), outcome="open", est_local_final=local(29, 21, 5))
+    assert [(r.label, r.delayed) for r in rows(upcoming, no_news)] == [("UPCOMING", True), ("NO NEWS YET", True)]
+    assert [(fl.label, fl.delayed) for fl in lists(upcoming, no_news)] == [("UPCOMING", True), ("NO NEWS YET", True)]
 
 
 def test_a_retimed_row_is_on_the_day_of_its_final_time_with_the_anchor_of_its_first():
@@ -443,7 +464,7 @@ def test_the_story_skips_a_flight_first_listed_after_its_scheduled_time():
     and first on the list at 09:32, makes no story read aloud; the next cancellation is told instead. A flight first
     listed exactly at its scheduled time is kept. Each list flight carries its first sighting and its slot's time."""
     wz016 = flight("wz016", local(30, 5, 35), airline="WZ", flight_no="016", airport="VKO", city_en="MOSCOW",
-                   **CLEAN, first_seen_at=utc(30, 7, 32, 45))
+                   **CLEAN, first_seen_at=utc(30, 7, 32, 45), canceled_first_seen_at=utc(30, 7, 32, 45))
     older = flight("older", local(29, 9, 0), **CLEAN)
     got = lists(wz016, older)
     assert [(fl.first_seen, fl.sched_utc) for fl in got] == [(utc(30, 7, 32, 45), utc(30, 3, 35)),
@@ -452,7 +473,7 @@ def test_the_story_skips_a_flight_first_listed_after_its_scheduled_time():
     assert flights.featured(lists(wz016), censored_map([wz016])) is None
     # another airport: at WZ 016's airport it would be WZ 016's flight (C1)
     on_time = flight("at its time", local(30, 5, 35), airline="WZ", flight_no="018", airport="DME", city_en="MOSCOW",
-                     **CLEAN, first_seen_at=utc(30, 3, 35))
+                     **CLEAN, first_seen_at=utc(30, 3, 35), canceled_first_seen_at=utc(30, 3, 35))
     fs = [wz016, on_time, older]
     assert flights.featured(lists(*fs), censored_map(fs)).flight_id == "at its time"
 

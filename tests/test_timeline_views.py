@@ -186,7 +186,7 @@ def test_layout_head():
 
 @pytest.mark.parametrize("root", ["", "../"])
 @pytest.mark.parametrize("front", [False, True])
-def test_layout_top_line(root, front):
+def test_layout_top_line(root, front, israeli_machine):
     """Every page opens with the top line: the site's name, linked to the front page from the page's own folder, the
     page's <h1> only on the front page; "Tel Aviv airport"; and "Updated" with the last sighting."""
     page = views.layout("t", "<p>body</p>", root, LAST_FETCH, front=front)
@@ -255,7 +255,7 @@ PASSED = ("This flight's time has passed. The page was last updated on 30 Oct at
 SCRIPT = '<script src="../fromhere.js" defer></script>'
 
 
-def test_flight_page_head():
+def test_flight_page_head(israeli_machine):
     page = to3459_page()
     assert "<title>TO 3459 · Tel Aviv to Paris</title>" in page
     assert top_line("../") in page
@@ -1395,7 +1395,7 @@ MONDAY = date(2026, 11, 16)  # the design's day
 PART_MISSING = "Some flights from this day may be missing: the records don't cover the whole day."
 
 
-def test_day_page_head():
+def test_day_page_head(israeli_machine):
     """docs/site-redesign.md, "Day page", top to bottom: the title with its counts, the partial-day line and the
     unknown line, each under the one before; the date alone in the browser tab."""
     page = day_page()
@@ -1470,7 +1470,8 @@ def test_day_rows_link_each_number_to_its_row():
 def test_day_page_has_no_change_lines():
     page = day_page()
     assert "TO 3459" in text(page)
-    assert "on the list" not in text(page) and "<details" not in page
+    assert "First on the list" not in text(page) and "Already on the list" not in text(page)
+    assert "<details" not in page
 
 
 def bracket_day():
@@ -1530,7 +1531,7 @@ CANCELLED_UNDER = ("“Notice given” is how long before the scheduled time the
                    "Airlines may tell passengers sooner.")
 
 
-def test_the_cancelled_flights_page_head():
+def test_the_cancelled_flights_page_head(israeli_machine):
     """docs/site-redesign.md, "Cancelled flights": the title, the introduction and the line under it, then the table."""
     page = cancellations_page()
     assert "<title>Cancelled flights</title>" in page and top_line("") in page
@@ -1552,6 +1553,9 @@ def test_cancellations_newest_first():
          "Notice given: 6+ hours"],
     ]
     assert "LH 0691A" not in text(page) and "LH 695" not in text(page)
+    # the phone prefix is the column's own head
+    assert re.findall(r'<span class="pre">([^<]*)</span>', page) == [f"{words.NOTICE_GIVEN}: "] * 3
+    assert words.CANCELLED_COLUMNS[-1] == words.NOTICE_GIVEN
 
 
 def test_the_route_and_the_phone_prefix():
@@ -1827,7 +1831,7 @@ def test_what_the_numbers_mean_is_the_first_section_verbatim_at_its_anchor():
     assert text(body) == " ".join(WHAT_THE_NUMBERS_MEAN)
     assert body.count("<p>") == 7
     assert [html.unescape(b) for b in re.findall(r"<b>(.*?)</b>", body)] == MEANS_LEADS
-    assert page.count(' id="') == 1  # the only anchor on the page
+    assert page.count(f'id="{words.MEANS_ANCHOR}"') == 1
 
 
 def test_how_it_works_holds_the_ten_sections_in_order():

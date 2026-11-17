@@ -651,8 +651,9 @@ def test_every_worked_out_from_form():
         "Lufthansa's history, and how soon it leaves.", True, False)
     assert line(LO155, LOT, "LOT", ahead=False) == words.Worked(
         f"{FLIGHT_ONLY} (none of its 22 flights was cancelled) and LOT's history.", False, False)
-    assert line(hist("LH 695", 21, 3), LH, "Lufthansa", ahead=False).text == (  # Question 6b
-        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled) and Lufthansa's history.")
+    # Question 6b; 14 flights or more, no bad week of its own, under an airline with one: no dates given
+    assert line(hist("LH 695", 21, 3), LH, "Lufthansa", ahead=False) == words.Worked(
+        f"{FLIGHT_ONLY} (3 of its 21 flights were cancelled) and Lufthansa's history.", False, False)
     assert line(LH694, LH, "Lufthansa", ahead=False, listed_since=True) == words.Worked(
         f"{FLIGHT_ONLY}: 4 of its 19 flights were cancelled, all between 6 and 9 November.", True, False)
     assert line(hist("LH 694", 14, 4, 0, LH694.week), LH, "Lufthansa", ahead=False, listed_since=False).text == (
@@ -892,5 +893,11 @@ def test_no_text_trips_the_upload_check():
 def test_a_name_ending_in_a_lowercase_s_takes_a_bare_apostrophe(name, possessive):
     assert possessive in words.worked_out(LO155, LOT, name, True, True).text
     assert words.partner("LY 9255", "LO 155", name).endswith(f"worked out from {possessive}.")
-    assert words.worked_out(LO155, LOT, name, True, True, lambda s: s.replace("'", "’"),
-                            lambda s: f"<{s}>").text.count(f"<{name}>" + possessive.removeprefix(name).replace("'", "’")) == 1
+    mark = (lambda s: s.replace("'", "’"), lambda s: f"<{s}>")  # text, data
+    marked = f"<{name}>" + possessive.removeprefix(name).replace("'", "’")
+    assert words.worked_out(LO155, LOT, name, True, True, *mark).text.count(marked) == 1
+    assert words.worked_out(hist("LO 157", 5), LOT, name, True, True, *mark).text == (
+        f"Worked out mostly from {marked}, because <LO 157> has only 5 flights so far. <{name}> cancelled none of its "
+        "127 flights.")
+    assert words.partner("LY 9255", "LO 155", name, *mark) == (
+        f"<LY 9255> is also sold as <LO 155>, so the numbers here are worked out from {marked}.")
