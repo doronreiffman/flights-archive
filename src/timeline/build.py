@@ -10,7 +10,7 @@ from pathlib import Path
 from model.report import ATTRIBUTION
 from model.rules import GAP_HOURS
 
-from . import blend, counting, display, flights, record, views, words
+from . import blend, counting, display, flights, names, record, views, words
 from .load import load
 
 STATIC = Path(__file__).parent / "static"
@@ -66,7 +66,7 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     for r in rows:
         by_page.setdefault(r.page, []).append(r)
 
-    # The records once, for the front page's rates and (later) the flight pages' chances; the build stops when the
+    # The records once, for the front page's rates and the flight pages' chances; the build stops when the
     # delay line's "It's about the same however soon you fly." no longer holds.
     records = blend.records(table, obs, snaps)
     blend.flat_delays(table, obs, snaps, records.airport)
@@ -85,8 +85,19 @@ def render(table: list[dict], obs: list[dict], snaps: list[dict]) -> dict[str, s
     for info in infos:
         files[f"day/{info.day:%Y-%m-%d}.html"] = views.day_page(info, by_day[info.day], last_check)
     partners, others = flights.partners(flights_, table), flights.others(flights_)
+    # Each page's flights (C1), and the stop behind the partner line: it names the airline a page's flight is grouped
+    # under (C8) by its spoken name, so every airline one needs must have one (Question 5), all named at once.
+    of = counting.flight_of(counting.flights(table, last_check))
+    by_id = {f["flight_id"]: f for f in table}
+    page_flights = {page: [of[r.flight_id] for r in page_rows] for page, page_rows in by_page.items()}
+    unnamed = sorted({airline for page, page_rows in by_page.items()
+                      for airline in [views.page_flight(page_rows, last_check, page_flights[page]).airline]
+                      if airline != page_rows[0].airline and names.spoken(airline) is None})
+    if unnamed:
+        raise ValueError(f"no spoken name for {', '.join(unnamed)}: a partner line names the airline a number's flight "
+                         "is grouped under by its spoken name; add each to SPOKEN_NAMES in src/timeline/names.py")
     for page, page_rows in sorted(by_page.items()):
-        files[page] = views.flight_page(page_rows, partners, others, last_check)
+        files[page] = views.flight_page(page_rows, partners, others, last_check, records, page_flights[page], by_id)
     for name in ("search.js", "fromhere.js", "style.css"):
         files[name] = (STATIC / name).read_text(encoding="utf-8")
     for name in FONT_FILES:

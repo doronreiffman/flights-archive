@@ -11,10 +11,11 @@ from __future__ import annotations
 import html
 import json
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
+from functools import partial
 
-from . import blend, flights, words
+from . import blend, counting, flights, names, words
 from .display import Summary
 from .flights import DayInfo, ListFlight, Row
 from .rates import Rate
@@ -143,25 +144,27 @@ def _quotes_final(r: Row) -> bool:
 
 
 def _head(r: Row, many_places: bool) -> str:
-    """A day's first line: the date written out, the time line, the city when the page has more than one, the labels."""
+    """A day's first line: the date written out, the time line, the city when the page has more than one, the labels,
+    with " · " between them in the text, as the approved lines write them ("Tuesday 17 November · scheduled to land at
+    19:45 · UPCOMING"), so the line reads right without the style sheet and to a screen reader."""
     parts = [f'<span class="date">{e(words.long_date(r.day))}</span>',
              f'<span class="sched">{e(words.time_line(r.direction, r.sched_final, r.est_final, r.label, r.day))}</span>']
     if many_places:
         parts.append(f'<span class="place">{_to_or_from(r)}</span>')
     parts.append(f'<span class="labels">{_labels(r.label, r.delayed)}</span>')
-    return f'<p class="head">{" ".join(parts)}</p>'
+    return f'<p class="head">{" · ".join(parts)}</p>'
 
 
 def _day(r: Row, partners: tuple[Row, ...], other: tuple[str, tuple[Row, ...]] | None, many_places: bool,
-         updated: datetime, *, top: bool, expected_note: bool, final_note: bool) -> str:
+         updated: datetime, *, ahead: bool, top: bool, chances: str, support: str, expected_note: bool,
+         final_note: bool) -> str:
     """One day, in the order of docs/site-redesign.md ("Flight page", a day's lines) as the plan's markup contract
     places it: the head; the label's line, the notice sentence and the changed-back line; then the twin line or, on a
     day ahead marked cancelled, "This flight is marked cancelled. Contact your airline." (never both: Question 3); the
-    place of the chances on a day labelled UPCOMING; on a day ahead, the hidden "has passed" line; the support in the
-    top day; last, the day's own lines in .own: "Also sold as …", the note on expected times and "What changed", open
-    for a cancelled day, with the note on "final" under it. A day ahead (scheduled after `updated`, the last sighting)
-    carries its scheduled time as the UTC instant it is, for the page script."""
-    ahead = r.sched_utc_final > updated
+    day's prepared `chances`, "" for none; on a day ahead, the hidden "has passed" line; the `support` in the top day;
+    last, the day's own lines in .own: "Also sold as …", the note on expected times and "What changed", open for a
+    cancelled day, with the note on "final" under it. A day `ahead` (scheduled after `updated`, the last sighting, as
+    flight_page decides) carries its scheduled time as the UTC instant it is, for the page script."""
     sched = f' data-sched="{r.sched_utc_final:%Y-%m-%dT%H:%M:%SZ}"' if ahead else ""  # the model's naive UTC, as itself
     out = [f'<section class="day" id="{e(r.anchor)}"{sched}>', _head(r, many_places)]
     if r.label_note:
@@ -176,12 +179,12 @@ def _day(r: Row, partners: tuple[Row, ...], other: tuple[str, tuple[Row, ...]] |
     elif ahead and r.label == words.CANCELLED:
         bold, rest = words.MARKED_CANCELLED
         out.append(f'<p class="marked"><b>{e(bold)}</b> {e(rest)}</p>')
-    if r.label == words.UPCOMING:
-        out.append('<div class="chances"></div>')
+    if chances:
+        out.append(chances)
     if ahead:
         out.append(f'<p class="passed" hidden>{e(words.has_passed(updated))}</p>')
     if top:
-        out.append('<div class="support"></div>')
+        out.append(support)
     out.append('<div class="own">')
     if partners:  # "Also sold as LY 9252 and LY 9255 (probably the same plane)."
         out.append(f'<p class="note">{e(words.ALSO_SOLD)} {_names([_link(p, "../") for p in partners])} '
@@ -218,19 +221,143 @@ def _strip(by_time: list[Row], number: str) -> str:
                       f'<p class="key">{key}</p>', '<ol class="strip">', *marks, "</ol>", "</section>"])
 
 
+# --- the headline slot (docs/flight-lookup.md, "Flight page: the headline", "the "Worked out from" line, every form"
+# and "the lines in smaller type"; "Pages", Flight page; "Left to the builder"; the plan's Task 11 markup) ---------
+
+def _figure(label: str, figure: str) -> str:
+    """One chance, its label and its figure, the figure split into its word and its number ("about", "15%")."""
+    word, number = figure.split(" ", 1)
+    return (f'<span class="fl">{e(label)}</span> '
+            f'<span class="fv"><span class="q">{e(word)}</span> <b class="n">{e(number)}</b></span>')
+
+
+def _figs(headline: tuple[tuple[str, str], tuple[str, str]]) -> list[str]:
+    """The two chances of words.headline, each on a line of its own, as the slot under the top day sets them."""
+    return [f'<p class="fig">{_figure(*chance)}</p>' for chance in headline]
+
+
+def _chances(r: Row, updated: datetime, top: bool, cancel: Callable[[int], float | None], delay: float) -> str:
+    """A day's prepared chances ("Left to the builder", "At which moment" and "The weight of prepared figures"): one
+    pair per stretch still ahead of the day at `updated`, the last sighting (blend.STRETCHES), the cancellation scaled
+    by that stretch's own row (`cancel` of its checkpoint), the delay flat; each pair with its stretch's bounds for the
+    page script. The first, the stretch the day was in at the last update (above 72 hours, the top one), shows without
+    scripts, the rest hidden. The top day sets each chance on a line of its own; a later day sets the two on one
+    line."""
+    left = (r.sched_utc_final - updated).total_seconds() / 3600
+    out = ['<div class="chances">']
+    for i, (after, upto, h) in enumerate(s for s in blend.STRETCHES if s[0] < left):
+        headline = words.headline(cancel(h), delay, True)
+        body = _figs(headline) if top else [
+            f'<p class="one">{_figure(*headline[0])}<span class="sep"> · </span>{_figure(*headline[1])}</p>']
+        out += [f'<div class="pair" data-after="{after}" data-upto="{upto}"{" hidden" if i else ""}>', *body, "</div>"]
+    return "\n".join([*out, "</div>"])
+
+
+def _so_far(h: words.History, with_week: bool) -> str:
+    bold, rest = words.so_far(h, with_week, e, d)
+    return f'<p class="s-line"><b>{bold}</b> {rest}</p>'
+
+
+def _all_airlines(airport: blend.Airport, direction: str, ahead: bool) -> str | None:
+    """The all-airlines line: with a day ahead, the six prepared forms, one per stretch with its bounds for the page
+    script, each with the figure of the row at its far end, hidden, and the "more than 3 days" line, hidden; then the
+    form without a time, the total's, which shows without scripts. A row below C8's floor leaves its form out and a
+    total below it the form without a time (the plan's decisions). The delay figure has no floor, as the front page's
+    delay line has none (the plan's amendment after Task 9's review): a direction with no flight that flew leaves
+    every form out. None when no line is left."""
+    delay = airport.delay[direction]
+    late = words.about(delay.cancelled / delay.flights) if delay.flights else None
+    forms = []
+    if ahead:
+        for after, upto, h in blend.STRETCHES:
+            row = airport.rows[h]
+            if late and row.clears_floor:
+                bold, rest = words.all_airlines(h, words.average(row.cancelled, row.flights), late, direction)
+                forms.append(f'<p data-after="{after}" data-upto="{upto}" hidden><b>{e(bold)}</b> {e(rest)}</p>')
+        forms.append(f'<p class="more" hidden>{e(words.MORE_THAN_3_DAYS)}</p>')
+    if late and airport.total.clears_floor:
+        total = words.average(airport.total.cancelled, airport.total.flights)
+        bold, rest = words.all_airlines(None, total, late, direction)
+        forms.append(f'<p class="off"><b>{e(bold)}</b> {e(rest)}</p>')
+    if not forms:
+        return None
+    return "\n".join([f'<div class="aa" data-more-after="{blend.STRETCHES[0][1]}">', *forms, "</div>"])
+
+
+def _support(own: words.History, whose: words.History, spoken: str | None, lead: str | None,
+             next_flight: tuple | None, ahead: bool, carried: bool, listed_since: bool, airport: blend.Airport,
+             direction: str, updated: datetime) -> str:
+    """The lines under the chances, in the plan's markup ("Pages", Flight page, "Under the slot, in smaller type"):
+    the headline in its "its next flight" form (`next_flight`, words.headline's, None when the page has no chances);
+    the "Worked out from" line in its flight-ahead form, when a day ahead carries chances (`carried`, Question 1); the
+    same in its no-flight-ahead form; the number's "so far" line, the partner line naming `lead` when the page's
+    airline is not the number's own, the airline's "so far" line; the all-airlines line; the freshness line; the link
+    "What the numbers mean". With a day ahead the no-flight-ahead parts stand hidden, for the page script to show once
+    every day has passed; with none they show. A "so far" line with no flights is left out (Question 6d), and one
+    gives its bad week's dates unless the "Worked out from" line a reader sees without scripts gives them."""
+    hide = " hidden" if ahead else ""
+    worked = {flying: words.worked_out(own, whose, spoken, flying, listed_since, e, d) for flying in (True, False)}
+    out = ['<div class="support">']
+    if next_flight:
+        out += [f'<div class="none-ahead"{hide}>', *_figs(next_flight), "</div>"]
+    if carried:
+        out.append(f'<p class="worked">{worked[True].text}</p>')
+    if next_flight:
+        out.append(f'<p class="worked none-ahead"{hide}>{worked[False].text}</p>')
+    seen = worked[True] if carried else worked[False] if next_flight and not ahead else None
+    if own.flights:
+        out.append(_so_far(own, seen is None or not seen.names_number_week))
+    if lead:
+        out.append(f'<p class="s-line">{words.partner(own.name, lead, spoken, e, d)}</p>')
+    if whose.flights:
+        out.append(_so_far(whose, seen is None or not seen.names_airline_week))
+    aa = _all_airlines(airport, direction, ahead)
+    if aa:
+        out.append(aa)
+    out += [f'<p class="fresh"><span data-updated="{updated:%Y-%m-%dT%H:%M:%SZ}">{e(words.updated_at(updated))}'
+            f"</span>. {e(words.FRESH_REST)}</p>",
+            f'<p class="means"><a href="../how-it-works.html#{words.MEANS_ANCHOR}">{e(words.MEANS)}</a></p>',
+            "</div>"]
+    return "\n".join(out)
+
+
+def _days(rows: list[Row], updated: datetime) -> tuple[list[Row], list[Row]]:
+    """A page's days in time order, and the days ahead: scheduled later than `updated`, the last sighting (both the
+    model's naive UTC), whatever their label."""
+    by_time = sorted(rows, key=_when)
+    ahead = [r for r in by_time if r.sched_utc_final > updated]
+    return by_time, ahead
+
+
+def page_flight(rows: list[Row], updated: datetime, flights_: list[counting.Flight]) -> counting.Flight:
+    """The flight (C1) whose grouping airline (C8) is the page's: the traveller's day's, the nearest day ahead of
+    `updated` whatever its label, else the newest day's ("Left to the builder", "A flight number's airline" and "Which
+    airline on a later day ahead"). One airline per page: its records work out every day's chances, its "so far" line
+    stands under the number's, and the partner line stands when it is not the number's own. `flights_` holds at least
+    the flights of `rows`."""
+    by_time, ahead = _days(rows, updated)
+    return counting.flight_of(flights_)[(ahead[0] if ahead else by_time[-1]).flight_id]
+
+
 def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
-                others: dict[str, tuple[str, tuple[Row, ...]]], updated: datetime) -> str:
+                others: dict[str, tuple[str, tuple[Row, ...]]], updated: datetime, records: blend.Records,
+                flights_: list[counting.Flight], by_id: dict[str, dict]) -> str:
     """One flight number and direction (docs/site-redesign.md, "Flight page"; docs/flight-lookup.md, "Pages", Flight
     page), in the plan's markup contract: the title and the line under it; #now, holding the traveller's day, the
     nearest day ahead whatever its label, or, with no day ahead, the line saying the number is not on the airport's
     list and the support; the strip; .later, the later days ahead, soonest first; .past, the past days, newest first,
     written even when it holds none. A day is ahead when its scheduled time is later than `updated`, the last sighting
     (both the model's naive UTC). `partners` and `others` are flights.partners and flights.others of the lists. The
-    places of the chances and the support stand empty for the headline's figures (the plan's Task 11). The line under
-    the title names the place when the page has one, and the Hebrew city when it has one city; otherwise each day
-    names its own."""
-    by_time = sorted(rows, key=_when)
-    ahead = [r for r in by_time if r.sched_utc_final > updated]
+    line under the title names the place when the page has one, and the Hebrew city when it has one city; otherwise
+    each day names its own.
+
+    The chances (blend) are worked out from the number's record (per number and direction), the page's airline's
+    (page_flight) and the airport's, all from `records`; `flights_` holds the page's flights (C1) and `by_id` the
+    flights table by flight_id, for the partner line's number, C8's lead of the traveller's (or newest) day's flight.
+    Each day ahead labelled UPCOMING carries its prepared chances; any other day ahead carries none, and neither does
+    a page whose airport has no rate to start from (Question 1's structure). ValueError when the partner line's airline
+    has no spoken name (build.render stops first, naming every one)."""
+    by_time, ahead = _days(rows, updated)
     later = ahead[1:]
     past = [r for r in reversed(by_time) if r.sched_utc_final <= updated]
     latest = by_time[-1]
@@ -247,20 +374,42 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
     quoting = [r for r in in_order if _quotes_final(r)]  # the first open list that quotes them, else the first
     final = next((r for r in quoting if r.label == words.CANCELLED), quoting[0] if quoting else None)
 
-    def day(r: Row, top: bool = False) -> str:
-        return _day(r, partners.get(r.flight_id, ()), others.get(r.flight_id), many_places, updated, top=top,
-                    expected_note=r is expected, final_note=r is final)
+    grouped = page_flight(rows, updated, flights_)
+    airline, spoken = grouped.airline, names.spoken(grouped.airline)
+    mine, theirs = records.numbers[(latest.airline, latest.flight_no, latest.direction)], records.airlines[airline]
+    cancel = partial(blend.cancel_chance, mine, theirs, records.airport)
+    next_flight = cancel(blend.row_for(None))  # no flight ahead: the 70-hour row
+    delay = blend.delay_chance(mine, theirs, records.airport, latest.direction)
+    chances = next_flight is not None and delay is not None
+    carries = {r.flight_id for r in ahead if chances and r.label == words.UPCOMING}
+    lead = None
+    if airline != latest.airline:  # "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's …"
+        if spoken is None:
+            raise ValueError(f"{number}'s partner line names {airline}, which has no spoken name (timeline/names.py)")
+        grouping = blend.lead(grouped, by_id)
+        lead = f"{grouping['airline']} {grouping['flight_no']}"
+    last = mine.last_cancelled
+    support = _support(
+        words.History(number, mine.flights, mine.cancelled, mine.delayed, blend.bad_week(mine)),
+        words.History(records.published[airline], theirs.flights, theirs.cancelled, theirs.delayed,
+                      blend.bad_week(theirs)),
+        spoken, lead, words.headline(next_flight, delay, False) if chances else None, bool(ahead), bool(carries),
+        last is None or any(r.sched_utc_final > last for r in rows), records.airport, latest.direction, updated)
+
+    def day(r: Row, is_ahead: bool, top: bool = False) -> str:
+        prepared = _chances(r, updated, top, cancel, delay) if r.flight_id in carries else ""
+        return _day(r, partners.get(r.flight_id, ()), others.get(r.flight_id), many_places, updated, ahead=is_ahead,
+                    top=top, chances=prepared, support=support, expected_note=r is expected, final_note=r is final)
 
     if ahead:
-        now = [day(ahead[0], top=True)]
+        now = [day(ahead[0], True, top=True)]
     else:  # still listed: the latest flight's last sighting is the page's last update
         still = latest.last_seen_at >= updated
-        now = [f'<p class="none-line">{words.not_listed(number, latest.day, still, e, d)}</p>',
-               '<div class="support"></div>']
+        now = [f'<p class="none-line">{words.not_listed(number, latest.day, still, e, d)}</p>', support]
     body = ['<div class="flight-h">', f"<h1>{d(title)}</h1>", f'<p class="who">{" · ".join(who)}</p>', "</div>",
             '<div id="now">', *now, "</div>", _strip(by_time, number),
-            '<div class="later">', *(day(r) for r in later), "</div>",
-            '<div class="past">', *(day(r) for r in past), "</div>"]
+            '<div class="later">', *(day(r, True) for r in later), "</div>",
+            '<div class="past">', *(day(r, False) for r in past), "</div>"]
     return layout(title, "\n".join(body), "../", updated)
 
 

@@ -18,7 +18,7 @@ from counting_helpers import board
 from model_helpers import at, row, write_receipt, write_snapshot
 from test_timeline_flights import first, flight
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import blend, build, check, counting, flights, words
+from timeline import blend, build, check, counting, flights, names, words
 from timeline.check import BANNED
 
 
@@ -613,6 +613,43 @@ def test_a_delay_row_off_by_more_than_a_point_stops_the_build():
     assert [(airport.delay[d].cancelled, airport.delay[d].flights) for d in "DA"] == [(10, 200), (10, 100)]
     with pytest.raises(ValueError, match=r"departures in the 24 hours row, 10 of 100"):
         build.render(*off)
+
+
+def test_no_page_prints_0_percent():
+    """docs/flight-lookup.md, "How numbers are written": a chance is never "0%", and no other figure reads so either.
+    On a model with no cancelled flight the blend gives exactly zero, which reads "under 1%"."""
+    files = build.render(*delay_model(0))
+    pages = {name: text(page) for name, page in files.items() if name.endswith(".html")}
+    assert [(name, m) for name, page in pages.items() for m in re.findall(r"\S*\b0%", page)] == []
+    assert "Chance its next flight is cancelled: under 1%" in pages["flight/AB100-D.html"]
+
+
+def paired(*numbers: tuple[str, str, str, int]) -> tuple[list[dict], list[dict], list[dict]]:
+    """A model of departures to New York, each (airline, number, the partner's airline and number or "", day of
+    October at 09:00), every one listed from 30 hours before its time; a partner shares its slot, expected time,
+    terminal and desks, so C1 makes them one flight, which C8 groups under the number with the lower digits."""
+    table = []
+    for airline, number, partner, day in numbers:
+        for code, no in [(airline, number), *([partner.split()] if partner else [])]:
+            table.append(flight(f"{code}{no}-{day}", datetime(2026, 10, day, 9, 0), airline=code, flight_no=no))
+    obs = [first(f, observed_at=f["sched_utc_final"] - timedelta(hours=30)) | {
+        "sched_utc": f["sched_utc_final"], "est_utc": f["sched_utc_final"]} for f in table]
+    return table, obs, board(datetime(2026, 10, 30, 12, 0))
+
+
+def test_a_partner_airline_with_no_spoken_name_stops_the_build():
+    """Review Focus 2 and Question 5: a partner line always names its airline by its spoken name, so the build stops,
+    naming every airline that one needs and that has none, sorted (ZZ 1 groups LY 9001's flight on 27 October, XA 2
+    LY 9002's on 28 October). Only the page's airline counts, the traveller's day's or the newest day's: LY 9003,
+    grouped under ZZ 3 on 27 October and on its own on 28 October, needs none; nor does QQ 5, whose own page takes the
+    "its airline" forms."""
+    assert [names.spoken(code) for code in ("ZZ", "XA", "QQ")] == [None] * 3
+    with pytest.raises(ValueError, match=r"no spoken name for XA, ZZ\b"):
+        build.render(*paired(("ZZ", "1", "LY 9001", 27), ("XA", "2", "LY 9002", 28)))
+    files = build.render(*paired(("ZZ", "3", "LY 9003", 27), ("LY", "9003", "", 28), ("QQ", "5", "", 26)))
+    assert "is also sold as" not in text(files["flight/LY9003-D.html"])
+    assert "Worked out mostly from all airlines at Ben Gurion, because QQ 5 has only 1 flight so far and its airline " \
+           "only 1." in text(files["flight/QQ5-D.html"])
 
 
 def test_a_pause_of_three_hours(tmp_path):

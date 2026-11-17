@@ -291,79 +291,12 @@ def rate(cancelled, flights, one_in, lo, hi, floor=True):
                 one_in_from=lo, one_in_to=hi, se_airline_week=None, se_day=None)
 
 
-TOTAL = rate(81, 4658, 4658 / 81, 36.3, 91.6)
-A35_ROWS = {
-    70: (rate(48, 3028, 63.1, 33.2, 120.6), "1 in 65 (between 1 in 30 and 1 in 130)"),
-    48: (rate(47, 3316, 70.6, 38.1, 131.4), "1 in 70 (between 1 in 35 and 1 in 140)"),
-    24: (rate(35, 3449, 98.5, 49.3, 197.9), "1 in 100 (between 1 in 45 and 1 in 200)"),
-    12: (rate(25, 3625, 145.0, 71.4, 295.6), "1 in 150 (between 1 in 70 and 1 in 300)"),
-    6: (rate(19, 3704, 194.9, 96.6, 394.4), "1 in 190 (between 1 in 95 and 1 in 400)"),
-    3: (rate(16, 3754, 234.6, 119.99, 459.7), "1 in 230 (between 1 in 110 and 1 in 460)"),
-}
-
-
-def test_constants_are_the_approved_words():
-    assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
-                              12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
+def test_a_flight_is_the_approved_words():
     assert words.A_FLIGHT == (
         "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
         "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
         "with a number of its own airline, or one with its own desks. A flight counts as departed or landed when "
         "any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
-
-
-def test_a_rate_without_a_range_is_shown_like_one_below_the_floor():
-    assert words.one_in_range(rate(12, 12, 1.0, None, None)) is None
-
-
-@pytest.mark.parametrize("h", sorted(A35_ROWS))
-def test_one_in_range_is_a35s_line(h):
-    r, line = A35_ROWS[h]
-    assert words.one_in_range(r) == line
-
-
-def test_one_in_range_total_and_floor():
-    assert words.one_in_range(TOTAL) == "1 in 60 (between 1 in 35 and 1 in 95)"
-    assert words.one_in_range(rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
-
-
-def test_one_in_range_carries_thousands_separators():
-    assert words.one_in_range(rate(10, 11000, 1100.0, 800.0, 1500.0)) == "1 in 1,100 (between 1 in 800 and 1 in 1,500)"
-
-
-# Every pair whole, by hand: the design's template and lead-ins (docs/flight-lookup.md, "Words") with A35's lines. Each
-# names its own checkpoint twice, in its lead-in and in its hours to go (C5).
-_SO_FAR = "So far, of all flights at the airport still listed normally with"
-PAIRS = {
-    70: f"This flight has between 2 and 3 days to go. {_SO_FAR} 70 hours to go, about 1 in 65 (between 1 in 30 and 1 in "
-        "130) were later listed as cancelled.",
-    48: f"This flight has between 1 and 2 days to go. {_SO_FAR} 48 hours to go, about 1 in 70 (between 1 in 35 and 1 in "
-        "140) were later listed as cancelled.",
-    24: f"This flight has between 12 and 24 hours to go. {_SO_FAR} 24 hours to go, about 1 in 100 (between 1 in 45 and 1 "
-        "in 200) were later listed as cancelled.",
-    12: f"This flight has between 6 and 12 hours to go. {_SO_FAR} 12 hours to go, about 1 in 150 (between 1 in 70 and 1 "
-        "in 300) were later listed as cancelled.",
-    6: f"This flight has between 3 and 6 hours to go. {_SO_FAR} 6 hours to go, about 1 in 190 (between 1 in 95 and 1 in "
-       "400) were later listed as cancelled.",
-    3: f"This flight has under 3 hours to go. {_SO_FAR} 3 hours to go, about 1 in 230 (between 1 in 110 and 1 in 460) "
-       "were later listed as cancelled.",
-}
-
-
-@pytest.mark.parametrize("h", sorted(PAIRS, reverse=True))
-def test_pair(h):
-    assert words.pair(h, A35_ROWS[h][0]) == PAIRS[h]
-
-
-def test_no_pair_below_the_floor():
-    assert words.pair(24, rate(3, 120, 40.0, 10.0, 90.0, floor=False)) is None
-
-
-def test_condition_reads_the_update_in_israel_time(israeli_machine):
-    updated = datetime(2026, 11, 12, 10, 16, 45)
-    assert words.condition(updated) == (
-        "The figure is for flights the airport's list showed normally. This page was last updated 12 Nov 2026, "
-        "12:16 and cannot say what the list shows now. Check the airport's own list.")
 
 
 def test_also_sold_as_and_the_twin_lines_words():
@@ -898,8 +831,7 @@ def site_texts() -> list[str]:
     texts += [words.label_note(f, label, ahead) for f, label, ahead, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
-    texts += [words.pair(24, A35_ROWS[24][0]), words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
-              *words.LEAD_INS.values(), words.condition(datetime(2026, 11, 12, 10, 16, 45)),
+    texts += [words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
               *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed", "has no news yet"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())

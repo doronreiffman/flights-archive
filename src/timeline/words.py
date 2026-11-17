@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from timeline.rates import Rate, round_middle, round_range
+from timeline.rates import Rate
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 
@@ -289,8 +289,6 @@ def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: fl
 
 # --- rates (docs/flight-lookup.md, "Words"; docs/flight-lookup-plan.md, Question 4 and Appendix A) ------
 
-LEAD_INS = {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
-            12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
 A_FLIGHT = (
     "Flight numbers with the same scheduled time and airport are counted as one flight when the list shows the "
     "same expected time, terminal and check-in desks for them. A number that did not depart or land is counted "
@@ -300,33 +298,6 @@ A_FLIGHT = (
 
 def _n(x: int) -> str:
     return f"{x:,}"
-
-
-def one_in_range(rate: Rate) -> str | None:
-    """"1 in 100 (between 1 in 45 and 1 in 200)" (C8's rounding); None below the floor, and for a rate with no
-    range (every flight in it cancelled)."""
-    if not rate.clears_floor or rate.one_in is None or rate.one_in_from is None or rate.one_in_to is None:
-        return None
-    lo, hi = round_range(rate.one_in_from, rate.one_in_to)
-    return f"1 in {_n(round_middle(rate.one_in))} (between 1 in {_n(lo)} and 1 in {_n(hi)})"
-
-
-def pair(h: int, rate: Rate) -> str | None:
-    figure = one_in_range(rate)
-    if figure is None:
-        return None
-    return (f"This flight has {LEAD_INS[h]} to go. So far, of all flights at the airport still listed normally "
-            f"with {h} hours to go, about {figure} were later listed as cancelled.")
-
-
-def _updated(updated: datetime) -> str:
-    local = il_time(updated)
-    return f"{local.day} {local:%b %Y, %H:%M}"
-
-
-def condition(updated: datetime) -> str:
-    return (f"The figure is for flights the airport's list showed normally. This page was last updated "
-            f"{_updated(updated)} and cannot say what the list shows now. Check the airport's own list.")
 
 
 # --- other numbers of one flight (docs/flight-lookup.md, "Flight page: other situations") -----------------------
@@ -372,7 +343,7 @@ def _outward(one_in: float, up: bool) -> str:
 
 def pct_range(rate: Rate) -> str | None:
     """"1.7% (between 1.1% and 2.9%)": one decimal, the ends outward; None below the floor and for a rate with no
-    range (as one_in_range)."""
+    range (every flight in it cancelled)."""
     if not rate.clears_floor or rate.one_in_from is None or rate.one_in_to is None or rate.one_in is None:
         return None
     return (f"{pct1(rate.cancelled, rate.flights)} (between {_outward(rate.one_in_to, False)} "

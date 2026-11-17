@@ -5,17 +5,19 @@ import html
 import json
 import re
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 
 import pytest
 
+from counting_helpers import board
 from model.report import ATTRIBUTION
 from test_blend import AP, made
 from test_timeline_flights import CLEAN, LAST_FETCH, RESUMES, ey_ly, first, flight, lh, local, os_pair, then, utc
 from test_timeline_words import TO3459_OBS
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import blend, check, counting, display, flights, views, words
+from timeline import blend, check, counting, display, flights, names, views, words
+from timeline.blend import Tally
 from timeline.flights import DayInfo
 
 TO = dict(airline="TO", flight_no="3459", airline_name="TRANSAVIA FRANCE", airport="ORY", city_en="PARIS",
@@ -31,9 +33,10 @@ def text(page: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]*>", "", page))).strip()
 
 
-def rows(*fs, obs=None):
-    """Display rows for these flights; each has only its earliest record unless `obs` is given."""
-    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, LAST_FETCH, 1, RESUMES)
+def rows(*fs, obs=None, updated=LAST_FETCH):
+    """Display rows for these flights, labelled at the last sighting `updated`; each has only its earliest record
+    unless `obs` is given."""
+    return flights.make_rows(list(fs), [first(f) for f in fs] if obs is None else obs, updated, 1, RESUMES)
 
 
 def lists(*fs, obs=None):
@@ -41,19 +44,25 @@ def lists(*fs, obs=None):
     return flights.group_flights(rows(*fs, obs=obs), list(fs), LAST_FETCH)
 
 
-def partners(*fs, obs=None):
-    return flights.partners(lists(*fs, obs=obs), list(fs))
+def records_of(fs, updated=LAST_FETCH, airport=AP, **airlines) -> blend.Records:
+    """These numbers' records as the blend counts them at the last sighting `updated` (blend.records), on the design's
+    airport, whose rows and delays all clear the floor, so that every day ahead labelled UPCOMING carries its chances.
+    `airlines` puts an airline's counts in place of the ones these rows give it (LO=LOT: LOT's 127 flights)."""
+    got = blend.records(list(fs), [], board(updated))
+    return dataclasses.replace(got, airport=airport, airlines=got.airlines | airlines)
 
 
-def others(*fs, obs=None):
-    return flights.others(lists(*fs, obs=obs))
-
-
-def page_of(*fs, obs=None, only=None, updated=LAST_FETCH):
-    """The flight page of these numbers' rows, or of the row with flight_id `only` among them; their flights (C1) are
-    made of all of them. `updated` is the last sighting."""
-    shown = [r for r in rows(*fs, obs=obs) if only in (None, r.flight_id)]
-    return views.flight_page(shown, partners(*fs, obs=obs), others(*fs, obs=obs), updated)
+def page_of(*fs, obs=None, only=None, updated=LAST_FETCH, records=None):
+    """The flight page of these numbers' rows, or of the rows with flight_id `only` (one, or a set) among them, at the
+    last sighting `updated`. Their flights (C1), partners, twins and records (records_of, unless `records` is given)
+    are made of all of them."""
+    table = list(fs)
+    keep = {only} if isinstance(only, str) else only
+    every = rows(*fs, obs=obs, updated=updated)
+    listed = flights.group_flights(every, table, updated)
+    return views.flight_page([r for r in every if keep is None or r.flight_id in keep], flights.partners(listed, table),
+                             flights.others(listed), updated, records or records_of(table, updated),
+                             counting.flights(table, updated), {f["flight_id"]: f for f in table})
 
 
 def day_block(page: str, anchor: str) -> str:
@@ -309,14 +318,14 @@ def test_a_day_ahead_stays_at_the_top_whatever_its_label():
     none: marked cancelled, it shows its notice sentence and "This flight is marked cancelled. Contact your airline.";
     removed early, its UNKNOWN line; landed early, a past day's time line. Its hidden "has passed" line comes next."""
     cases = [
-        ("D", AT_LEAST_23, "Friday 30 October scheduled to leave at 09:00 CANCELLED Cancelled with at least 23 hours' "
-         "notice. It was already cancelled when it first appeared. This flight is marked cancelled. Contact your "
-         "airline."),
+        ("D", AT_LEAST_23, "Friday 30 October · scheduled to leave at 09:00 · CANCELLED Cancelled with at least 23 "
+         "hours' notice. It was already cancelled when it first appeared. This flight is marked cancelled. Contact "
+         "your airline."),
         ("D", dict(outcome="vanished", last_seen_at=utc(29, 20, 0)),
-         "Friday 30 October scheduled to leave at 09:00 UNKNOWN The airport removed this flight 11 hours early without "
-         "saying why. It may have been cancelled or moved to another time. Check with your airline."),
+         "Friday 30 October · scheduled to leave at 09:00 · UNKNOWN The airport removed this flight 11 hours early "
+         "without saying why. It may have been cancelled or moved to another time. Check with your airline."),
         ("A", dict(outcome="landed", est_local_final=local(30, 8, 40)),
-         "Friday 30 October scheduled 09:00 · landed around 08:40 LANDED"),
+         "Friday 30 October · scheduled 09:00 · landed around 08:40 · LANDED"),
     ]
     for direction, kw, lines in cases:
         page = page_of(flight("top", AHEAD, direction=direction, **kw),
@@ -339,7 +348,7 @@ def test_a_day_ahead_marked_cancelled_while_its_twin_is_still_on():
     assert outline(page)[1] == ("now", ["2026-10-31-0900-FRA"])
     day = day_block(page, "2026-10-31-0900-FRA")
     assert text(day).startswith(
-        "Saturday 31 October scheduled to leave at 09:00 CANCELLED Cancelled with at least 6 hours' notice. This "
+        "Saturday 31 October · scheduled to leave at 09:00 · CANCELLED Cancelled with at least 6 hours' notice. This "
         f"number is marked cancelled, but the flight is probably still on, as LH 695. {PASSED}"), text(day)
     assert 'class="marked"' not in page and "Contact your airline" not in text(page)
     assert 'class="chances"' not in day
@@ -419,6 +428,16 @@ def test_the_page_holds_every_name_of_the_contract():
         assert updated and all(kids == [] for kids in updated), name
     assert [len(k.kids) for k in main_of(pages["days ahead and past"]).kids[3:]] == [2, 1]
     assert main_of(pages["no past day"]).kids[4].kids == []
+    # a later day ahead marked cancelled says so too, not only the top day
+    assert MARKED in day_block(pages["days ahead and past"], "2026-10-31-0900-JFK")
+
+
+def test_the_head_line_carries_its_separators_in_the_text():
+    """docs/site-redesign.md, "Flight page", items 3 and 8: "Tuesday 17 November · scheduled to land at 19:45 ·
+    UPCOMING", the " · " in the text, so the line reads right without the style sheet and to a screen reader."""
+    page = page_of(flight("up", AHEAD, outcome="open"))
+    assert ('<p class="head"><span class="date">Friday 30 October</span> · <span class="sched">scheduled to leave at '
+            '09:00</span> · <span class="labels"><span class="label l-upcoming">UPCOMING</span></span></p>') in page
 
 
 def test_the_scheduled_instant_is_the_models_utc(israeli_machine):
@@ -440,7 +459,7 @@ def test_each_day_ahead_holds_its_passed_line_hidden(israeli_machine):
 def test_the_cancelled_row_is_open_with_its_notice_and_changes():
     row = day_block(to3459_page(), "2026-10-29-1710-ORY")
     assert "<details open>" in row
-    assert text(row).startswith("Thursday 29 October scheduled to leave at 17:10 CANCELLED")
+    assert text(row).startswith("Thursday 29 October · scheduled to leave at 17:10 · CANCELLED")
     assert 'class="marked"' not in row  # "This flight is marked cancelled. Contact your airline." is for a day ahead
     assert "Cancelled with no notice: it was marked cancelled about 2 hours after it should have left." in text(row)
     assert [text(li) for li in re.findall(r"<li>(.*?)</li>", row)] == [
@@ -461,7 +480,7 @@ def test_other_rows_are_closed():
 
 def test_landed_around_beside_the_scheduled_time_and_the_expected_note_once():
     page = to3459_page()
-    assert ("Tuesday 27 October scheduled 16:45 · left around 17:09 DEPARTED"
+    assert ("Tuesday 27 October · scheduled 16:45 · left around 17:09 · DEPARTED"
             in text(day_block(page, "2026-10-27-1645-ORY")))
     upcoming = day_block(page, "2026-11-01-1830-ORY")
     assert "around" not in upcoming and "expected 1" not in upcoming
@@ -471,16 +490,16 @@ def test_landed_around_beside_the_scheduled_time_and_the_expected_note_once():
 def test_expected_on_a_day_with_no_final_word_and_no_note_without_an_expected_time():
     page = page_of(flight("ahead", outcome="open", est_local_final=local(29, 17, 20)),
                    flight("same", local(30, 16, 45), outcome="open"))
-    assert "scheduled 16:45 · expected 17:20 UPCOMING" not in text(page)  # 29 Oct 16:45 Israel time is not ahead
+    assert "scheduled 16:45 · expected 17:20 · UPCOMING" not in text(page)  # 29 Oct 16:45 Israel time is not ahead
     page = page_of(flight("ahead", local(30, 16, 45), outcome="open", est_local_final=local(30, 17, 20)))
-    assert "scheduled 16:45 · expected 17:20 UPCOMING" in text(page) and words.EXPECTED_NOTE in text(page)
+    assert "scheduled 16:45 · expected 17:20 · UPCOMING" in text(page) and words.EXPECTED_NOTE in text(page)
     page = page_of(flight("ahead", local(30, 16, 45), outcome="open"))
-    assert "scheduled to leave at 16:45 UPCOMING" in text(page) and words.EXPECTED_NOTE not in text(page)
+    assert "scheduled to leave at 16:45 · UPCOMING" in text(page) and words.EXPECTED_NOTE not in text(page)
 
 
 def test_no_expected_note_without_an_expected_time():
     page = page_of(flight("on time", est_local_final=None))
-    assert "scheduled to leave at 16:45 DEPARTED" in text(page)
+    assert "scheduled to leave at 16:45 · DEPARTED" in text(page)
     assert "around" not in text(day_block(page, "2026-10-29-1645-JFK")) and words.EXPECTED_NOTE not in text(page)
 
 
@@ -543,7 +562,7 @@ def test_a_number_with_two_cities():
                    flight("bus", local(28, 16, 30), flight_no="5115", airport="BUS", city_en="BATUMI"))
     assert '<h1><span class="d">LY 5115 · Tel Aviv to Batumi or Kutaisi</span></h1>' in page
     assert text(day_block(page, "2026-10-28-1630-KUT")).startswith(
-        "Wednesday 28 October scheduled 16:30 · left around 16:30 to Kutaisi (KUT) DEPARTED")
+        "Wednesday 28 October · scheduled 16:30 · left around 16:30 · to Kutaisi (KUT) · DEPARTED")
     assert "to Batumi (BUS)" in text(day_block(page, "2026-10-28-1630-BUS"))
     assert 'lang="he"' not in page
 
@@ -752,6 +771,464 @@ def test_every_flight_page_loads_fromhere_js_once():
                  page_of(*label_rows([words.DEPARTED, words.CANCELLED, words.NO_NEWS_YET, words.UNKNOWN]))):
         assert page.count(SCRIPT) == 1 and page.index(SCRIPT) < page.index("</head>")
         assert "<script" not in page.replace(SCRIPT, "")
+
+
+# --- the headline slot (docs/flight-lookup.md, "Flight page: the headline", "the "Worked out from" line, every form"
+# and "the lines in smaller type"; "Pages", Flight page; the plan's Task 11 markup) --------------------------------
+
+NOV_LAST = datetime(2026, 11, 17, 7, 46, 44)  # the 2026-11-17 model's last sighting: 09:46 on 17 November in Israel
+LOT = Tally(127, 0, 127, 2, (), None)  # LOT's counts in the design's lines ("LOT POLISH AIRLINES so far: 127 flights")
+# Lufthansa's: 183 flights, 11 cancelled between 6 and 10 November, 172 that flew, 7 of them an hour or more late
+LUFTHANSA = Tally(183, 11, 172, 7, tuple(sorted(date(2026, 11, 6 + i % 5) for i in range(11))),
+                  datetime(2026, 11, 10, 17, 20))
+LH694 = dict(airline="LH", flight_no="694", direction="A", airline_name="LUFTHANSA", airport="FRA",
+             city_en="FRANKFURT", city_he="פרנקפורט")
+LO155_WORKED = ("Worked out from this flight's history (none of its 22 flights was cancelled), LOT's history, and how "
+                "soon it leaves.")
+LOT_SO_FAR = "LOT POLISH AIRLINES so far: 127 flights · none cancelled · 2 delayed an hour or more"
+FRESH = "Updated 17 Nov at 09:46. Things may have changed, so check with your airline."
+OFF_ARRIVALS = "All airlines at Ben Gurion: 1.7% cancelled · about 5% of arrivals delayed an hour or more"
+
+
+def wall(day: date, h: int, m: int) -> datetime:
+    """An airport time (Israel wall-clock, UTC+2 from 25 October) on `day`."""
+    return datetime(day.year, day.month, day.day, h, m)
+
+
+def run_of(start: date, n: int) -> list[date]:
+    return [start + timedelta(days=i) for i in range(n)]
+
+
+def lo155(ahead=(17, 18, 19), **kw) -> list[dict]:
+    """LO 155 (docs/flight-lookup.md, "Flight page: the headline"): landed at 19:45 on each of the 22 days from 26
+    October to 16 November, and listed for 19:45 on each November day of `ahead`. `kw` sets any other column."""
+    landed = [flight(f"lo{d:%m%d}", wall(d, 19, 45), outcome="landed", **LO | kw)
+              for d in run_of(date(2026, 10, 26), 22)]
+    return landed + [flight(f"lo11{d}", wall(date(2026, 11, d), 19, 45), outcome="open", **LO | kw) for d in ahead]
+
+
+def lo155_page(fs=None) -> str:
+    fs = lo155() if fs is None else fs
+    return page_of(*fs, updated=NOV_LAST, records=records_of(fs, NOV_LAST, LO=LOT))
+
+
+def lh694(*extra: dict) -> list[dict]:
+    """LH 694 (docs/flight-lookup.md, "Flight page: the headline"): landed at 19:20 on each of the 10 days from 27
+    October to 5 November, and cancelled on each day from 6 to 9 November; then `extra`."""
+    landed = [flight(f"lh{d:%m%d}", wall(d, 19, 20), outcome="landed", **LH694) for d in run_of(date(2026, 10, 27), 10)]
+    cancelled = [flight(f"lh{d:%m%d}", wall(d, 19, 20), **LH694, **CLEAN) for d in run_of(date(2026, 11, 6), 4)]
+    return landed + cancelled + list(extra)
+
+
+def lh694_page(*extra: dict) -> str:
+    fs = lh694(*extra)
+    return page_of(*fs, updated=NOV_LAST, records=records_of(fs, NOV_LAST, LH=LUFTHANSA))
+
+
+def div(page: str, opening: str) -> str:
+    """The element that `opening` starts, a <div>, through its own closing tag (the divs inside it counted)."""
+    start, depth = page.index(opening), 0
+    for m in re.finditer(r"<(/?)div\b[^>]*>", page[page.index(opening):]):
+        depth += -1 if m.group(1) else 1
+        if depth == 0:
+            return page[start:start + m.end()]
+    raise AssertionError(f"{opening} is not closed")
+
+
+def lines(part: str) -> list[tuple[str, bool]]:
+    """Each paragraph of a part as a reader sees it, and whether it is hidden, by its own `hidden` or by an element
+    around it."""
+    out: list[list] = []
+    stack: list[tuple[str, bool]] = []
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag in VOID:
+                return
+            stack.append((tag, "hidden" in dict(attrs) or any(h for _, h in stack)))
+            if tag == "p":
+                out.append(["", stack[-1][1]])
+
+        def handle_endtag(self, tag):
+            stack.pop()
+
+        def handle_data(self, data):
+            if any(t == "p" for t, _ in stack):
+                out[-1][0] += data
+
+    Parser(convert_charrefs=True).feed(part)
+    return [(re.sub(r"\s+", " ", t).strip(), h) for t, h in out]
+
+
+def shown(part: str) -> list[str]:
+    """What a part says without scripts: its paragraphs that are not hidden."""
+    return [t for t, h in lines(part) if not h]
+
+
+def pairs(day: str) -> list[tuple[int, int, bool, str]]:
+    """A day's prepared chances: each pair's stretch, whether it is hidden, and what it says."""
+    return [(int(a), int(u), bool(h), text(body)) for a, u, h, body in
+            re.findall(r'<div class="pair" data-after="(\d+)" data-upto="(\d+)"( hidden)?>\n(.*?)\n</div>', day, re.S)]
+
+
+def test_the_slot_with_a_day_ahead():
+    """LO 155 on 17 November, 10 hours before it lands (docs/flight-lookup.md, "Flight page: the headline", first row,
+    and "the lines in smaller type"): the two chances for that time left, under 1% and about 1%, in the markup the page
+    script reads; the "Worked out from" line; then, in smaller type, the number's, its airline's and all airlines'
+    lines, the freshness line and the link. "Chance it's" keeps the plain apostrophe the upload check matches."""
+    page = lo155_page()
+    top = day_block(page, "2026-11-17-1945-WAW")
+    assert ('<div class="chances">\n<div class="pair" data-after="6" data-upto="12">\n'
+            '<p class="fig"><span class="fl">Chance it&#x27;s cancelled:</span> <span class="fv"><span class="q">under'
+            '</span> <b class="n">1%</b></span></p>\n'
+            '<p class="fig"><span class="fl">Chance it&#x27;s delayed an hour or more:</span> <span class="fv">'
+            '<span class="q">about</span> <b class="n">1%</b></span></p>\n</div>\n'
+            '<div class="pair" data-after="3" data-upto="6" hidden>\n') in top
+    assert shown(div(top, '<div class="chances">')) == ["Chance it's cancelled: under 1%",
+                                                       "Chance it's delayed an hour or more: about 1%"]
+    assert shown(div(top, '<div class="support">')) == [
+        LO155_WORKED, "LO 155 so far: 22 flights · none cancelled · none delayed an hour or more", LOT_SO_FAR,
+        OFF_ARRIVALS, FRESH, "What the numbers mean"]
+    assert '<p class="worked">Worked out from this flight&#x27;s history (none of its 22 flights was cancelled), ' \
+           '<span class="d">LOT</span>&#x27;s history, and how soon it leaves.</p>' in top
+    assert '<p class="s-line"><b><span class="d">LO 155</span> so far:</b> 22 flights · none cancelled' in top
+    # the ASCII apostrophe (U+0027), which the upload check's lowercase match reads; never a curly one
+    flat = check.flatten(check.strip_tags(page))
+    assert check.CHANCE.search(flat) and "chance it's cancelled:" in flat and "’" not in text(top)
+    assert check.WORKED_OUT.search(check.plain(check.strip_tags(page)))
+
+
+def test_the_slot_with_none_ahead():
+    """LH 694, its last flight on 9 November (docs/flight-lookup.md, "Flight page: the headline", second row; "Pages",
+    Flight page): the not-listed line, then both chances in their "its next flight" forms, on the 70-hour row (about
+    15% and about 3%), shown without scripts; the "Worked out from" line in its no-flight-ahead form, here with the
+    bad week's dates and "It hasn't been on the airport's list since."; no flight-ahead line; the all-airlines line in
+    its form without a time, alone."""
+    page = lh694_page()
+    assert shown(div(page, '<div id="now">')) == [
+        "LH 694 isn't on the airport's list right now. The last one was on Monday 9 November.",
+        "Chance its next flight is cancelled: about 15%",
+        "Chance its next flight is delayed an hour or more: about 3%",
+        "Worked out from this flight's history: 4 of its 14 flights were cancelled, all between 6 and 9 November. It "
+        "hasn't been on the airport's list since.",
+        "LH 694 so far: 14 flights · 4 cancelled · none delayed an hour or more",
+        "LUFTHANSA so far: 183 flights · 11 cancelled, all between 6 and 10 November · 7 delayed an hour or more",
+        OFF_ARRIVALS, FRESH, "What the numbers mean"]
+    assert [h for _, h in lines(div(page, '<div id="now">'))] == [False] * 9
+    assert '<div class="none-ahead">\n<p class="fig"><span class="fl">Chance its next flight is cancelled:</span>' in page
+    assert '<p class="worked none-ahead">' in page and '<p class="worked">' not in page
+    assert '<div class="aa" data-more-after="72">\n<p class="off">' in page and 'class="more"' not in page
+    # its last flight removed early on 10 November is scheduled after the last cancelled one: no "since"
+    gone = lh694_page(flight("lh1110", wall(date(2026, 11, 10), 19, 20), outcome="vanished",
+                             last_seen_at=datetime(2026, 11, 8, 9, 20), **LH694))
+    assert ("Worked out from this flight's history: 4 of its 14 flights were cancelled, all between 6 and 9 "
+            "November.") in shown(div(gone, '<div id="now">'))
+    assert "since" not in text(div(gone, '<div class="support">'))
+    assert "The last one was on Tuesday 10 November." in text(gone)
+
+
+@pytest.mark.parametrize("later", [False, True])
+@pytest.mark.parametrize("direction, kw", [
+    ("D", AT_LEAST_23), ("D", dict(outcome="vanished", last_seen_at=utc(29, 20, 0))),
+    ("A", dict(outcome="landed", est_local_final=local(30, 8, 40)))], ids=["cancelled", "removed", "landed"])
+def test_the_slot_when_the_traveller_day_carries_no_chances(direction, kw, later):
+    """Questions 1 and 2: a traveller's day marked cancelled, removed early or landed early carries no chances. With a
+    later day ahead carrying its own, the slot keeps the "Worked out from" line in its flight-ahead form under that
+    day's own lines, so the page passes the upload check's rule; with none, the page has no flight-ahead line. Either
+    way the "its next flight" headline and its line stand hidden, for the script to show once every day has passed."""
+    fs = [flight("top", AHEAD, direction=direction, **kw)]
+    if later:
+        fs.append(flight("later", LATER, direction=direction, outcome="open"))
+    page = page_of(*fs)
+    top = day_block(page, "2026-10-30-0900-JFK")
+    assert 'class="chances"' not in top
+    support = div(top, '<div class="support">')
+    assert ('<p class="worked">' in support) == later
+    if later:
+        assert shown(support)[0].startswith("Worked out")
+        assert pairs(day_block(page, "2026-10-31-0900-JFK"))
+    else:
+        assert not any(t.startswith("Worked out") for t in shown(support))
+    assert '<div class="none-ahead" hidden>' in support and '<p class="worked none-ahead" hidden>' in support
+    flat = check.flatten(check.strip_tags(page))
+    assert check.CHANCE.search(flat) and check.WORKED_OUT.search(check.plain(check.strip_tags(page)))
+
+
+def test_a_later_day_carries_its_chances_and_no_line_of_its_own():
+    """docs/flight-lookup.md, "Flight page: the headline", fourth row, and "Pages": LO 155 on 18 and 19 November, each a
+    later day ahead labelled UPCOMING, carries its own two chances on one line, for its own time left (34 and 58
+    hours), from the page's records, with no "Worked out from" line and no lines in smaller type of its own."""
+    page = lo155_page()
+    for anchor, first_pair, n in (("2026-11-18-1945-WAW", (24, 48), 5), ("2026-11-19-1945-WAW", (48, 72), 6)):
+        day = day_block(page, anchor)
+        got = pairs(day)
+        assert len(got) == n and got[0][:3] == (*first_pair, False) and all(h for *_, h, _ in got[1:])
+        assert {t for *_, t in got} == {"Chance it's cancelled: under 1% · Chance it's delayed an hour or more: "
+                                        "about 1%"}
+        assert ('<p class="one"><span class="fl">Chance it&#x27;s cancelled:</span> <span class="fv"><span class="q">'
+                'under</span> <b class="n">1%</b></span><span class="sep"> · </span><span class="fl">Chance it&#x27;s '
+                'delayed an hour or more:</span> <span class="fv"><span class="q">about</span> <b class="n">1%</b>'
+                '</span></p>') in day
+        assert 'class="worked' not in day and 'class="support"' not in day and 'class="s-line"' not in day
+
+
+def test_prepared_pairs_only_for_stretches_still_ahead():
+    """docs/flight-lookup.md, "Left to the builder", "At which moment" and "The weight of prepared figures": a day 31
+    hours ahead at the last update holds one pair per stretch still ahead of it, five, from (24, 48] down; that one
+    shows without scripts, the rest hidden. Each pair is scaled by its own row, the nearest checkpoint at or above its
+    stretch (LH 694's 16.5% by 48 hours' 0.852 is 14%, and down to 4% on the 3-hour row); the delay is flat."""
+    page = lh694_page(flight("lh1118", wall(date(2026, 11, 18), 16, 50), outcome="open", **LH694))  # 14:50 UTC
+    got = pairs(day_block(page, "2026-11-18-1650-FRA"))
+    assert [(a, u, h) for a, u, h, _ in got] == [(24, 48, False), (12, 24, True), (6, 12, True), (3, 6, True),
+                                                  (0, 3, True)]
+    assert [t for *_, t in got] == [f"Chance it's cancelled: about {p}% Chance it's delayed an hour or more: about 3%"
+                                    for p in (14, 10, 7, 6, 4)]
+
+
+def ended(page: str) -> int:
+    """The strip key's departed, landed and cancelled marks, added up."""
+    return sum(int(n) for n in re.findall(r"(?:departed|landed|cancelled) (\d+)", text(key(page))))
+
+
+def test_the_counts_agree():
+    """docs/flight-lookup.md, "How numbers are written": every count on a page uses the same flights, each whose
+    ending is known, so the "so far" line, the "Worked out from" line and the strip's departed, landed and cancelled
+    marks agree. LO 155: 22 (C4's closed flights would be 20); LH 694: 14, its removed day in neither."""
+    page = lo155_page(lo155())
+    assert "LO 155 so far: 22 flights" in text(page) and "(none of its 22 flights was cancelled)" in text(page)
+    assert text(key(page)) == "landed 22 · upcoming 3" and ended(page) == 22
+    page = lh694_page(flight("lh1110", wall(date(2026, 11, 10), 19, 20), outcome="vanished",
+                             last_seen_at=datetime(2026, 11, 8, 9, 20), **LH694))
+    assert "LH 694 so far: 14 flights" in text(page) and "4 of its 14 flights were cancelled" in text(page)
+    assert text(key(page)) == "landed 10 · cancelled 4 · unknown 1" and ended(page) == 14
+
+
+def test_a_twin_day_counts_as_flown_and_keeps_its_mark():
+    """docs/flight-lookup.md, "How numbers are written", the exception, and Question 4: LH 0691A, marked cancelled on 29
+    October while its flight left as LH 695, counts that day as flown in its "so far" line (C2), while its strip keeps
+    the number's own mark, with the twin line under that day. So does a number that left the list with no final word
+    while its flight left: the key and the "so far" count differ by that day."""
+    own = [lh(f"a{d}", local(d, 9, 0), "0691A") for d in (26, 27, 28)]
+    for kind, mark_ in (("canceled", "cancelled 1"), ("gap", "unknown 1")):
+        page = page_of(*own, lh("a29", local(29, 9, 0), "0691A", kind), lh("b29", local(29, 9, 0), "695"),
+                       only={"a26", "a27", "a28", "a29"})
+        assert "LH 0691A so far: 4 flights · none cancelled · none delayed an hour or more" in text(page), kind
+        assert text(key(page)) == f"departed 3 · {mark_}", kind
+    assert "This number was cancelled, but the flight probably left as LH 695." in text(day_block(
+        page_of(*own, lh("a29", local(29, 9, 0), "0691A", "canceled"), lh("b29", local(29, 9, 0), "695"),
+                only={"a26", "a27", "a28", "a29"}), "2026-10-29-0900-FRA"))
+
+
+def ly001(cancelled_on: set[date]) -> list[dict]:
+    """LY 001 to New York at 16:45 on each of the 20 days from 27 October to 15 November, cancelled on the days given,
+    and listed for 18 November."""
+    fs = [flight(f"ly{d:%m%d}", wall(d, 16, 45), **(CLEAN if d in cancelled_on else {}))
+          for d in run_of(date(2026, 10, 27), 20)]
+    return fs + [flight("ly1118", wall(date(2026, 11, 18), 16, 45), outcome="open")]
+
+
+def test_a_bad_week_names_its_dates_and_a_spread_one_does_not():
+    """docs/flight-lookup.md, "the "Worked out from" line, every form": when one week holds all of a record's cancelled
+    flights, two or more, the line names its dates, and the number's "so far" line does not repeat them; its airline's
+    line, whose dates the line does not give, carries them. Cancellations over weeks get the bracket and no dates."""
+    week = ly001({date(2026, 11, 6), date(2026, 11, 7), date(2026, 11, 9)})
+    support = shown(div(page_of(*week, updated=NOV_LAST, records=records_of(week, NOV_LAST)), '<div class="support">'))
+    assert support[:3] == [
+        "Worked out from this flight's history: 3 of its 20 flights were cancelled, all between 6 and 9 November. "
+        "Also from El Al's history, and how soon it leaves.",
+        "LY 001 so far: 20 flights · 3 cancelled · none delayed an hour or more",
+        "EL AL ISRAEL AIRLINES so far: 20 flights · 3 cancelled, all between 6 and 9 November · none delayed an hour "
+        "or more"]
+    spread = ly001({date(2026, 10, 28), date(2026, 11, 5), date(2026, 11, 14)})
+    support = shown(div(page_of(*spread, updated=NOV_LAST, records=records_of(spread, NOV_LAST)),
+                        '<div class="support">'))
+    assert support[:3] == [
+        "Worked out from this flight's history (3 of its 20 flights were cancelled), El Al's history, and how soon it "
+        "leaves.",
+        "LY 001 so far: 20 flights · 3 cancelled · none delayed an hour or more",
+        "EL AL ISRAEL AIRLINES so far: 20 flights · 3 cancelled · none delayed an hour or more"]
+
+
+LH697 = dict(airline="LH", flight_no="697", airline_name="LUFTHANSA", airport="FRA", city_en="FRANKFURT")
+
+
+def test_the_airlines_line_carries_its_dates_where_the_worked_out_line_does_not():
+    """docs/flight-lookup.md, "the lines in smaller type": the airline's line names its bad week where the "Worked out
+    from" line shown does not: on LH 694's page, whose own history leads, and not on LH 697's, whose line is worked out
+    mostly from Lufthansa's and names them. A page with no line shown (its only day ahead is marked cancelled)
+    names them on the airline's line."""
+    assert ("LUFTHANSA so far: 183 flights · 11 cancelled, all between 6 and 10 November · 7 delayed an hour or more"
+            in shown(div(lh694_page(), '<div class="support">')))
+    fs = [flight("lh1105", wall(date(2026, 11, 5), 9, 0), **LH697),
+          flight("lh1106", wall(date(2026, 11, 6), 9, 0), **LH697, **CLEAN)]
+    page = page_of(*fs, updated=NOV_LAST, records=records_of(fs, NOV_LAST, LH=LUFTHANSA))
+    assert shown(div(page, '<div class="support">'))[:5] == [
+        "Chance its next flight is cancelled: about 10%", "Chance its next flight is delayed an hour or more: about 5%",
+        "Worked out mostly from Lufthansa's history, because LH 697 has only 2 flights so far. Lufthansa cancelled 11 "
+        "of its 183 flights, all between 6 and 10 November.",
+        "LH 697 so far: 2 flights · 1 cancelled · none delayed an hour or more",
+        "LUFTHANSA so far: 183 flights · 11 cancelled · 7 delayed an hour or more"]
+    gone = [*fs, flight("lh1118", wall(date(2026, 11, 18), 9, 0), **LH697, **AT_LEAST_23)]
+    page = page_of(*gone, updated=NOV_LAST, records=records_of(gone, NOV_LAST, LH=LUFTHANSA))
+    assert not any(t.startswith("Worked out") for t in shown(div(page, '<div class="support">')))
+    assert ("LUFTHANSA so far: 183 flights · 11 cancelled, all between 6 and 10 November · 7 delayed an hour or more"
+            in shown(div(page, '<div class="support">')))
+
+
+def ly9255(days: list[date], with_lo: set[date], ahead=()) -> list[dict]:
+    """LY 9255 at 19:45 from Warsaw, landed on each of `days` and listed for each November day of `ahead`; on the days
+    of `with_lo`, sold with LO 155 (the same time, terminal and desks), whose flight C8 groups under LOT."""
+    sold = dict(LO, airline="LY", flight_no="9255", airline_name="EL AL  ISRAEL AIRLINES")
+    out = []
+    for d, outcome in [*((d, "landed") for d in days), *((date(2026, 11, n), "open") for n in ahead)]:
+        out.append(flight(f"ly{d:%m%d}", wall(d, 19, 45), outcome=outcome, **sold))
+        if d in with_lo:
+            out.append(flight(f"lo{d:%m%d}", wall(d, 19, 45), outcome=outcome, **LO))
+    return out
+
+
+def page_9255(fs: list[dict], **airlines) -> str:
+    keep = {f["flight_id"] for f in fs if f["flight_no"] == "9255"}
+    return page_of(*fs, only=keep, updated=NOV_LAST, records=records_of(fs, NOV_LAST, **airlines))
+
+
+def test_the_partner_line():
+    """docs/flight-lookup.md, "the lines in smaller type" (D13): LY 9255, sold with LO 155, whose flight C8 groups under
+    LOT, reads "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history." as a line of
+    its own, above "LOT POLISH AIRLINES so far: …", the airline its chances are worked out from. LO 155's own page has
+    no such line."""
+    every = run_of(date(2026, 10, 26), 22)
+    fs = ly9255(every, {*every, date(2026, 11, 17)}, ahead=(17,))
+    support = div(page_9255(fs, LO=LOT), '<div class="support">')
+    assert shown(support) == [
+        LO155_WORKED, "LY 9255 so far: 22 flights · none cancelled · none delayed an hour or more",
+        "LY 9255 is also sold as LO 155, so the numbers here are worked out from LOT's history.", LOT_SO_FAR,
+        OFF_ARRIVALS, FRESH, "What the numbers mean"]
+    assert ('<p class="s-line"><span class="d">LY 9255</span> is also sold as <span class="d">LO 155</span>, so the '
+            'numbers here are worked out from <span class="d">LOT</span>&#x27;s history.</p>') in support
+    lo = [f for f in fs if f["airline"] == "LO"]
+    own = page_of(*fs, only={f["flight_id"] for f in lo}, updated=NOV_LAST, records=records_of(fs, NOV_LAST, LO=LOT))
+    assert "is also sold as" not in text(own) and LOT_SO_FAR in text(own)
+
+
+# El Al's counts in place of the rows': cancellations spread over October, so its pull is far from LOT's
+EL_AL_HEAVY = Tally(300, 90, 210, 0, tuple(sorted(date(2026, 10, 1) + timedelta(days=i % 30) for i in range(90))),
+                    datetime(2026, 10, 30, 17, 45))
+
+
+def test_one_airline_per_page_when_the_grouping_differs_by_day():
+    """Review Focus 2 ("Left to the builder", "Which airline on a later day ahead"): one airline per page, C8's
+    grouping airline of the traveller's day, or of the newest day when none is ahead, for the "so far" line, the
+    headline and every later day's chances. LY 9255 sold with LO 155 on 17 November and alone on 18 November reads
+    LOT's history on both days, with the partner line; alone on 17 November and with LO 155 on 18 November, El Al's,
+    without it."""
+    history = run_of(date(2026, 11, 13), 4)  # four flights: the airline's history leads
+    with_lot = page_9255(ly9255(history, {date(2026, 11, 17)}, ahead=(17, 18)), LO=LOT, LY=EL_AL_HEAVY)
+    alone = page_9255(ly9255(history, {date(2026, 11, 18)}, ahead=(17, 18)), LO=LOT, LY=EL_AL_HEAVY)
+    # LY 9255's four flights pulled towards LOT's clean record, or towards El Al's, each day by its own time left
+    for page, figures in ((with_lot, ("under 1%", "under 1%")), (alone, ("about 8%", "about 15%"))):
+        for anchor, figure in zip(("2026-11-17-1945-WAW", "2026-11-18-1945-WAW"), figures):
+            assert pairs(day_block(page, anchor))[0][3].startswith(f"Chance it's cancelled: {figure}"), anchor
+    assert "is also sold as LO 155" in text(with_lot) and LOT_SO_FAR in text(with_lot)
+    assert "is also sold as" not in text(alone) and "EL AL ISRAEL AIRLINES so far: 300 flights" in text(alone)
+    assert "Worked out mostly from LOT's history" in text(with_lot)
+    assert "Worked out mostly from El Al's history" in text(alone)
+    # no day ahead: the newest day's grouping
+    newest_lot = page_9255(ly9255(history, {date(2026, 11, 16)}), LO=LOT, LY=EL_AL_HEAVY)
+    newest_alone = page_9255(ly9255(history, {date(2026, 11, 15)}), LO=LOT, LY=EL_AL_HEAVY)
+    assert "is also sold as LO 155" in text(newest_lot) and "is also sold as" not in text(newest_alone)
+
+
+def test_a_partner_line_needs_a_spoken_name():
+    """Question 5: the partner line always names its airline by its spoken name, never "its airline's history"; a page
+    whose grouping airline has none stops, naming it (build.render stops first, naming every one)."""
+    assert names.spoken("ZZ") is None
+    fs = [flight("zz", airline="ZZ", flight_no="1"), flight("ly", flight_no="9001")]
+    with pytest.raises(ValueError, match=r"\bZZ\b"):
+        page_of(*fs, only="ly")
+    assert "its airline" in text(page_of(*fs, only="zz"))  # its own page takes the "its airline" forms
+
+
+def test_the_all_airlines_forms_and_bounds():
+    """docs/flight-lookup.md, "the lines in smaller type": six prepared forms, one per stretch, each with its bounds
+    for the script and the figure of the point at its far end, hidden; the "more than 3 days" line, hidden; the form
+    without a time, the total's 1.7%, shown. A departure's page reads "of departures". A row below the floor leaves its
+    form out, a total below the floor the form without a time; the delay figure has no floor, and a direction with no
+    flight that flew leaves every form out; with no day ahead only the form without a time stands."""
+    page = page_of(flight("up", AHEAD, outcome="open"))
+    delayed = "about 8% of departures delayed an hour or more"
+    assert div(page, '<div class="aa"') == "\n".join([
+        '<div class="aa" data-more-after="72">',
+        *(f'<p data-after="{a}" data-upto="{u}" hidden><b>All airlines at Ben Gurion, {name} before a flight:</b> '
+          f'{figure} cancelled · {delayed}</p>'
+          for a, u, name, figure in ((48, 72, "2 to 3 days", "1.6%"), (24, 48, "1 to 2 days", "1.4%"),
+                                     (12, 24, "12 to 24 hours", "1.1%"), (6, 12, "6 to 12 hours", "under 1%"),
+                                     (3, 6, "3 to 6 hours", "under 1%"), (0, 3, "less than 3 hours", "under 1%"))),
+        f'<p class="more" hidden>{html.escape(words.MORE_THAN_3_DAYS)}</p>',
+        f'<p class="off"><b>All airlines at Ben Gurion:</b> 1.7% cancelled · {delayed}</p>',
+        "</div>"])
+    thin = airport(rows={12: made(39, 5069, airlines=4)})
+    fs = [flight("up", AHEAD, outcome="open")]
+    page = page_of(*fs, records=records_of(fs, airport=thin))
+    assert 'data-after="6" data-upto="12"' not in div(page, '<div class="aa"')
+    assert len(re.findall(r"<p data-after=", page)) == 5
+    page = page_of(*fs, records=records_of(fs, airport=airport(total=FEW)))
+    assert 'class="off"' not in page and len(re.findall(r"<p data-after=", page)) == 6
+    # the delay figure has no floor (the plan's amendment after Task 9's review): 1 of 50 departures that flew reads
+    # "about 2%"; a direction with none that flew leaves every form out, and the "more than 3 days" line stands alone
+    page = page_of(*fs, records=records_of(fs, airport=airport(delay={"D": made(1, 50)})))
+    assert ("All airlines at Ben Gurion: 1.7% cancelled · about 2% of departures delayed an hour or more"
+            in shown(div(page, '<div class="aa"')))
+    page = page_of(*fs, records=records_of(fs, airport=airport(delay={"D": made(0, 0)})))
+    assert re.findall(r'<div class="aa" data-more-after="72">\n<p class="more" hidden>[^<]*</p>\n</div>', page)
+    none = page_of(flight("d", local(28, 9, 0)))
+    assert div(none, '<div class="aa"') == ('<div class="aa" data-more-after="72">\n<p class="off"><b>All airlines at '
+                                            f'Ben Gurion:</b> 1.7% cancelled · {delayed}</p>\n</div>')
+
+
+def test_the_freshness_line_without_scripts(israeli_machine):
+    """docs/flight-lookup.md, "the lines in smaller type": "Updated 17 Nov at 09:46. Things may have changed, so check
+    with your airline.", its first part in Israel time from the last update's UTC instant, which the page script
+    reads to write the page's age; then the link "What the numbers mean", last in the slot."""
+    fresh = ('<p class="fresh"><span data-updated="2026-11-17T07:46:44Z">Updated 17 Nov at 09:46</span>. Things may '
+             'have changed, so check with your airline.</p>\n<p class="means"><a href="../how-it-works.html#what-the-'
+             'numbers-mean">What the numbers mean</a></p>\n</div>')
+    for page in (lo155_page(), lh694_page()):
+        assert fresh in page
+
+
+def test_the_slot_holds_every_name_the_page_script_reads():
+    """The plan's Task 11 markup, which fromhere.js reads: in .support, the hidden "its next flight" headline, the
+    flight-ahead line, the no-flight-ahead line, the "so far" lines, .aa, .fresh and .means, in that order; with no
+    day ahead, the no-flight-ahead parts shown and no flight-ahead line. A number with no flights yet has no "so far"
+    line (Question 6d), nor an airline with none."""
+    def names_in(page: str) -> list[tuple[str, bool]]:
+        (support,) = [el for el in tree(page).walk() if "support" in el.classes]
+        return [(" ".join(k.classes), "hidden" in k.attrs) for k in support.kids]
+
+    fs = [flight("up", AHEAD, outcome="open"), flight("past", local(28, 9, 0))]
+    assert names_in(page_of(*fs)) == [("none-ahead", True), ("worked", False), ("worked none-ahead", True),
+                                      ("s-line", False), ("s-line", False), ("aa", False), ("fresh", False),
+                                      ("means", False)]
+    assert names_in(page_of(fs[1])) == [("none-ahead", False), ("worked none-ahead", False), ("s-line", False),
+                                        ("s-line", False), ("aa", False), ("fresh", False), ("means", False)]
+    assert names_in(page_of(fs[0])) == [("none-ahead", True), ("worked", False), ("worked none-ahead", True),
+                                        ("aa", False), ("fresh", False), ("means", False)]
+    assert ("Worked out from all airlines at Ben Gurion, because LY 001 and its airline have no flights so far."
+            in text(page_of(fs[0])))
+
+
+def test_a_page_with_no_counted_flight_at_the_airport_carries_no_chances():
+    """A first archive, with no closed flight yet: the blend has no rate to start from (blend.cancel_chance gives None),
+    so no day carries chances, the slot holds no headline and no "Worked out from" line, and the "so far" lines,
+    the freshness line and the link stand (Question 1's structure, no new words)."""
+    bare = blend.Airport(total=made(0, 0), rows=dict.fromkeys(counting.CHECKPOINTS, made(0, 0)), delay=AP.delay)
+    fs = [flight("up", AHEAD, outcome="open"), flight("past", local(28, 9, 0))]
+    page = page_of(*fs, records=records_of(fs, airport=bare))
+    assert "Chance" not in text(page) and "Worked out" not in text(page) and 'class="chances"' not in page
+    assert shown(div(page, '<div class="support">'))[:2] == [
+        "LY 001 so far: 1 flight · none cancelled · none delayed an hour or more",
+        "EL AL ISRAEL AIRLINES so far: 1 flight · none cancelled · none delayed an hour or more"]
 
 
 # --- day page --------------------------------------------------------------------------------------
