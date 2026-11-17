@@ -303,21 +303,6 @@ A35_ROWS = {
 
 
 def test_constants_are_the_approved_words():
-    assert words.PAST_ONLY == "This is what happened to past flights. It does not say what will happen to yours."
-    assert words.FROM_HERE_HEADING == "From here to the scheduled time"
-    assert words.FROM_HERE_FIRST == ("So far, of all flights at the airport that the list still showed normally at "
-                                     "each point, this is how many were later listed as cancelled.")
-    assert words.FROM_HERE_COLUMNS == ("Time to go", "Flights still listed normally", "Later listed as cancelled",
-                                      "That's about")
-    assert words.CHECKPOINT_NAMES == {70: "70 hours", 48: "48 hours", 24: "24 hours", 12: "12 hours",
-                                      6: "6 hours", 3: "3 hours"}
-    assert words.UNDER_TABLE == (
-        "Each row is a point in time: the 24-hour row counts flights listed normally 24 hours before their "
-        "scheduled time, and how many of them were later listed as cancelled, however late.",
-        "Listed normally means any status but cancelled, delayed included.",
-        "More than 3 days to go: the airport's list does not show the flight yet. A flight already listed as "
-        "cancelled when it reaches the list is not in this table.")
-    assert words.TOO_FEW == "too few so far to say"
     assert words.LEAD_INS == {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
                               12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
     assert words.A_FLIGHT == (
@@ -327,22 +312,8 @@ def test_constants_are_the_approved_words():
         "any of its numbers did, and as cancelled only when none did and at least one was listed as cancelled.")
 
 
-def test_total():
-    assert words.total(TOTAL) == ("So far, 81 of 4,658 flights with a known outcome were listed as cancelled. "
-                                  "That's about 1 in 60 (between 1 in 35 and 1 in 95).")
-
-
-def test_total_below_the_floor():
-    assert words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)) == (
-        "So far, 3 of 120 flights with a known outcome were listed as cancelled. Too few so far to say.")
-    assert words.total(rate(0, 900, None, None, None, floor=False)) == (
-        "So far, 0 of 900 flights with a known outcome were listed as cancelled. Too few so far to say.")
-
-
 def test_a_rate_without_a_range_is_shown_like_one_below_the_floor():
-    r = rate(12, 12, 1.0, None, None)
-    assert words.one_in_range(r) is None
-    assert words.total(r) == "So far, 12 of 12 flights with a known outcome were listed as cancelled. Too few so far to say."
+    assert words.one_in_range(rate(12, 12, 1.0, None, None)) is None
 
 
 @pytest.mark.parametrize("h", sorted(A35_ROWS))
@@ -393,32 +364,6 @@ def test_condition_reads_the_update_in_israel_time(israeli_machine):
     assert words.condition(updated) == (
         "The figure is for flights the airport's list showed normally. This page was last updated 12 Nov 2026, "
         "12:16 and cannot say what the list shows now. Check the airport's own list.")
-
-
-class FakeSummary:
-    figures = type("F", (), {"total": TOTAL})()
-    unknown, unknown_gap, unknown_no_final = 269, 240, 29
-    late_after, late_holds, late_unplaced, late_before = 9, 1, 19, 52
-    first_record = date(2026, 10, 27)
-
-
-def test_count_line():
-    assert words.count_line(FakeSummary()) == (
-        "Counted: 4,658 flights with a known outcome, scheduled up to two days before the last update, in a record "
-        "kept since 27 October 2026. Not counted: 269 flights with no known outcome. 240 of them left the list "
-        "while nothing was recorded, and 29 left it with no final status.")
-
-
-def test_count_line_carries_thousands_separators():
-    s = FakeSummary()
-    s.unknown, s.unknown_gap, s.unknown_no_final = 2690, 2400, 1290
-    line = words.count_line(s)
-    assert "Not counted: 2,690 flights" in line and "2,400 of them" in line and "and 1,290 left it" in line
-
-
-def test_total_cancelled_count_carries_thousands_separators():
-    assert words.total(rate(1200, 90000, 75.0, 60.0, 90.0)).startswith(
-        "So far, 1,200 of 90,000 flights with a known outcome")
 
 
 def test_also_sold_as_and_the_twin_lines_words():
@@ -642,6 +587,33 @@ def test_the_front_pages_table_words():
         "These are averages for all airlines, from about 5,000 flights since 27 October. "
         "A delayed flight still counts as “still on”.")
     assert words.DELAY_LEAD == "Chance of a delay of an hour or more:"
+
+
+def test_the_front_pages_other_words():
+    """docs/site-redesign.md, "Front page" (:184-200), and the tab's title ("Every page", :173)."""
+    assert words.TITLE == "Will It Fly? Tel Aviv airport (Ben Gurion), unofficial"
+    assert words.FIND_LABEL == "Find your flight"
+    assert words.SEARCH_HINT == "Flight number or city, like LY 001 or Paris"
+    assert words.FIND_HINT == "Your flight number is on your ticket or booking email."
+    assert words.FIND_OFF == ("To find your flight, ", "pick its day below", ".")
+    assert "".join(words.FIND_OFF) == "To find your flight, pick its day below."
+    assert words.intro(date(2026, 10, 27)) == (
+        "Look up your flight to see the chance it's cancelled or delayed an hour or more. Based on every flight at "
+        "Ben Gurion Airport since 27 October.")
+    assert words.STORY_HEADING == "A recent cancellation, step by step"
+    assert words.RECENT_HEADING == "Recent cancellations"
+    assert words.ALL_CANCELLED == "All cancelled flights"
+    assert words.CHART_HEADING == "Flights each day"
+    assert words.PICK_A_DAY == "Pick a day:"
+
+
+@pytest.mark.parametrize("built_by", ["Doron Reiffman.", "Doron Reiffman"])
+def test_the_description_names_the_builder_with_one_full_stop(monkeypatch, built_by):
+    """Read when the page is built: the owner's wording in place of the design's "[owner's wording]"."""
+    monkeypatch.setattr(words, "BUILT_BY", built_by)
+    assert words.description() == (
+        "Look up a flight at Ben Gurion Airport to see the chance it's cancelled or delayed an hour or more. "
+        "Unofficial. Built by Doron Reiffman.")
 
 
 def test_the_delay_line():
@@ -894,6 +866,9 @@ def figure_texts() -> list[str]:
              words.delay_line(0.077, 0.049), words.delay_line(0.001, 0.049), words.pct_range(big),
              words.total_sentence(big, day), words.total_sentence(small, day), words.late_line(15, 104),
              words.left_out(285), words.left_out(1), words.FRESH_REST, words.MORE_THAN_3_DAYS,
+             words.TITLE, words.description(), words.FIND_LABEL, words.SEARCH_HINT, words.FIND_HINT,
+             "".join(words.FIND_OFF), words.intro(day), words.STORY_HEADING, words.RECENT_HEADING,
+             words.ALL_CANCELLED, words.CHART_HEADING, words.PICK_A_DAY,
              *words.MARKED_CANCELLED, words.has_passed(datetime(2026, 11, 17, 7, 46)),
              words.updated_at(datetime(2026, 11, 17, 7, 46)),
              words.not_listed("LH 694", date(2026, 11, 10), False), words.not_listed("LH 694", date(2026, 11, 10), True),
@@ -923,12 +898,8 @@ def site_texts() -> list[str]:
     texts += [words.label_note(f, label, ahead) for f, label, ahead, _ in LABEL_NOTE_CASES]
     texts += [words.changed_back({"uncanceled": u}, label) for u, label, _ in CHANGED_BACK_CASES]
     texts += [words.time_line(d, sc, es, label, PAGE) for d, sc, es, label, _ in TIME_LINE_CASES]
-    texts += [words.total(TOTAL), words.pair(24, A35_ROWS[24][0]), words.count_line(FakeSummary()),
-              words.PAST_ONLY, words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
-              words.FROM_HERE_FIRST, *words.UNDER_TABLE, *words.LEAD_INS.values(),
-              words.condition(datetime(2026, 11, 12, 10, 16, 45)),
-              words.FROM_HERE_HEADING, *words.FROM_HERE_COLUMNS, *words.CHECKPOINT_NAMES.values(), words.TOO_FEW,
-              words.total(rate(3, 120, 40.0, 10.0, 90.0, floor=False)),
+    texts += [words.pair(24, A35_ROWS[24][0]), words.A_FLIGHT, words.ALSO_SOLD, words.SAME_PLANE,
+              *words.LEAD_INS.values(), words.condition(datetime(2026, 11, 12, 10, 16, 45)),
               *(" OS 083".join(words.twin(verb)) for verb in ("departed", "landed", "is still listed", "has no news yet"))]
     texts += [words.scheduled(d, datetime(2026, 10, 29, 17, 10), DAY) for d in ("D", "A")]
     texts += list(words.STATUS_WORDS.values())

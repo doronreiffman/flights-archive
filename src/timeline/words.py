@@ -11,13 +11,9 @@ import string
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from timeline.rates import Rate, round_middle, round_range
-
-if TYPE_CHECKING:  # display imports this module's label names, so the type is for hints only
-    from timeline.display import Summary
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 
@@ -293,20 +289,6 @@ def change_lines(obs: list[dict], direction: str, page_date: date, gap_hours: fl
 
 # --- rates (docs/flight-lookup.md, "Words"; docs/flight-lookup-plan.md, Question 4 and Appendix A) ------
 
-PAST_ONLY = "This is what happened to past flights. It does not say what will happen to yours."
-FROM_HERE_HEADING = "From here to the scheduled time"
-FROM_HERE_FIRST = ("So far, of all flights at the airport that the list still showed normally at each point, "
-                   "this is how many were later listed as cancelled.")
-FROM_HERE_COLUMNS = ("Time to go", "Flights still listed normally", "Later listed as cancelled", "That's about")
-CHECKPOINT_NAMES = {70: "70 hours", 48: "48 hours", 24: "24 hours", 12: "12 hours", 6: "6 hours", 3: "3 hours"}
-UNDER_TABLE = (
-    "Each row is a point in time: the 24-hour row counts flights listed normally 24 hours before their "
-    "scheduled time, and how many of them were later listed as cancelled, however late.",
-    "Listed normally means any status but cancelled, delayed included.",
-    "More than 3 days to go: the airport's list does not show the flight yet. A flight already listed as "
-    "cancelled when it reaches the list is not in this table.",
-)
-TOO_FEW = "too few so far to say"
 LEAD_INS = {70: "between 2 and 3 days", 48: "between 1 and 2 days", 24: "between 12 and 24 hours",
             12: "between 6 and 12 hours", 6: "between 3 and 6 hours", 3: "under 3 hours"}
 A_FLIGHT = (
@@ -327,20 +309,6 @@ def one_in_range(rate: Rate) -> str | None:
         return None
     lo, hi = round_range(rate.one_in_from, rate.one_in_to)
     return f"1 in {_n(round_middle(rate.one_in))} (between 1 in {_n(lo)} and 1 in {_n(hi)})"
-
-
-def total(rate: Rate) -> str:
-    first = f"So far, {_n(rate.cancelled)} of {_n(rate.flights)} flights with a known outcome were listed as cancelled."
-    figure = one_in_range(rate)
-    return f"{first} That's about {figure}." if figure else f"{first} Too few so far to say."
-
-
-def count_line(s: Summary) -> str:
-    since = f"{s.first_record.day} {s.first_record:%B %Y}"
-    return (f"Counted: {_n(s.figures.total.flights)} flights with a known outcome, scheduled up to two days before "
-            f"the last update, in a record kept since {since}. Not counted: {_n(s.unknown)} flights with no known "
-            f"outcome. {_n(s.unknown_gap)} of them left the list while nothing was recorded, and "
-            f"{_n(s.unknown_no_final)} left it with no final status.")
 
 
 def pair(h: int, rate: Rate) -> str | None:
@@ -487,6 +455,33 @@ def left_out(n: int) -> str | None:
     if n == 1:
         return "1 flight is left out because there's no record of how it ended."
     return f"{_n(n)} flights are left out because there's no record of how they ended."
+
+
+# --- the front page: the search, the introduction and the headings (docs/site-redesign.md, "Front page") ---------
+
+TITLE = "Will It Fly? Tel Aviv airport (Ben Gurion), unofficial"  # the browser tab and a shared link
+FIND_LABEL = "Find your flight"  # the label over the box
+SEARCH_HINT = "Flight number or city, like LY 001 or Paris"  # in the box
+FIND_HINT = "Your flight number is on your ticket or booking email."  # under the box
+FIND_OFF = ("To find your flight, ", "pick its day below", ".")  # without scripts, in the box's place; the middle links
+STORY_HEADING = "A recent cancellation, step by step"
+RECENT_HEADING = "Recent cancellations"
+ALL_CANCELLED = "All cancelled flights"  # the link under the recent cancellations
+CHART_HEADING = "Flights each day"
+PICK_A_DAY = "Pick a day:"  # over the list of every day
+
+
+def intro(since: date) -> str:
+    """The introduction under the search; `since` is the Israel date of the records' first list."""
+    return ("Look up your flight to see the chance it's cancelled or delayed an hour or more. Based on every flight at "
+            f"Ben Gurion Airport since {_day_month(since)}.")
+
+
+def description() -> str:
+    """The front page's description, not shown on the page; read when the page is built, the built-by wording in the
+    design's "[owner's wording]", and one full stop whatever that wording ends with."""
+    return ("Look up a flight at Ben Gurion Airport to see the chance it's cancelled or delayed an hour or more. "
+            f"Unofficial. Built by {BUILT_BY.removesuffix('.')}.")
 
 
 # --- the flight page: the headline, "Worked out from", the lines in smaller type ---------------------------------

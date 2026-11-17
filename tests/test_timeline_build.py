@@ -7,17 +7,18 @@ import posixpath
 import re
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from model import build as model_build
 from model.report import ATTRIBUTION
+from counting_helpers import board
 from model_helpers import at, row, write_receipt, write_snapshot
-from test_timeline_flights import flight
+from test_timeline_flights import first, flight
 from test_timeline_words import israeli_machine  # noqa: F401  (a fixture: run as on the owner's Mac)
-from timeline import build, check, counting, flights, words
+from timeline import blend, build, check, counting, flights, words
 from timeline.check import BANNED
 
 
@@ -53,8 +54,8 @@ def text(page: str) -> str:
 
 
 def chart(page: str) -> str:
-    i = page.index('<svg class="chart"')
-    return page[i:page.index("\n</svg>", i)]
+    i = page.index('<ol class="chart">')
+    return page[i:page.index("</ol>", i)]
 
 
 def chart_day(index: str, day: str) -> str:
@@ -64,7 +65,7 @@ def chart_day(index: str, day: str) -> str:
 
 def chart_counts(index: str, day: str) -> str:
     """The counts the chart prints beside a day's date: "4 flights · 1 cancelled · 1 unknown"."""
-    return re.search(r'<text x="\d+" y="\d+">([^<]*)</text>', chart_day(index, day)).group(1)
+    return re.search(r'<span class="counts">([^<]*)', chart_day(index, day)).group(1).rstrip()
 
 
 def day_count_line(page: str) -> str:
@@ -83,8 +84,8 @@ def day_counts(page: str) -> tuple[int, int, int]:
 
 
 def total_counts(index: str) -> tuple[int, int]:
-    """The front page's total: (listed as cancelled, flights with a known outcome)."""
-    m = re.search(r"So far, ([\d,]+) of ([\d,]+) flights with a known outcome were listed as cancelled\.", text(index))
+    """The front page's total: (cancelled, flights with a known result)."""
+    m = re.search(r"Since \d+ \w+, ([\d,]+) of ([\d,]+) flights at Ben Gurion (?:was|were) cancelled", text(index))
     return int(m.group(1).replace(",", "")), int(m.group(2).replace(",", ""))
 
 
@@ -322,9 +323,10 @@ def test_a_cancellation_reads_the_same_on_the_front_page_and_its_flight_page(sit
     page = read(site, "flight/IZ991-D.html")
     assert '<p class="warn">Cancelled with at least 25 hours&#x27; notice.</p>' in page  # rule 8; the text is escaped
     assert "Between 27 Oct 08:00 and 27 Oct 08:15 Cancelled" in text(page)
-    assert '<h2><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in index  # the story box
+    assert '<h3><a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in index  # the story box
     # IZ 991 is due on 28 October, after the last record: not closed (C4), so not counted yet
-    assert "So far, 0 of 0 flights with a known outcome were listed as cancelled." in text(index)
+    assert ("Since 27 October, 0 of 0 flights at Ben Gurion were cancelled. Not enough flights yet for a percentage."
+            in text(index))
     assert '<td><span class="pre">Notice given: </span>25+ hours</td>' in read(site, "cancellations.html")
 
 
@@ -338,7 +340,7 @@ def test_the_total_counts_closed_flights(tmp_path):
         (at(8, 0), [row(**ly1, status="CANCELED"), row(**ly2)]),
         (at(8, 45), [row(**ly1, status="CANCELED"), row(**ly2, status="DEPARTED")]),
         (at(8, 15, day=29), [row(flight_no="003", sched_local="2026-10-30T10:00:00")])])
-    assert "So far, 1 of 1 flights with a known outcome were listed as cancelled." in text(read(site, "index.html"))
+    assert total_counts(read(site, "index.html")) == (1, 1)
 
 
 # --- the counts, site-wide (docs/flight-lookup.md, "Tests and checks", words and pages) ---------------
@@ -426,7 +428,8 @@ def test_a_fresh_small_model_passes_the_upload_check(tmp_path):
     upload_check(site)
     pages = all_pages(site)
     assert [name for name, page in pages.items() if "(between" in text(page)] == []
-    assert "Too few so far to say." in text(pages["index.html"])
+    assert "Not enough flights yet for a percentage." in text(pages["index.html"])
+    assert "%" not in text(pages["index.html"])
 
 
 # --- what the build hands to the pages (each page's own words are pinned in tests/test_timeline_views.py) ------------
@@ -533,8 +536,83 @@ def test_the_story_is_the_latest_cancellation_with_a_known_warning(tmp_path):
                                 (at(6, 15), [row(**iz, status="CANCELED"), row(**ly, counters="6-9")]),
                                 (at(9), [row(**iz, status="CANCELED"), row(**ly, counters="6-9", status="CANCELED")])])
     index = read(site, "index.html")
-    story = index[index.index('<section class="story">'):index.index("</section>")]
+    start = index.index('<section class="sec story">')
+    story = index[start:index.index("</section>", start)]
     assert '<a href="flight/IZ991-D.html#2026-10-28-1000-ATH">' in story
+
+
+def test_the_story_skips_a_flight_first_listed_after_its_scheduled_time(tmp_path):
+    """docs/site-redesign.md, "Front page", item 6 (the owner's decision, 2026-11-17), in a build: LY 002, due at 07:30
+    UTC, first appears at 07:45 and is marked cancelled at 08:00, a known warning and the latest cancellation; its
+    steps make no sense read aloud, so IZ 991, due at 07:00 and marked cancelled at 06:15, is told instead."""
+    iz = dict(airline="IZ", flight_no="991", sched_local="2026-10-27T09:00:00", airport="ATH", city_en="ATHENS")
+    ly = dict(flight_no="002", sched_local="2026-10-27T09:30:00")
+    quarters = [at(6, 15), at(6, 30), at(6, 45), at(7), at(7, 15), at(7, 30)]
+    site = make_site(tmp_path, [(at(6), [row(**iz)]), *((t, [row(**iz, status="CANCELED")]) for t in quarters),
+                                (at(7, 45), [row(**iz, status="CANCELED"), row(**ly)]),
+                                (at(8), [row(**iz, status="CANCELED"), row(**ly, status="CANCELED")])])
+    table, _, _ = build.load(tmp_path / "model")
+    late = next(f for f in table if f["flight_no"] == "002")
+    assert (late["first_seen_at"], late["sched_utc_final"]) == (at(7, 45), at(7, 30))
+    assert late["cancel_lead_censored"] is False  # a known warning: without the skip it would be the story
+    index = read(site, "index.html")
+    story = index[index.index('<section class="sec story">'):]
+    assert re.search(r"<h3><a href=\"([^\"]*)\"", story).group(1) == "flight/IZ991-D.html#2026-10-27-0900-ATH"
+
+
+def test_the_story_box_is_titled_as_its_flight_page_and_the_search_list(tmp_path):
+    """docs/site-redesign.md, "Names": a flight's title is the same on its page, in the search list and in the story
+    box. LY 002 was cancelled to Athens on 28 October and is due to Larnaca on 29 October: its page names both, the
+    newest first, where its cancelled day alone would read "LY 002 · Tel Aviv to Athens"."""
+    ath = dict(flight_no="002", sched_local="2026-10-28T10:00:00", airport="ATH", city_en="ATHENS")
+    lca = row(flight_no="002", sched_local="2026-10-29T10:00:00", airport="LCA", city_en="LARNACA")
+    site = make_site(tmp_path, [(at(6), [row(**ath), lca]), (at(6, 15), [row(**ath, status="CANCELED"), lca])])
+    index, page = read(site, "index.html"), read(site, "flight/LY002-D.html")
+    story = index[index.index('<section class="sec story">'):]
+    titled = re.search(r'<h3><a href="flight/LY002-D.html#2026-10-28-1000-ATH">(.*?)</a></h3>', story).group(1)
+    assert titled == re.search(r"<h1>(.*?)</h1>", page).group(1) == (
+        '<span class="d">LY 002 · Tel Aviv to Larnaca or Athens</span>')
+    entries = json.loads(re.search(r'id="flights-data">(.*?)</script>', index, re.S).group(1))
+    assert [e["t"] for e in entries if e["u"] == "flight/LY002-D.html"] == ["LY 002 · Tel Aviv to Larnaca or Athens"]
+
+
+def delay_model(listed_late: int) -> tuple[list[dict], list[dict], list[dict]]:
+    """100 departures and 100 arrivals, closed and flown, from 7 airlines, 28 October to 3 November, each first listed
+    30 hours before its time, so in the rows from 24 hours down; one in ten of each an hour late. `listed_late` more
+    departures, never late, first appear an hour before their time and so are in no row: they lower the departures'
+    own delay rate and leave the rows' as they are."""
+    table, obs = [], []
+
+    def add(i: int, direction: str, number: int, ahead: timedelta, late: bool, airport: str, city: str) -> None:
+        sched = datetime(2026, 10, 28, 2) + i * 1.5 * timedelta(hours=1)  # Israel time, UTC+2
+        f = flight(f"{direction}{number}", sched, airline="A" + "BCDEFGH"[i % 7], flight_no=str(number),
+                   direction=direction, airport=airport, city_en=city,
+                   est_local_final=sched + timedelta(minutes=60 if late else 0),
+                   first_seen_at=sched - timedelta(hours=2) - ahead, last_seen_at=sched - timedelta(hours=3))
+        table.append(f)
+        obs.append(first(f, observed_at=f["first_seen_at"]) | {"sched_utc": f["sched_utc_final"],
+                                                                "est_utc": f["sched_utc_final"]})
+
+    for i in range(100):
+        add(i, "D", 100 + i, timedelta(hours=30), i % 10 == 0, "ATH", "ATHENS")
+        add(i, "A", 500 + i, timedelta(hours=30), i % 10 == 0, "ATH", "ATHENS")
+    for i in range(listed_late):
+        add(i, "D", 800 + i, timedelta(hours=1), False, "LCA", "LARNACA")
+    return table, obs, board(datetime(2026, 11, 10))
+
+
+def test_a_delay_row_off_by_more_than_a_point_stops_the_build():
+    """"It's about the same however soon you fly." holds only while every row's delays (where they clear the floor)
+    are within a point of their direction's own (the plan's decision): render reads the records once and stops the
+    build when one is not. Here departures in the rows run 10% late against 5% for all departures."""
+    even = build.render(*delay_model(0))
+    assert ("Chance of a delay of an hour or more: about 10% for departures and 10% for arrivals. It's about the same "
+            "however soon you fly.") in text(even["index.html"])
+    off = delay_model(100)
+    airport = blend.records(*off).airport
+    assert [(airport.delay[d].cancelled, airport.delay[d].flights) for d in "DA"] == [(10, 200), (10, 100)]
+    with pytest.raises(ValueError, match=r"departures in the 24 hours row, 10 of 100"):
+        build.render(*off)
 
 
 def test_a_pause_of_three_hours(tmp_path):
@@ -547,15 +625,19 @@ def test_a_pause_of_three_hours(tmp_path):
             in text(read(site, "how-it-works.html")))
 
 
-def test_days_at_the_edges_of_the_records_are_incomplete(tmp_path):
+def test_days_at_the_edges_of_the_records_are_marked(tmp_path):
+    """The records start too late for 26 October, a past day: "some flights missing". They end too early for 31
+    October, a later day: "upcoming · not all listed yet" (docs/site-redesign.md, "Front page", item 8)."""
     site = make_site(tmp_path, [(at(6), [row(sched_local="2026-10-26T10:00:00"),
                                          row(flight_no="002", sched_local="2026-10-28T10:00:00"),
                                          row(flight_no="003", sched_local="2026-10-31T10:00:00")])])
     index = read(site, "index.html")
-    for day in ("2026-10-26", "2026-10-31"):  # records start too late for the first, end too early for the last
-        assert "incomplete" in text(chart_day(index, day))
+    marks = {day: re.findall(r'<span class="mark">([^<]*)</span>', chart_day(index, day))
+             for day in ("2026-10-26", "2026-10-28", "2026-10-31")}
+    assert marks == {"2026-10-26": ["some flights missing"], "2026-10-28": ["upcoming"],
+                     "2026-10-31": ["upcoming · not all listed yet"]}
+    for day in ("2026-10-26", "2026-10-31"):
         assert words.PART_MISSING in text(read(site, f"day/{day}.html"))
-    assert "incomplete" not in text(chart_day(index, "2026-10-28"))
     assert "may be missing" not in read(site, "day/2026-10-28.html")
 
 
@@ -566,14 +648,14 @@ def test_the_chart_shows_the_last_14_days_with_flights_and_every_later_day(tmp_p
     index = read(site, "index.html")
     drawn = re.findall(r'<a href="day/([\d-]+)\.html" class=', chart(index))
     assert drawn == [f"2026-10-{d}" for d in (13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 29, 30)]
-    listed = re.findall(r'<a href="day/([\d-]+)\.html">', index[index.index('<p class="days">'):])
+    listed = re.findall(r'<a href="day/([\d-]+)\.html">', index[index.index('<ol class="days" id="days">'):])
     assert listed == [f"2026-10-{d}" for d in days]
 
 
 def test_times_are_israel_time_from_the_first_and_last_records(tmp_path, israeli_machine):
     """The first record, 22:30 UTC on 26 October, is 00:30 on 27 October in Israel; the last, 08:15 on 27 October."""
     site = make_site(tmp_path, [(at(22, 30, day=26), [LY1]), (at(6, 15), [LY1])])
-    assert "in a record kept since 27 October 2026." in text(read(site, "index.html"))
+    assert "Based on every flight at Ben Gurion Airport since 27 October." in text(read(site, "index.html"))
     assert "Updated 27 Oct at 08:15" in text(read(site, "index.html"))
 
 

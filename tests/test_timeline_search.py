@@ -1,5 +1,5 @@
-"""The front page's search script, run under Node (docs/flight-lookup.md: "Pages", Front page, item 2; docs/site-redesign.md, "Search data").
-The script needs no browser for its ranking; the page hook runs against a small stand-in for the page."""
+"""The front page's search script, run under Node (docs/site-redesign.md, "Front page", item 2; "Search data"). The
+script needs no browser for its ranking; the page hook runs against a small stand-in for the page."""
 import json
 import shutil
 import subprocess
@@ -7,12 +7,14 @@ from pathlib import Path
 
 import pytest
 
+from test_timeline_flights import flight, local, rows
 from test_timeline_views import HOSTILE
 from timeline import flights, views
 
 SCRIPT = Path(__file__).parent.parent / "src" / "timeline" / "static" / "search.js"
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="Node is not installed")
-MORE = "more: type more of the number or city"
+MORE = "more. Keep typing to narrow it down."
+NONE = "No flight found. Check the number, or try a city. Flights show up here about 3 days before they leave."
 
 
 def entry(airline: str, number: str, city: str, airport: str) -> dict:
@@ -84,13 +86,14 @@ def test_pattern_characters_are_matched_as_typed(query):
     assert ranked(query, [entry("ZZ", query, "Nowhere", "NOW")]) == ([f"ZZ {query} · Tel Aviv to Nowhere"], 0)
 
 
-# A stand-in for the front page: the three elements the script uses, built like the real ones, and an innerHTML that
-# refuses to be set. It types each of payload.typed into the box and prints what the results list holds after each.
+# A stand-in for the front page: the elements the script uses, built like the real ones (the wrapper #find hidden, the
+# line in its place shown), and an innerHTML that refuses to be set. It types each of payload.typed into the box and
+# prints what the results list holds after each.
 PAGE = """
-function element(tag) {
+function element(tag, hidden = true) {
   const listeners = {};
   return {
-    tag, hidden: true, value: "", textContent: "", attributes: {}, children: [],
+    tag, hidden, value: "", textContent: "", attributes: {}, children: [],
     setAttribute(name, value) { this.attributes[name] = String(value); },
     appendChild(child) { this.children.push(child); return child; },
     replaceChildren(...children) { this.children = children; },
@@ -99,32 +102,36 @@ function element(tag) {
     set innerHTML(_) { throw new Error("innerHTML set"); },
   };
 }
-const page = {"search": element("input"), "search-results": element("ul"), "flights-data": element("script")};
+const page = {"find": element("div"), "find-off": element("p", false), "search": element("input", false),
+              "search-results": element("ul"), "flights-data": element("script")};
 page["flights-data"].textContent = payload.data;
 let ready = () => {};
 globalThis.document = {
   getElementById: (id) => page[id] || null,
-  createElement: element,
+  createElement: (tag) => element(tag, false),
   addEventListener: (type, listener) => { if (type === "DOMContentLoaded") ready = listener; },
 };
 require(SCRIPT);
-const before = !page.search.hidden;
+const shown = () => ({find: !page.find.hidden, off: !page["find-off"].hidden});
+const before = shown();
 let threw = false;
 try { ready(); } catch (_) { threw = true; }
 const list = page["search-results"];
-const shown = () => ({
+const results = () => ({
   hidden: list.hidden,
   items: list.children.map((li) => li.children.length
     ? {tag: li.tag, a: li.children[0].tag, href: li.children[0].attributes.href, text: li.children[0].textContent}
     : {tag: li.tag, class: li.attributes.class, text: li.textContent}),
 });
 const after = [];
+const loaded = results();
+const page_after = shown();
 for (const typed of payload.typed) {
   page.search.value = typed;
   page.search.fire("input");
-  after.push(shown());
+  after.push(results());
 }
-console.log(JSON.stringify({before, threw, box: !page.search.hidden, loaded: shown(), after}));
+console.log(JSON.stringify({before, threw, shown: page_after, loaded, after}));
 """
 
 
@@ -136,29 +143,58 @@ def link(e: dict) -> dict:
     return {"tag": "li", "a": "a", "href": e["u"], "text": e["t"]}
 
 
-def test_the_box_shows_once_the_page_is_ready_and_the_list_only_while_something_matches():
-    out = typed(ENTRIES, "ly 001", "zz", "")
-    assert not out["before"] and not out["threw"] and out["box"]  # hidden without JavaScript, shown once it runs
+def test_once_the_data_reads_the_wrapper_shows_and_the_line_in_its_place_goes():
+    """Without JavaScript the label, the box and the hint stay hidden in their wrapper and "To find your flight, pick
+    its day below." stands in their place; once the script has read the flights, the two change places."""
+    out = typed(ENTRIES)
+    assert out["before"] == {"find": False, "off": True}
+    assert not out["threw"] and out["shown"] == {"find": True, "off": False}
     assert out["loaded"] == {"hidden": True, "items": []}
+
+
+def test_unreadable_data_leaves_both_as_built():
+    out = typed([], data='[{"n": ["ly1"]')
+    assert out["threw"] and out["shown"] == {"find": False, "off": True}
+
+
+def test_the_list_shows_while_something_is_typed():
+    out = typed(ENTRIES, "ly 001", "")
     assert out["after"] == [{"hidden": False, "items": [link(ENTRIES[3]), link(ENTRIES[4])]},
-                            {"hidden": True, "items": []},
                             {"hidden": True, "items": []}]
 
 
 def test_ten_links_then_a_line_saying_how_many_more():
-    many = [entry("LY", f"{n:03d}", "London", "LHR") for n in range(1, 13)]
+    """docs/site-redesign.md, "Front page", item 2: "12 more. Keep typing to narrow it down."."""
+    many = [entry("LY", f"{n:03d}", "London", "LHR") for n in range(1, 23)]
     out = typed(many, "london", "ly 01")
     assert out["after"][0] == {"hidden": False, "items": [*map(link, many[:10]),
-                                                          {"tag": "li", "class": "more", "text": f"2 {MORE}"}]}
-    assert out["after"][1] == {"hidden": False, "items": [*map(link, many[9:12])]}  # LY 010, 011, 012; no line
+                                                          {"tag": "li", "class": "more", "text": f"12 {MORE}"}]}
+    assert out["after"][0]["items"][-1]["text"] == "12 more. Keep typing to narrow it down."
+    assert out["after"][1] == {"hidden": False, "items": [*map(link, many[9:19])]}  # LY 010 to 019: ten, no line
+
+
+def test_a_query_that_matches_nothing_says_so():
+    """docs/site-redesign.md, "Front page", item 2: one line for a query that finds no flight; nothing for an empty
+    box."""
+    out = typed(ENTRIES, "zz", "  ", "york")
+    assert out["after"] == [{"hidden": False, "items": [{"tag": "li", "class": "none", "text": NONE}]},
+                            {"hidden": True, "items": []},
+                            {"hidden": False, "items": [{"tag": "li", "class": "none", "text": NONE}]}]
+
+
+def test_the_results_carry_the_flight_pages_titles():
+    """The search list shows each flight by its page's title (docs/site-redesign.md, "Names"), written by
+    flights.search_entries: "LH 697 · Tel Aviv to Athens or Frankfurt" for a number that has flown to two cities, the
+    newest day's first."""
+    lh = dict(airline="LH", flight_no="697")
+    found = flights.search_entries(rows(flight("fra", local(28, 9, 0), **lh, airport="FRA", city_en="FRANKFURT"),
+                                        flight("ath", local(29, 9, 0), **lh, airport="ATH", city_en="ATHENS")))
+    out = typed(found, "lh697", "frankfurt")
+    title = {"tag": "li", "a": "a", "href": "flight/LH697-D.html", "text": "LH 697 · Tel Aviv to Athens or Frankfurt"}
+    assert out["after"] == [{"hidden": False, "items": [title]}] * 2
 
 
 def test_a_title_with_markup_from_the_data_stays_text():
     # The JSON as the front page writes it (every "<" escaped), read back by the script and shown as text.
     out = typed([*ENTRIES, HOSTILE], "</scr")
     assert out["after"] == [{"hidden": False, "items": [link(HOSTILE)]}]
-
-
-def test_unreadable_data_leaves_the_box_hidden():
-    out = typed([], data='[{"n": ["ly1"]')
-    assert out["threw"] and not out["box"]
