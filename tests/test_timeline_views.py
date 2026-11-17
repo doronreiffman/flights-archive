@@ -1000,6 +1000,75 @@ def test_a_later_day_carries_its_chances_and_no_line_of_its_own():
         assert 'class="worked' not in day and 'class="support"' not in day and 'class="s-line"' not in day
 
 
+def lo155_late(*late: int) -> list[dict]:
+    """LO 155 as lo155(), its November days ahead in `late` expected at 20:45, an hour after their 19:45: DELAYED."""
+    return lo155(ahead=()) + [
+        flight(f"lo11{d}", wall(date(2026, 11, d), 19, 45), outcome="open", **LO,
+               est_local_final=wall(date(2026, 11, d), 20 if d in late else 19, 45)) for d in (17, 18, 19)]
+
+
+CANCEL_ONLY = ('<span class="fl">Chance it&#x27;s cancelled:</span> <span class="fv"><span class="q">under</span> '
+               '<b class="n">1%</b></span>')
+
+
+def test_a_day_ahead_already_delayed_shows_the_cancellation_chance_alone():
+    """The owner, 2026-11-17 (the whole-branch review's Important 1): a day ahead that already shows DELAYED, its
+    expected time an hour or more after its scheduled time, carries "Chance it's cancelled: …" alone, in every pair,
+    on the traveller's day and on a later day; its label and "scheduled … · expected …" say the rest. No new words.
+    LO 155 expected an hour late on 17 and 18 November, on time on the 19th: the 19th keeps both chances. The
+    "Worked out from" line stands, and the "its next flight" forms, hidden for the page script, keep both."""
+    page = lo155_page(lo155_late(17, 18))
+    top, later, ordinary = (day_block(page, f"2026-11-{d}-1945-WAW") for d in (17, 18, 19))
+    for day in (top, later):
+        assert "expected 20:45 · UPCOMING · DELAYED" in text(day)
+        assert "delayed an hour or more" not in text(div(day, '<div class="chances">'))
+        assert 'class="sep"' not in div(day, '<div class="chances">')
+    got = pairs(top)
+    assert [(a, u, h) for a, u, h, _ in got] == [(6, 12, False), (3, 6, True), (0, 3, True)]
+    assert {t for *_, t in got} == {"Chance it's cancelled: under 1%"}
+    assert (f'<div class="pair" data-after="6" data-upto="12">\n<p class="fig">{CANCEL_ONLY}</p>\n</div>\n'
+            '<div class="pair" data-after="3" data-upto="6" hidden>\n') in top
+    got = pairs(later)
+    assert len(got) == 5 and {t for *_, t in got} == {"Chance it's cancelled: under 1%"}
+    assert f'<div class="pair" data-after="24" data-upto="48">\n<p class="one">{CANCEL_ONLY}</p>\n</div>' in later
+    assert {t for *_, t in pairs(ordinary)} == {"Chance it's cancelled: under 1% · Chance it's delayed an hour or "
+                                                "more: about 1%"}
+    # The lines under the chances are those of the same page with no day delayed: the "Worked out from" line, and the
+    # "its next flight" headline in both its chances, hidden until every day has passed.
+    support = div(top, '<div class="support">')
+    assert support == div(day_block(lo155_page(), "2026-11-17-1945-WAW"), '<div class="support">')
+    assert shown(support)[0] == LO155_WORKED
+    assert [t for t, h in lines(div(support, '<div class="none-ahead" hidden>'))] == [
+        "Chance its next flight is cancelled: under 1%", "Chance its next flight is delayed an hour or more: about 1%"]
+    flat = check.flatten(check.strip_tags(page))
+    assert check.CHANCE.search(flat) and check.WORKED_OUT.search(check.plain(check.strip_tags(page)))
+
+
+def test_a_delayed_day_ahead_takes_nothing_from_the_ordinary_days():
+    """The traveller's day on time and a later day delayed: the traveller's day keeps both chances, each on its line,
+    and only the delayed day loses its delay chance."""
+    page = lo155_page(lo155_late(18))
+    top, later = day_block(page, "2026-11-17-1945-WAW"), day_block(page, "2026-11-18-1945-WAW")
+    assert shown(div(top, '<div class="chances">')) == ["Chance it's cancelled: under 1%",
+                                                       "Chance it's delayed an hour or more: about 1%"]
+    assert "DELAYED" not in text(top) and "DELAYED" in text(later)
+    assert {t for *_, t in pairs(later)} == {"Chance it's cancelled: under 1%"}
+
+
+def test_the_next_flight_forms_keep_both_chances_after_a_delayed_day():
+    """No day ahead, the latest day landed an hour late (LANDED · DELAYED): the "its next flight" headline keeps both
+    its chances, shown without scripts. A day that has flown carries no prepared pairs, so the owner's rule does not
+    reach it."""
+    fs = lo155(ahead=())
+    fs[-1] = fs[-1] | {"est_local_final": wall(date(2026, 11, 16), 20, 45), "est_minus_sched_min": 60.0}
+    page = lo155_page(fs)
+    assert "LANDED · DELAYED" in text(day_block(page, "2026-11-16-1945-WAW"))
+    now = shown(div(page, '<div id="now">'))
+    assert now[1].startswith("Chance its next flight is cancelled: ")
+    assert now[2].startswith("Chance its next flight is delayed an hour or more: ")
+    assert 'class="chances"' not in page
+
+
 def test_prepared_pairs_only_for_stretches_still_ahead():
     """docs/flight-lookup.md, "Left to the builder", "At which moment" and "The weight of prepared figures": a day 31
     hours ahead at the last update holds one pair per stretch still ahead of it, five, from (24, 48] down; that one

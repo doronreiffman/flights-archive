@@ -241,9 +241,12 @@ def _figure(label: str, figure: str) -> str:
             f'<span class="fv"><span class="q">{e(word)}</span> <b class="n">{e(number)}</b></span>')
 
 
-def _figs(headline: tuple[tuple[str, str], tuple[str, str]]) -> list[str]:
-    """The two chances of words.headline, each on a line of its own, as the slot under the top day sets them."""
+def _figs(headline: tuple[tuple[str, str], ...]) -> list[str]:
+    """The chances of words.headline, each on a line of its own, as the slot under the top day sets them."""
     return [f'<p class="fig">{_figure(*chance)}</p>' for chance in headline]
+
+
+SEP = '<span class="sep"> · </span>'
 
 
 def _chances(r: Row, updated: datetime, top: bool, cancel: Callable[[int], float | None], delay: float) -> str:
@@ -252,13 +255,15 @@ def _chances(r: Row, updated: datetime, top: bool, cancel: Callable[[int], float
     by that stretch's own row (`cancel` of its checkpoint), the delay flat; each pair with its stretch's bounds for the
     page script. The first, the stretch the day was in at the last update (above 72 hours, the top one), shows without
     scripts, the rest hidden. The top day sets each chance on a line of its own; a later day sets the two on one
-    line."""
+    line. A day already showing DELAYED (display.delayed_an_hour) carries the cancellation chance alone in every pair:
+    its label and its expected time already say it is late (the owner, 2026-11-17)."""
     left = (r.sched_utc_final - updated).total_seconds() / 3600
     out = ['<div class="chances">']
     for i, (after, upto, h) in enumerate(s for s in blend.STRETCHES if s[0] < left):
         headline = words.headline(cancel(h), delay, True)
-        body = _figs(headline) if top else [
-            f'<p class="one">{_figure(*headline[0])}<span class="sep"> · </span>{_figure(*headline[1])}</p>']
+        figures = headline[:1] if r.delayed else headline
+        body = _figs(figures) if top else [
+            f'<p class="one">{SEP.join(_figure(*chance) for chance in figures)}</p>']
         out += [f'<div class="pair" data-after="{after}" data-upto="{upto}"{" hidden" if i else ""}>', *body, "</div>"]
     return "\n".join([*out, "</div>"])
 
@@ -364,8 +369,9 @@ def flight_page(rows: list[Row], partners: dict[str, tuple[Row, ...]],
     The chances (blend) are worked out from the number's record (per number and direction), the page's airline's
     (page_flight) and the airport's, all from `records`; `flights_` holds the page's flights (C1) and `by_id` the
     flights table by flight_id, for the partner line's number, C8's lead of the traveller's (or newest) day's flight.
-    Each day ahead labelled UPCOMING carries its prepared chances; any other day ahead carries none, and neither does
-    a page whose airport has no rate to start from (Question 1's structure). ValueError when the partner line's airline
+    Each day ahead labelled UPCOMING carries its prepared chances, one already showing DELAYED its cancellation chance
+    alone (_chances); any other day ahead carries none, and neither does a page whose airport has no rate to start
+    from (Question 1's structure). ValueError when the partner line's airline
     has no spoken name (build.render stops first, naming every one)."""
     by_time, ahead = _days(rows, updated)
     later = ahead[1:]
