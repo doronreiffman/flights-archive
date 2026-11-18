@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import shutil
+import subprocess
 from datetime import timedelta
 from pathlib import Path
 
@@ -295,6 +297,7 @@ def test_main_finds_no_difference_on_a_small_archive(check, tmp_path, monkeypatc
     assert found["fixture tests/fixtures/rules_record_v1.py, SHA-256 " + RECORD_V1_SHA256] == [
         f"fixture tests/fixtures/rules_record_v1.py, SHA-256 {RECORD_V1_SHA256}: equal to record-v1's "
         "src/model/rules.py"]
+    assert out.splitlines()[1] == check.code_line()
     assert found["archive " + str(raw)] == [f"archive {raw}: 8 snapshots, 16 receipts, last board 2026-10-28 02:19:00 UTC"]
     kept = {"quarter": (2, "22:37"), "half": (4, "23:51"), "three quarters": (6, "01:05"), "whole": (8, "02:19")}
     for label, (n, last) in kept.items():
@@ -325,6 +328,7 @@ def test_main_exits_1_on_a_difference(check, tmp_path, monkeypatch, capsys):
     assert code == 1, out + err
     assert out.splitlines()[0] == (f"fixture tests/fixtures/rules_record_v1.py, SHA-256 {RECORD_V1_SHA256}: tag "
                                    "record-v1 not in this clone: checked against the pinned SHA-256 only")
+    assert out.splitlines()[1] == check.code_line()
     assert blocks(out)["whole"][-1] == "  observations: 1 row only in new"
     assert "identical" not in out
 
@@ -373,3 +377,89 @@ def test_main_stops_when_the_tag_and_the_fixture_differ(check, tmp_path, monkeyp
     else:
         assert err == (f"tests/fixtures/rules_record_v1.py differs from record-v1's src/model/rules.py (SHA-256 "
                        f"{hashlib.sha256(tag).hexdigest()} at the tag)\n")
+
+
+def test_main_runs_every_check_on_every_archive(check, tmp_path, monkeypatch, capsys):
+    """Checks 1 and 2, 3 and 4 each run on every archive, on its tagged and its new folder in that order, every line
+    they return is printed, and a difference in an earlier archive decides the exit as much as one in the last."""
+    raw, receipts = write_two_days(tmp_path)
+    monkeypatch.setattr(check, "tag_rules", lambda: None)
+    work, calls = tmp_path / "work", []
+
+    def spy(name):
+        def compare(a, b, *rest):
+            label = a.parent.name
+            assert (a, b) == (work / label / "tagged", work / label / "new"), (name, a, b)
+            calls.append((name, label))
+            return [f"{name}: a difference"] if label == "half" else []
+        return compare
+
+    checks = ("compare_tables", "compare_load", "compare_progress")
+    for name in checks:
+        monkeypatch.setattr(check, name, spy(name))
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts,
+                              "--fractions", 0.5, 1)
+    assert code == 1, out + err
+    assert sorted(calls) == sorted((name, label) for name in checks for label in ("half", "whole"))
+    found = blocks(out)
+    assert found["half"][7:] == [f"  {name}: a difference" for name in checks]
+    assert found["whole"][7:] == ["  identical: columns, rows, load(), progress.json"]
+
+
+@pytest.mark.parametrize("fractions", [(0.5, 0.5), (1, 1.0)])
+def test_main_refuses_a_fraction_given_twice(check, tmp_path, capsys, fractions):
+    raw, receipts = write_two_days(tmp_path)
+    work = tmp_path / "work"
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts,
+                              "--fractions", *fractions)
+    label = "half" if fractions[0] == 0.5 else "whole"
+    assert code == 2 and out == "" and not work.exists()
+    assert err == f'--fractions gives "{label}" twice: each archive is built once, in a folder of its own\n'
+
+
+@pytest.mark.parametrize("inside", ["raw", "receipts"])
+def test_main_refuses_a_work_folder_inside_the_archive(check, tmp_path, capsys, inside):
+    """Inside raw/ or receipts/, the builds would read what they write. Paths are compared resolved: here --work
+    goes through a link."""
+    raw, receipts = write_two_days(tmp_path)
+    archive = raw if inside == "raw" else receipts
+    link = tmp_path / "link"
+    link.symlink_to(archive)
+    before = sorted(tmp_path.rglob("*"))
+    code, out, err = run_main(check, capsys, "--work", link / "check", "--raw", raw, "--receipts", receipts,
+                              "--fractions", 1)
+    assert code == 2 and out == ""
+    assert sorted(tmp_path.rglob("*")) == before
+    assert err == f"{archive.resolve() / 'check'} is inside {archive.resolve()}: the builds would read their own work\n"
+
+
+def git(root: Path, *args: str) -> str:
+    done = subprocess.run(["git", "-C", str(root), "-c", "user.name=test", "-c", "user.email=test@example.com",
+                           "-c", "commit.gpgsign=false", *args], capture_output=True, text=True, check=True)
+    return done.stdout.strip()
+
+
+def test_the_code_line_names_the_commit_and_any_uncommitted_change(check, tmp_path, monkeypatch):
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)  # this machine's git settings play no part
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    root = tmp_path / "clone"
+    for rel in ("src/model/rules.py", "scripts/tagged_check.py", "tests/fixtures/rules_record_v1.py", "docs/notes.md"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("one\n")
+    monkeypatch.setattr(check, "ROOT", root)
+    assert check.code_line().startswith("code: git could not tell the commit compared (")  # not a repository yet
+    git(root, "init", "-q")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "--no-verify", "-m", "first")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    clean = f"code {head}: clean (src/model, scripts/tagged_check.py, tests/fixtures/rules_record_v1.py)"
+    assert check.code_line() == clean
+    (root / "docs" / "notes.md").write_text("two\n")  # a change outside what either build runs
+    assert check.code_line() == clean
+    (root / "src" / "model" / "rules.py").write_text("two\n")
+    (root / "src" / "model" / "stage.py").write_text("new\n")
+    assert check.code_line() == f"code {head}: UNCOMMITTED CHANGES in src/model/rules.py, src/model/stage.py"
+    monkeypatch.setenv("PATH", str(tmp_path / "nothing"))
+    assert check.code_line() == "code: git not available, so the commit compared is not known"

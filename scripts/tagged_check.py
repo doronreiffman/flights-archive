@@ -15,8 +15,9 @@ order. Local only: the archive is not in the repository. Run from the repository
     PYTHONPATH=src .venv/bin/python scripts/tagged_check.py --work DIR [--raw data/raw] [--receipts data/receipts] \
         [--fractions 0.25 0.5 0.75 1]
 
---work is a new or empty folder. It refuses to run when the fixture is not the pinned one, or when tag record-v1 is in
-this clone and holds other bytes. Each fraction's archive (quarter, half, three quarters, whole) gets a folder of its
+--work is a new or empty folder outside raw/ and receipts/. It refuses to run when the fixture is not the pinned one,
+when tag record-v1 is in this clone and holds other bytes, or when two fractions name one archive. It prints the commit
+compared and whether src/model, this script or the fixture hold changes not committed. Each fraction's archive (quarter, half, three quarters, whole) gets a folder of its
 own under --work: the cut copied into archive/ (the whole archive is read where it is), then the tagged build into
 tagged/ and the current build into new/, each in a process of its own so that one build's memory goes back to the
 system before the next, its output in tagged.log or new.log. The four checks follow. Exit 0 when every archive is
@@ -58,6 +59,8 @@ TAGGED_RULES = ROOT / "tests" / "fixtures" / "rules_record_v1.py"
 # The SHA-256 of `git show record-v1:src/model/rules.py`
 TAGGED_SHA256 = "57a07619159113601e3ac9311a7ccd69ee27f93fc1a57ad7860d20a4c6bf4162"
 TAG = "record-v1"
+# What either build runs: the current model, this script (the tagged build's code) and the tagged rules
+BUILD_CODE = ("src/model", "scripts/tagged_check.py", "tests/fixtures/rules_record_v1.py")
 LOAD_PARTS = ("flights", "observations", "snapshots")  # the three lists timeline.load.load returns, in its order
 
 
@@ -185,6 +188,24 @@ def tag_rules() -> bytes | None:
     return done.stdout if done.returncode == 0 else None
 
 
+def code_line() -> str:
+    """The code being compared, printed beside the fixture line: this checkout's commit, and whether the files either
+    build runs (BUILD_CODE) hold changes not committed. Not a refusal."""
+    git = ["git", "-C", str(ROOT)]
+    try:
+        head = subprocess.run([*git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
+        status = subprocess.run([*git, "status", "--porcelain", "--", *BUILD_CODE], capture_output=True, text=True)
+    except OSError:  # no git
+        return "code: git not available, so the commit compared is not known"
+    for done in (head, status):
+        if done.returncode != 0:
+            why = (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1]
+            return f"code: git could not tell the commit compared ({why})"
+    changed = [line[3:] for line in status.stdout.splitlines()]  # "XY path": the path after the two status letters
+    return f"code {head.stdout.strip()}: " + (f"UNCOMMITTED CHANGES in {', '.join(changed)}" if changed
+                                               else f"clean ({', '.join(BUILD_CODE)})")
+
+
 def run_tagged_build(argv: list[str]) -> int:
     """The child mode, `tagged_check.py tagged-build`: build_tagged on one archive, with the KNOWN_ORPHANS of today's
     rules (model.rules), the snapshots the archive is known to hold with no receipt."""
@@ -284,6 +305,15 @@ def main(argv: list[str]) -> int:
     if work.exists() and (not work.is_dir() or any(work.iterdir())):
         print(f"{work} is not an empty folder: give a new folder, or an empty one", file=sys.stderr)
         return 2
+    for archive in (raw.resolve(), receipts.resolve()):
+        if work.resolve().is_relative_to(archive):
+            print(f"{work.resolve()} is inside {archive}: the builds would read their own work", file=sys.stderr)
+            return 2
+    labels = [LABELS.get(fraction, f"{fraction:g}") for fraction in args.fractions]
+    if len(set(labels)) != len(labels):
+        twice = next(label for label in labels if labels.count(label) > 1)
+        print(f'--fractions gives "{twice}" twice: each archive is built once, in a folder of its own', file=sys.stderr)
+        return 2
     try:
         tagged_rules()
     except (OSError, ValueError) as refused:  # the fixture unreadable, or not the pinned one
@@ -294,7 +324,6 @@ def main(argv: list[str]) -> int:
         print(f"{_shown(TAGGED_RULES)} differs from {TAG}'s src/model/rules.py "
               f"(SHA-256 {hashlib.sha256(tag).hexdigest()} at the tag)", file=sys.stderr)
         return 2
-    labels = [LABELS.get(fraction, f"{fraction:g}") for fraction in args.fractions]
     try:
         whole, cuts = cut_moments(raw, [1])[0], cut_moments(raw, args.fractions)
     except ValueError as refused:
@@ -303,6 +332,7 @@ def main(argv: list[str]) -> int:
     print(f"fixture {_shown(TAGGED_RULES)}, SHA-256 {TAGGED_SHA256}: "
           + (f"tag {TAG} not in this clone: checked against the pinned SHA-256 only" if tag is None
              else f"equal to {TAG}'s src/model/rules.py"))
+    print(code_line())
     print(f"archive {raw}: {whole.total:,} snapshots, {sum(1 for _ in receipts.rglob('*.json')):,} receipts, "
           f"last board {whole.moment:%Y-%m-%d %H:%M:%S} UTC", flush=True)
     work.mkdir(parents=True, exist_ok=True)

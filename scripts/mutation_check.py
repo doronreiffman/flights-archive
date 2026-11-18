@@ -76,6 +76,9 @@ RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
 TAGGED_CHECK = ("scripts/tagged_check.py", ["tests/test_tagged_check.py"])
+# The one test that proves the tagged check's runner runs every check on both builds of every archive, and keeps an
+# earlier archive's difference in the exit code.
+EVERY_CHECK = ("scripts/tagged_check.py", ["tests/test_tagged_check.py::test_main_runs_every_check_on_every_archive"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
@@ -666,6 +669,14 @@ COLLECTOR_MUTATIONS = {
     "tagged check: exit 0 on a difference": (TAGGED_CHECK, "    return 1 if failed else 0\n", "    return 0\n"),
     "tagged check: a work folder in use reused": (TAGGED_CHECK, "    if work.exists() and (not work.is_dir() or any(work.iterdir())):\n", "    if False:\n"),
     "tagged check: tag and fixture not compared": (TAGGED_CHECK, "    if tag is not None and tag != TAGGED_RULES.read_bytes():\n", "    if False:\n"),
+    "tagged check: check 3 dropped": (EVERY_CHECK, "    return compare_tables(tagged, new) + compare_load(tagged, new) + progress\n", "    return compare_tables(tagged, new) + progress\n"),
+    "tagged check: check 4 dropped": (EVERY_CHECK, "    return compare_tables(tagged, new) + compare_load(tagged, new) + progress\n", "    return compare_tables(tagged, new) + compare_load(tagged, new)\n"),
+    "tagged check: a folder compared with itself": (EVERY_CHECK, "    return compare_tables(tagged, new) + compare_load(tagged, new) + progress\n", "    return compare_tables(tagged, tagged) + compare_load(tagged, tagged) + progress\n"),
+    "tagged check: the last archive decides the exit": (EVERY_CHECK, "        failed = failed or bool(lines)\n", "        failed = bool(lines)\n"),
+    "tagged check: a fraction given twice accepted": (TAGGED_CHECK, "    if len(set(labels)) != len(labels):\n", "    if False:\n"),
+    "tagged check: a work folder inside the archive accepted": (TAGGED_CHECK, "        if work.resolve().is_relative_to(archive):\n", "        if False:\n"),
+    "tagged check: a work folder inside the archive compared unresolved": (TAGGED_CHECK, "    for archive in (raw.resolve(), receipts.resolve()):\n        if work.resolve().is_relative_to(archive):\n", "    for archive in (raw, receipts):\n        if work.is_relative_to(archive):\n"),
+    "tagged check: uncommitted changes shown as clean": (TAGGED_CHECK, "    changed = [line[3:] for line in status.stdout.splitlines()]", "    changed = []"),
     # the stage: each date folder's per-board work staged on its own, and the whole-history rules reading it
     "tagged: a dropped snapshot's rows let into rows": (TAGGED, "        SELECT * FROM staged_rows\n        WHERE snapshot_id IN", "        SELECT * FROM staged_rows\n        WHERE true OR snapshot_id IN"),
     "tagged: a snapshot's raw count taken after duplicates are removed": (TAGGED, "count(DISTINCT page) AS pages, count(*) AS rows_raw,", "count(DISTINCT page) AS pages, count(DISTINCT ({fields})) AS rows_raw,"),
