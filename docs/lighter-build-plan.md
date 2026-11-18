@@ -588,3 +588,20 @@ Implementer: transcription (Sonnet). Every claim is checked against the code as 
   - "The same kind of error" holds for an archive with one fault. Days are read one at a time, and stray receipts are checked first, so an archive with two faults in different places may be refused with another class than the tagged build's.
   - The counts and first-ten lists in `load_raw`'s and `load_receipts`' refusal messages now cover one date folder, not the archive.
   - `model.build.build` stages into a `tempfile.TemporaryDirectory(prefix="model-stage-")` (the prefix from Task 6), removed after the build; tests that call it stage in the system's temp folder, not under `tmp_path`.
+- **2026-11-18, Task 2.** One test more than listed: `test_a_refusal_of_another_kind_is_caught`, for the comparison's branch where both builds refuse with different exception classes, which no listed test reached.
+- **2026-11-18, Task 6.**
+  - The refusal of a folder that is not a model's runs at the start of `build()`, before any staging, as well as in `write_model`, so `--out data` fails at once rather than after the stage.
+  - `main` keeps its check that `--raw` holds a snapshot file (exit 2 before any build).
+  - Four entries more than listed, among them "build: last model overwritten while the new one is written": the listed "model written in place" is caught only because the first build of its test has no model yet, so only the added entry reaches the check that the last model keeps its bytes.
+- **2026-11-18, Task 7.**
+  - `compare_progress` reports a `progress.json` missing on either side as its own line, so two runs that both write nothing never compare equal.
+  - The tagged child build writes into `<work>/<label>/tagged`, with DuckDB's temp folder `<work>/<label>/tagged-tmp`; each build's output goes to a log beside it.
+  - Each archive's line gives the snapshot folders the cut keeps and those copied.
+  - The output names the commit compared and whether `src/model`, the script and the fixture hold uncommitted changes.
+  - A fraction given twice, and a `--work` inside `--raw` or `--receipts`, are refused with exit 2 before anything is written.
+  - The task's review found that no test proved the runner runs every check on two different folders and counts every archive in the exit code: four one-line breaks passed every test. `test_main_runs_every_check_on_every_archive` and four entries close it.
+- **2026-11-18, after Task 7: points from the task reviews, fixed before Task 8** (any later change to `src/model/` would run Task 8 again).
+  - "Leftover `<out>.building` and `<out>.old` folders are removed first" (Task 6) has one exception. A build stopped between its two renames leaves no `<out>`, the last model in `<out>.old` and the new one in `<out>.building`. `build()` now puts `<out>.old` back as `<out>` before any work, when there is no `<out>` and `<out>.old` holds exactly the five table files. Before that, the next build deleted it first, and if that build failed too, no model was left.
+  - A day staged again first loses the `*.tmp` files a stopped build left in its stage folder.
+  - A stage folder that equals, lies inside or holds `--raw` or `--receipts` is refused before any work: `--stage data` would have put `marker.json` among the receipts.
+  - Pins: each day-boundary case checks that it still shows its feature, so the comparison cannot pass on a case hollowed out by a helper; a test for the comparison's branch where only the tagged build refuses; a marker that is valid JSON but not an object; a staged receipts day whose source folder is gone; a folder named like a table in `<out>`.
