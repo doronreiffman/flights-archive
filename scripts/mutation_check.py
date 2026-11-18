@@ -702,6 +702,7 @@ COLLECTOR_MUTATIONS = {
     "stage: restage ignored": (STAGE, "    if not restage and _current(out, marker, files):\n", "    if _current(out, marker, files):\n"),
     "stage: leftover temp files kept": (STAGE, '    for leftover in out.glob("*.tmp"):  # a stopped _copy\'s or _mark\'s temporary file\n        leftover.unlink()\n', ""),
     "stage: a staged receipts day read after its folder is gone": (STAGE, "receipt_days=tuple(d.name for d in receipt_days),", 'receipt_days=tuple(sorted(p.name for p in (stage_dir / "receipts").glob("date=*"))),'),
+    "stage: a day listed after it is read": (STAGE, "    read()\n    out.mkdir(parents=True, exist_ok=True)\n", '    read()\n    marker = {"fingerprint": print_, "files": listing(day, pattern)}\n    out.mkdir(parents=True, exist_ok=True)\n'),
     # the build: DuckDB's memory limit, threads and temp folder, the options, and the model folder written whole
     "build: memory limit not set": (BUILD, """    con.execute(f"SET memory_limit = '{_sql(memory_limit)}'")\n""", ""),
     "build: threads not set": (BUILD, '    con.execute(f"SET threads = {int(threads)}")\n', ""),

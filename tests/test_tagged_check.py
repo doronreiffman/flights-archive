@@ -440,6 +440,10 @@ def git(root: Path, *args: str) -> str:
 
 
 def test_the_code_line_names_the_commit_and_any_uncommitted_change(check, tmp_path, monkeypatch):
+    # Run from a git hook, these would point every git call below at the outer repository.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))  # no repository above tmp_path is found
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)  # this machine's git settings play no part

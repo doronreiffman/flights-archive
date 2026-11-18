@@ -344,6 +344,31 @@ def test_a_file_whose_size_changed_is_staged_again(tmp_path):
     assert compare_with_fresh(raw, None, staged, tmp_path / "after") == []
 
 
+@pytest.mark.parametrize("when", ["before", "after"])
+def test_a_file_synced_while_its_day_is_read_stages_that_day_again(tmp_path, monkeypatch, when):
+    """A sync during a build: a board lands in 26 October's folder while that day is staged, just before or just after
+    its files are read. The day's listing is taken before the read (stage._stage_day), so the marker never names a file
+    the staged rows may lack: the next build stages that day again, and equals a fresh build."""
+    raw, staged = legacy_days(tmp_path)
+    real = stage._read_boards
+    synced = []
+
+    def read_during_a_sync(con, day):
+        late = day.name == "date=2026-10-26" and not synced
+        if late and when == "before":
+            synced.append(board(raw, None, at(7, day=26), "DELAYED"))
+        real(con, day)
+        if late and when == "after":
+            synced.append(board(raw, None, at(7, day=26), "DELAYED"))
+
+    monkeypatch.setattr(stage, "_read_boards", read_during_a_sync)
+    assert stage.stage(rules.connect(), raw, None, staged).staged == ("raw/date=2026-10-26", "raw/date=2026-10-27")
+    assert len(synced) == 1
+
+    assert stage.stage(rules.connect(), raw, None, staged).staged == ("raw/date=2026-10-26",)
+    assert compare_with_fresh(raw, None, staged, tmp_path / "after") == []
+
+
 def test_a_staged_day_whose_folder_is_gone_is_ignored(tmp_path):
     raw, staged = legacy_days(tmp_path)
     stage.stage(rules.connect(), raw, None, staged)

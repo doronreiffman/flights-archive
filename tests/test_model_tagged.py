@@ -218,7 +218,7 @@ def test_a_refusal_on_one_side_only_is_caught(raw, rec, monkeypatch):
     write_receipt(rec, a)
     write_snapshot(raw, at(6, 15), [row(status="DELAYED")])
     monkeypatch.setattr(rules, "PENDING_GRACE_MINUTES", 5)
-    with pytest.raises(AssertionError, match="refused"):
+    with pytest.raises(AssertionError, match="the new build refused this archive .*, and the tagged build built it"):
         model_helpers.build(raw, rec)
 
 
