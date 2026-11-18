@@ -10,11 +10,11 @@ Keeps the history of the Ben Gurion airport flight board, which overwrites itsel
 
 Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
-![The history site's front page: a deep-blue header; three tiles reading 2,674 flights with a known outcome, 47 listed as cancelled, about 1 in 55; one cancellation, U8 102 from Larnaca, with the time of the change shown as a range; a search box and the recent cancellations, each with its warning as a lower bound.](docs/img/front-page.png)
+![The front page of Will It Fly?: "Find your flight" over a search box for a flight number or city; the chance of cancellation by how soon you fly, for all airlines, from 1.6% three days away down to 0.5% three hours away, and about 8% of departures and 5% of arrivals delayed an hour or more; then the total since 27 October: 6,353 flights, 107 cancelled, 1.7%.](docs/img/front-page.png)
 
-![The page for flight BZ 317 from Vienna: landed on 28 October and 2 November; the 1 November flight listed as cancelled, with at least 27 hours' warning and the time of the change shown as a range; two flights upcoming.](docs/img/timeline.png)
+![The page for BZ 317 from Vienna: its flight on Wednesday 18 November, scheduled to land at 19:15, with "Chance it's cancelled: about 4%" and "Chance it's delayed an hour or more: about 17%", worked out mostly from Bluebird Airways' history because BZ 317 has only 12 flights so far; then its record so far (12 flights, 1 cancelled, 3 delayed an hour or more) and its days as a strip: 11 landed, 1 cancelled, 2 upcoming.](docs/img/timeline.png)
 
-*The front page and one flight's page, as of 4 November 2026.*
+*The front page and one flight's page, as uploaded on 18 November 2026.*
 
 ## At a glance
 
