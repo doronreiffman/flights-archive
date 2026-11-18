@@ -1,16 +1,25 @@
-"""Build tiny raw snapshots in the collector's layout, for the model tests."""
+"""Build tiny raw snapshots in the collector's layout, and the model from them, for the model tests."""
 from __future__ import annotations
 
+import functools
 import gzip
 import hashlib
+import importlib.util
 import json
 import shutil
+import tempfile
+import types
 from datetime import datetime
 from pathlib import Path
 
 from model import rules
+from model.build import TABLES
 
+ROOT = Path(__file__).resolve().parent.parent
 UTC_DAY = datetime(2026, 10, 27)
+# When true, build() also builds its archive by the rules as tag record-v1 holds them and compares the two
+# (tests/test_model_tagged.py turns it on).
+COMPARE_WITH_TAGGED: bool = False
 
 
 def row(**kw) -> dict:
@@ -103,9 +112,66 @@ def cut_archive(raw: Path, receipts: Path, moment: datetime, dest: Path) -> tupl
     return out_raw, out_receipts
 
 
-def build(raw: Path, receipts: Path | None = None):
+@functools.cache
+def check_script() -> types.ModuleType:
+    """scripts/tagged_check.py, loaded once and kept: the tagged build and the checks that compare two model folders."""
+    spec = importlib.util.spec_from_file_location("tagged_check", ROOT / "scripts" / "tagged_check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _build_new(raw: Path, receipts: Path | None):
+    """The build under test: today's rules, on a new connection."""
     con = rules.connect()
     rules.build_all(con, str(raw / "**" / "*.json.gz"), None if receipts is None else str(receipts / "**" / "*.json"))
+    return con
+
+
+def _build_tagged(raw: Path, receipts: Path | None, out: Path) -> None:
+    """The tagged build of the same archive into out/, with the KNOWN_ORPHANS a test has set on today's rules."""
+    check_script().build_tagged(raw, receipts, out, out.parent / "duckdb-tmp", known_orphans=rules.KNOWN_ORPHANS)
+
+
+def build(raw: Path, receipts: Path | None = None):
+    """A connection holding every table the rules make for raw/ (and receipts/).
+
+    With COMPARE_WITH_TAGGED on, the archive is also built by the rules as tag record-v1 holds them, in folders under
+    raw.parent, and an AssertionError is raised unless the two agree: when the new build refuses the archive, the
+    tagged build refuses it with the same exception class (and the new build's error is raised again); otherwise the
+    tagged build builds it, and compare_tables and compare_load find no difference in the five tables."""
+    try:
+        con = _build_new(raw, receipts)
+    except Exception as refusal:
+        if COMPARE_WITH_TAGGED:
+            work = Path(tempfile.mkdtemp(dir=raw.parent, prefix="tagged-"))
+            try:
+                _build_tagged(raw, receipts, work / "tagged")
+            except Exception as tagged:
+                if type(tagged) is not type(refusal):
+                    raise AssertionError(
+                        f"the two builds refused this archive with different exception classes: new "
+                        f"{type(refusal).__name__} ({refusal}), tagged {type(tagged).__name__} ({tagged})") from refusal
+            else:
+                raise AssertionError(f"the new build refused this archive ({type(refusal).__name__}: {refusal}), "
+                                     "and the tagged build built it") from refusal
+        raise
+    if COMPARE_WITH_TAGGED:
+        work = Path(tempfile.mkdtemp(dir=raw.parent, prefix="tagged-"))
+        new, tagged = work / "new", work / "tagged"
+        new.mkdir()
+        for table in TABLES:
+            target = str(new / f"{table}.parquet").replace("'", "''")
+            con.execute(f"COPY {table} TO '{target}' (FORMAT PARQUET)")
+        try:
+            _build_tagged(raw, receipts, tagged)
+        except Exception as refusal:
+            raise AssertionError(f"the tagged build refused this archive ({type(refusal).__name__}: {refusal}), "
+                                 "and the new build built it") from refusal
+        check = check_script()
+        lines = check.compare_tables(tagged, new) + check.compare_load(tagged, new)
+        if lines:
+            raise AssertionError("\n".join(lines))
     return con
 
 
