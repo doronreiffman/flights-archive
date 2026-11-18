@@ -12,6 +12,7 @@ import types
 from datetime import datetime
 from pathlib import Path
 
+import model.build
 from model import rules
 from model.build import TABLES
 
@@ -122,9 +123,10 @@ def check_script() -> types.ModuleType:
 
 
 def _build_new(raw: Path, receipts: Path | None):
-    """The build under test: today's rules, on a new connection."""
+    """The build under test: today's rules, on a new connection, staged into a new folder under raw.parent that is
+    kept, since the connection's views read it."""
     con = rules.connect()
-    rules.build_all(con, str(raw / "**" / "*.json.gz"), None if receipts is None else str(receipts / "**" / "*.json"))
+    model.build.run(con, raw, receipts, Path(tempfile.mkdtemp(dir=raw.parent, prefix="stage-")))
     return con
 
 

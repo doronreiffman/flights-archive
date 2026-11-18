@@ -1,11 +1,17 @@
 """The data model's rules, each a named SQL step on one DuckDB connection.
 
-Tables flow in this order (docs/data-model.md names the rules R1..R9):
+Tables flow in this order (docs/data-model.md names the rules R1..R9). model.stage makes raw_rows, day_rows and
+day_counts for one date folder of raw/ at a time, and receipts for one date folder of receipts/ at a time, and keeps
+each folder's results; everything from rows on runs on the whole history:
 
-  raw_rows   every row of every snapshot file, as the board published it
+  raw_rows   every row of one date folder's snapshot files, as the board published it
+  day_rows   R1 local times to UTC, R2 duplicates removed, board key added, for every board of that folder, trusted or not
+  day_counts one row per snapshot of that folder: its pages, raw rows, duplicate rows, key conflicts, and whether
+             its files hold fewer rows than the reply's own total (incomplete)
+  staged_rows, staged_counts   day_rows and day_counts of every date folder, read back from the stage
   receipts   one row per acquisition receipt (docs/receipts.md); decides which snapshots are trusted and
              when the board was last seen (R9: every receipt is a sighting; snapshots.confirmed_until)
-  rows       R1 local times to UTC, R2 duplicates removed, board key added
+  rows       a view: the staged rows of the trusted snapshots
   snapshots  one row per snapshot with its counts
   keys       one row per board key (airline, flight no., direction, airport, scheduled time)
   links      R4 retime links between keys; keymap gives each key its physical flight id
@@ -188,8 +194,60 @@ def _check_receipts(con) -> None:
                          "those snapshots in KNOWN_ORPHANS (src/model/rules.py).")
 
 
+def per_board(con) -> None:
+    """R1 and R2 on every board in raw_rows, trusted or not.
+
+    day_rows holds each board's rows with UTC times, one row per board key (on a conflict, the lowest `_id`), and
+    day_counts one row per snapshot with its counts. Which snapshots are trusted is decided over the whole history
+    (convert_times_and_dedupe), so model.stage runs this on one date folder at a time.
+    """
+    fields = ", ".join(COLUMNS.values())
+    key = ", ".join(KEY)
+    con.execute(f"""
+        CREATE OR REPLACE TABLE day_counts AS
+        WITH s AS (SELECT snapshot_id, min(fetched_at) AS fetched_at,
+                          count(*) < max(declared_total) AS incomplete,
+                          count(DISTINCT page) AS pages, count(*) AS rows_raw,
+                          count(*) - count(DISTINCT ({fields})) AS duplicate_rows
+                   FROM raw_rows GROUP BY snapshot_id),
+             conflicts AS (SELECT snapshot_id, count(*) - count(DISTINCT ({key})) AS key_conflicts
+                           FROM (SELECT DISTINCT snapshot_id, {fields} FROM raw_rows) GROUP BY snapshot_id)
+        SELECT * FROM s JOIN conflicts USING (snapshot_id)
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE TABLE day_rows AS
+        WITH typed AS (
+            SELECT snapshot_id, fetched_at, page, row_id,
+                   airline, flight_no, airline_name,
+                   try_cast(sched_local AS TIMESTAMP) AS sched_local,
+                   try_cast(nullif(est_local, '') AS TIMESTAMP) AS est_local,
+                   direction, airport, airport_name, city_he, city_en, country_he, country_en,
+                   try_cast(terminal AS INTEGER) AS terminal,
+                   counters, zone, status, status_he
+            FROM raw_rows
+        ), ranked AS (
+            SELECT *,
+                   row_number() OVER (PARTITION BY snapshot_id, {key} ORDER BY row_id) AS key_rank
+            FROM typed
+        )
+        SELECT * EXCLUDE (key_rank),
+               md5(concat_ws('|', coalesce(airline, ''), coalesce(flight_no, ''), coalesce(direction, ''),
+                             coalesce(airport, ''), coalesce(sched_local::VARCHAR, ''))) AS key_id,
+               il_to_utc(sched_local) AS sched_utc,
+               il_ambiguous(sched_local) AS sched_ambiguous,
+               il_nonexistent(sched_local) AS sched_nonexistent,
+               il_to_utc(est_local) AS est_utc,
+               il_ambiguous(est_local) AS est_ambiguous,
+               il_nonexistent(est_local) AS est_nonexistent
+        FROM ranked
+        WHERE key_rank = 1
+    """)
+
+
 def convert_times_and_dedupe(con) -> None:
-    """R1 and R2: rows = raw_rows with UTC times, one row per (snapshot, board key).
+    """R2's choice of snapshots, over the whole history, from the staged boards: staged_counts and staged_rows hold
+    per_board's day_counts and day_rows for every board of every date folder, trusted or not, and the trusted
+    snapshots are picked here. rows is the view of their staged rows (R1 times in UTC, one row per board key).
 
     A snapshot whose content hash (the sha12 in its path) equals the previous snapshot's is the
     same board stored twice (the collector's snapshot write succeeded but its state write failed);
@@ -200,15 +258,12 @@ def convert_times_and_dedupe(con) -> None:
     Receipts decide trust first: `receipted` and `legacy` snapshots are kept, `orphan`, `superseded` and
     `pending` ones dropped, and anything else stops the build (_check_receipts).
     """
-    fields = ", ".join(COLUMNS.values())
-    key = ", ".join(KEY)
     orphans = ", ".join(f"'{o}'" for o in sorted(KNOWN_ORPHANS)) or "NULL"
     con.execute(f"""
         CREATE OR REPLACE TABLE snapshot_files AS
-        WITH s AS (SELECT snapshot_id, min(fetched_at) AS fetched_at, right(snapshot_id, 12) AS sha,
-                          count(*) < max(declared_total) AS incomplete,
-                          count(*) AS file_rows, count(DISTINCT page) AS file_pages
-                   FROM raw_rows GROUP BY snapshot_id),
+        WITH s AS (SELECT snapshot_id, fetched_at, right(snapshot_id, 12) AS sha, incomplete,
+                          rows_raw AS file_rows, pages AS file_pages
+                   FROM staged_counts),
              n AS (SELECT *, lead(sha) OVER w AS next_sha, lead(snapshot_id) OVER w AS next_id FROM s
                    WINDOW w AS (ORDER BY fetched_at, snapshot_id)),
              b AS (SELECT min(run_started_at) AS first_receipt, max(run_started_at) AS newest_receipt FROM receipts),
@@ -238,45 +293,18 @@ def convert_times_and_dedupe(con) -> None:
         SELECT snapshot_id, fetched_at, incomplete, receipt, false, 0 FROM snapshot_files
         WHERE incomplete OR receipt NOT IN ('receipted', 'legacy')
     """)
-    con.execute(f"""
-        CREATE OR REPLACE TABLE rows AS
-        WITH typed AS (
-            SELECT snapshot_id, fetched_at, page, row_id,
-                   airline, flight_no, airline_name,
-                   try_cast(sched_local AS TIMESTAMP) AS sched_local,
-                   try_cast(nullif(est_local, '') AS TIMESTAMP) AS est_local,
-                   direction, airport, airport_name, city_he, city_en, country_he, country_en,
-                   try_cast(terminal AS INTEGER) AS terminal,
-                   counters, zone, status, status_he
-            FROM raw_rows
-            WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs
-                                  WHERE NOT repeat AND NOT incomplete AND receipt IN ('receipted', 'legacy'))
-        ), ranked AS (
-            SELECT *,
-                   row_number() OVER (PARTITION BY snapshot_id, {key} ORDER BY row_id) AS key_rank
-            FROM typed
-        )
-        SELECT * EXCLUDE (key_rank),
-               md5(concat_ws('|', coalesce(airline, ''), coalesce(flight_no, ''), coalesce(direction, ''),
-                             coalesce(airport, ''), coalesce(sched_local::VARCHAR, ''))) AS key_id,
-               il_to_utc(sched_local) AS sched_utc,
-               il_ambiguous(sched_local) AS sched_ambiguous,
-               il_nonexistent(sched_local) AS sched_nonexistent,
-               il_to_utc(est_local) AS est_utc,
-               il_ambiguous(est_local) AS est_ambiguous,
-               il_nonexistent(est_local) AS est_nonexistent
-        FROM ranked
-        WHERE key_rank = 1
+    con.execute("""
+        CREATE OR REPLACE VIEW rows AS
+        SELECT * FROM staged_rows
+        WHERE snapshot_id IN (SELECT snapshot_id FROM snapshot_runs
+                              WHERE NOT repeat AND NOT incomplete AND receipt IN ('receipted', 'legacy'))
     """)
     con.execute(f"""
         CREATE OR REPLACE TABLE snapshots AS
         WITH per_file AS (
-            SELECT snapshot_id, min(fetched_at) AS fetched_at, count(DISTINCT page) AS pages, count(*) AS rows_raw,
-                   count(*) - count(DISTINCT ({fields})) AS duplicate_rows
-            FROM raw_rows GROUP BY snapshot_id
+            SELECT snapshot_id, fetched_at, pages, rows_raw, duplicate_rows FROM staged_counts
         ), conflicts AS (
-            SELECT snapshot_id, count(*) - count(DISTINCT ({key})) AS key_conflicts
-            FROM (SELECT DISTINCT snapshot_id, {fields} FROM raw_rows) GROUP BY snapshot_id
+            SELECT snapshot_id, key_conflicts FROM staged_counts
         ), kept AS (
             SELECT snapshot_id, count(*) AS rows, min(sched_local) AS min_sched_local, max(sched_local) AS max_sched_local,
                    count(*) FILTER (WHERE sched_local IS NULL) AS unparsed_sched,
@@ -519,10 +547,9 @@ def build_flights(con) -> None:
     """)
 
 
-def build_all(con, raw_glob: str, receipts_glob: str | None = None) -> dict[str, int]:
-    """Run every step. Returns row counts per output table."""
-    load_raw(con, raw_glob)
-    load_receipts(con, receipts_glob)
+def build_tables(con) -> dict[str, int]:
+    """Every whole-history step, on a connection holding staged_rows, staged_counts and receipts (model.stage).
+    Returns row counts per output table."""
     convert_times_and_dedupe(con)
     link_retimes(con)
     build_observations(con)

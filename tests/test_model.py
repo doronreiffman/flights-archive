@@ -487,7 +487,7 @@ def test_many_snapshot_files_build_within_a_small_memory_limit(raw):
     con = rules.connect()
     con.execute("SET memory_limit = '1GB'")
     con.execute("SET threads = 2")
-    assert rules.build_all(con, str(raw / "**" / "*.json.gz"))["snapshots"] == 20
+    assert build.run(con, raw, None, raw.parent / "stage")["snapshots"] == 20
 
 
 def test_every_reply_the_collector_archives_fits_the_model_reader():

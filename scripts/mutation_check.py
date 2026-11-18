@@ -39,6 +39,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # (tests/test_timeline_check.py with tests/test_publish.py: 5.9 to 6.5 s, and 8.4 s once in a review's run), but for
 # one 12.5 s run of tests/test_mutation_check.py (about 5.5 s as a rule). Mutated, the slowest runs take 20 to 23 s
 # (two planted bugs in the runner leave a hung test or a held pipe the full 20 s) and every other one 14 s at most.
+# Measured again 2026-11-18, once every model build stages each date folder (src/model/stage.py): the model tests took
+# 8.7 to 9.0 s, against 7.0 to 7.3 s for the build before staging on the same Mac that hour; tests/test_model_stage.py
+# 0.8 to 1.6 s, and the day-boundary cases of tests/test_model_tagged.py, each built twice, 2.8 to 3.6 s.
 # 120 s is about ten times the slowest unmutated run: room for a slower CI runner and for a break that slows its tests
 # without hanging them.
 TIME_LIMIT = 120
@@ -81,6 +84,12 @@ NAME_LIST = ("src/timeline/names.py", ["tests/test_names.py"])
 NAMES = "tests/test_timeline_views.py::test_the_page_holds_every_name_fromhere_js_reads"
 VIEWS_NAMES = ("src/timeline/views.py", [NAMES])
 FROMHERE_NAMES = ("src/timeline/static/fromhere.js", [NAMES])
+# The stage (src/model/stage.py): its own tests, and the day-boundary cases built by both the tagged rules and the
+# staged build and compared (tests/test_model_tagged.py), for a break that changes a result without refusing a build.
+STAGE = ("src/model/stage.py", ["tests/test_model_stage.py"])
+BOUNDARY = "tests/test_model_tagged.py::test_boundary_cases_match"
+TAGGED = ("src/model/rules.py", [BOUNDARY])
+TAGGED_STAGE = ("src/model/stage.py", [BOUNDARY])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -649,6 +658,16 @@ COLLECTOR_MUTATIONS = {
     "tagged check: load() not compared": (TAGGED_CHECK, "for part in LOAD_PARTS if left[part] != right[part]", 'for part in LOAD_PARTS if part != "observations" and left[part] != right[part]'),
     "tagged check: progress.json not compared": (TAGGED_CHECK, "    if first != second:\n", "    if False:\n"),
     "tagged check: cut by rounding": (TAGGED_CHECK, "kept = math.floor(len(times) * fraction)", "kept = round(len(times) * fraction)"),
+    # the stage: each date folder's per-board work staged on its own, and the whole-history rules reading it
+    "tagged: a dropped snapshot's rows let into rows": (TAGGED, "        SELECT * FROM staged_rows\n        WHERE snapshot_id IN", "        SELECT * FROM staged_rows\n        WHERE true OR snapshot_id IN"),
+    "tagged: a snapshot's raw count taken after duplicates are removed": (TAGGED, "count(DISTINCT page) AS pages, count(*) AS rows_raw,", "count(DISTINCT page) AS pages, count(DISTINCT ({fields})) AS rows_raw,"),
+    "tagged: a receipts day skipped": (TAGGED_STAGE, '        receipt_days, names = _days(receipts_dir, "*.json")\n', '        receipt_days, names = _days(receipts_dir, "*.json")\n        receipt_days = receipt_days[1:]\n'),
+    "stage: snapshot files outside the date folders ignored": (STAGE, '    if names:\n        n = len(names)\n        raise ValueError(f"{n} files under', '    if False:\n        n = len(names)\n        raise ValueError(f"{n} files under'),
+    "stage: receipts outside the date folders ignored": (STAGE, '        if names:\n            n = len(names)\n            raise ValueError(f"{n} receipt files under', '        if False:\n            n = len(names)\n            raise ValueError(f"{n} receipt files under'),
+    "stage: an empty date folder read": (STAGE, "if d.is_dir() and any(d.rglob(pattern))]", "if d.is_dir()]"),
+    "stage: a quote in a path not doubled": (STAGE, """    return str(path).replace("'", "''")\n""", "    return str(path)\n"),
+    "stage: the date in a staged path read as a column": (STAGE, "hive_partitioning = false", "hive_partitioning = true"),
+    "stage: a file off the layout inside a date folder read": (("src/model/rules.py", ["tests/test_model_stage.py"]), "    if bad:\n", "    if False:\n"),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
     "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n'),
     "display: still listed before departed": (DISPLAY, '    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n', '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n'),
