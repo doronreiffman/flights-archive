@@ -92,6 +92,8 @@ STAGE = ("src/model/stage.py", ["tests/test_model_stage.py"])
 BOUNDARY = "tests/test_model_tagged.py::test_boundary_cases_match"
 TAGGED = ("src/model/rules.py", [BOUNDARY])
 TAGGED_STAGE = ("src/model/stage.py", [BOUNDARY])
+# The build (src/model/build.py): DuckDB's limits and temp folder, the options, and the model folder written whole.
+BUILD = ("src/model/build.py", ["tests/test_model_build.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -683,6 +685,21 @@ COLLECTOR_MUTATIONS = {
     "stage: a damaged marker stops the build": (STAGE, "    except (OSError, ValueError):\n        return False\n", "    except OSError:\n        return False\n"),
     "stage: staged files not checked": (STAGE, " and all((out / name).is_file() for name in files)", ""),
     "stage: restage ignored": (STAGE, "    if not restage and _current(out, marker, files):\n", "    if _current(out, marker, files):\n"),
+    # the build: DuckDB's memory limit, threads and temp folder, the options, and the model folder written whole
+    "build: memory limit not set": (BUILD, """    con.execute(f"SET memory_limit = '{_sql(memory_limit)}'")\n""", ""),
+    "build: threads not set": (BUILD, '    con.execute(f"SET threads = {int(threads)}")\n', ""),
+    "build: temp directory not set": (BUILD, """    con.execute(f"SET temp_directory = '{_sql(str(temp_dir))}'")\n""", ""),
+    "build: default memory limit 2GB": (BUILD, 'MEMORY_LIMIT = "1GB"', 'MEMORY_LIMIT = "2GB"'),
+    "build: --temp-dir ignored": (BUILD, "temp_dir=args.temp_dir)", "temp_dir=None)"),
+    "build: --restage ignored": (BUILD, "restage=args.restage,", "restage=False,"),
+    "build: temporary stage kept": (BUILD, 'stage_dir = Path(temporary.enter_context(tempfile.TemporaryDirectory(prefix="model-stage-")))', 'stage_dir = Path(tempfile.mkdtemp(prefix="model-stage-"))'),
+    "build: temporary DuckDB folder kept": (BUILD, 'temp_dir = Path(temporary.enter_context(tempfile.TemporaryDirectory(prefix="model-build-")))', 'temp_dir = Path(tempfile.mkdtemp(prefix="model-build-"))'),
+    "build: model written in place": (BUILD, '            _copy_out(con, table, building / f"{table}.parquet")\n', '            _copy_out(con, table, out_dir / f"{table}.parquet")\n'),
+    "build: last model overwritten while the new one is written": (BUILD, '            _copy_out(con, table, building / f"{table}.parquet")\n', '            _copy_out(con, table, out_dir / f"{table}.parquet") if out_dir.exists() else None\n            _copy_out(con, table, building / f"{table}.parquet")\n'),
+    "build: half-written model kept after a failure": (BUILD, "    except BaseException:\n        shutil.rmtree(building, ignore_errors=True)\n", "    except BaseException:\n"),
+    "build: half-written model kept after a Ctrl-C": (BUILD, "    except BaseException:\n", "    except Exception:\n"),
+    "build: a folder that is not a model replaced": (BUILD, '            if names:\n                raise ValueError(f"{folder} holds files', '            if False:\n                raise ValueError(f"{folder} holds files'),
+    "build: a folder that is not a model refused only after the staging": (BUILD, "    refuse_foreign(out_dir)  # before any staging", "    pass  # before any staging"),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
     "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n'),
     "display: still listed before departed": (DISPLAY, '    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n', '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n'),

@@ -123,9 +123,9 @@ def check_script() -> types.ModuleType:
 
 
 def _build_new(raw: Path, receipts: Path | None):
-    """The build under test: today's rules, on a new connection, staged into a new folder under raw.parent that is
-    kept, since the connection's views read it."""
-    con = rules.connect()
+    """The build under test: today's rules, on a new connection with the build's limits, spilling into a new folder
+    under raw.parent, staged into another that is kept, since the connection's views read it."""
+    con = model.build.connect(Path(tempfile.mkdtemp(dir=raw.parent, prefix="duckdb-tmp-")))
     model.build.run(con, raw, receipts, Path(tempfile.mkdtemp(dir=raw.parent, prefix="stage-")))
     return con
 

@@ -484,9 +484,7 @@ def test_many_snapshot_files_build_within_a_small_memory_limit(raw):
     snapshots of 2026-10-29 exhausted the default limit on an 8 GB Mac; the cap now matches the collector's."""
     for i in range(20):
         write_snapshot(raw, at(6 + i // 4, (i % 4) * 15), [row(status=f"S{i}")])
-    con = rules.connect()
-    con.execute("SET memory_limit = '1GB'")
-    con.execute("SET threads = 2")
+    con = build.connect(raw.parent / "duckdb-tmp", memory_limit="1GB", threads=2)
     assert build.run(con, raw, None, raw.parent / "stage")["snapshots"] == 20
 
 
