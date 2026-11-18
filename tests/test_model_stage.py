@@ -3,6 +3,7 @@ written to Parquet, and the whole-history rules run on what was staged. tests/te
 the tagged build's; these tests hold the stage's own files, the folders it reads and the ones it refuses."""
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -100,11 +101,47 @@ def test_a_snapshot_file_outside_the_date_folders_stops_the_build(tmp_path, stra
     assert not (tmp_path / "stage").exists()  # refused before any day is staged
 
 
-def test_a_snapshot_file_off_the_layout_inside_a_date_folder_stops_the_build(tmp_path):
-    """Inside a date folder, rules.load_raw's own check refuses a path that is not the collector's."""
+@pytest.mark.parametrize("stray", ["date=2026-10-27/stray.json.gz",
+                                   "date=2026-10-27/060000Z-aaaaaaaaaaaa/extra/page-000.json.gz"])
+def test_a_snapshot_file_off_the_layout_inside_a_date_folder_stops_the_build(tmp_path, stray):
+    raw, staged = tmp_path / "raw", tmp_path / "stage"
+    write_snapshot(raw, at(6), [row()])
+    page = next(raw.rglob("page-000.json.gz")).read_bytes()
+    (raw / stray).parent.mkdir(parents=True, exist_ok=True)
+    (raw / stray).write_bytes(page)
+    with pytest.raises(ValueError, match="have a path that is not") as refused:
+        stage.stage(rules.connect(), raw, None, staged)
+    assert stray in str(refused.value)
+    assert not list(staged.glob("*/date=*"))  # no day staged
+
+
+@pytest.mark.parametrize("receipted", [False, True], ids=["legacy", "receipted"])
+def test_a_day_copied_into_another_date_folder_stops_the_build(tmp_path, receipted):
+    """`cp -r raw/date=D raw/date=E`, when raw/date=E exists, nests day D inside day E: one snapshot's page in two date
+    folders, both under D's snapshot id. The tagged build reads the two copies as one snapshot (legacy: built, its raw
+    rows counted twice; receipted: refused, its files then differ from its receipt). Staged by folder, the copy would
+    be counted under E. It is refused before any day is staged."""
+    raw, rec, staged = tmp_path / "raw", tmp_path / "receipts", tmp_path / "stage"
+    day, other = (30, 31) if receipted else (27, 28)  # after receipts began, or before
+    copied = write_snapshot(raw, at(6, day=day), [row()])
+    kept = write_snapshot(raw, at(6, day=other), [row(status="DELAYED")])
+    if receipted:
+        write_receipt(rec, copied)
+        write_receipt(rec, kept)
+    shutil.copytree(raw / f"date=2026-10-{day}", raw / f"date=2026-10-{other}" / f"date=2026-10-{day}")
+    with pytest.raises(ValueError, match="path") as refused:
+        stage.stage(rules.connect(), raw, rec, staged)
+    assert f"date=2026-10-{other}/date=2026-10-{day}/{copied.split('/')[1]}/page-000.json.gz" in str(refused.value)
+    assert not list(staged.glob("*/date=*"))  # no day staged
+
+
+def test_a_snapshot_path_with_an_impossible_time_stops_the_build(tmp_path):
+    """A path in the collector's layout whose time cannot be (hour 25): rules.load_raw's own check refuses it."""
     raw = tmp_path / "raw"
     write_snapshot(raw, at(6), [row()])
-    (raw / "date=2026-10-27" / "stray.json.gz").write_bytes(next(raw.rglob("page-000.json.gz")).read_bytes())
+    impossible = raw / "date=2026-10-27" / "250000Z-aaaaaaaaaaaa" / "page-000.json.gz"
+    impossible.parent.mkdir()
+    impossible.write_bytes(next(raw.rglob("page-000.json.gz")).read_bytes())
     with pytest.raises(ValueError, match="rows come from files whose path is not"):
         stage.stage(rules.connect(), raw, None, tmp_path / "stage")
 
@@ -117,6 +154,7 @@ def test_a_receipt_outside_the_date_folders_stops_the_build(tmp_path):
     with pytest.raises(ValueError, match="outside") as refused:
         stage.stage(rules.connect(), raw, rec, tmp_path / "stage")
     assert "stray.json" in str(refused.value)
+    assert not list((tmp_path / "stage").glob("*/date=*"))  # no day staged
 
 
 def test_an_empty_date_folder_is_skipped(tmp_path):

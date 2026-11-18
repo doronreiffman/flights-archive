@@ -9,12 +9,15 @@ The stage folder holds, ZSTD-compressed:
 
 Staging goes by date folder because a snapshot's files never leave theirs: the collector writes every page of a
 snapshot under raw/date=<the run's date>/HHMMSSZ-<sha12>/, so every count per snapshot can be made from one folder. A
-snapshot file or receipt outside the date folders cannot be placed, so it stops the build. The rules themselves are all
-in rules.py; this module only reads folders and writes files.
+snapshot file anywhere else, or a receipt outside the date folders, stops the build: staged by folder, it could be
+counted under a day it does not belong to. The rules themselves are all in rules.py; this module only reads folders
+and writes files.
 """
 from __future__ import annotations
 
 import os
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,14 +36,29 @@ def _sql(path: Path) -> str:
     return str(path).replace("'", "''")
 
 
-def _days(folder: Path, pattern: str) -> tuple[list[Path], list[str]]:
+# Where the collector writes a snapshot's page under raw/ (src/collector/core.py), matched whole. A staged snapshot's
+# id then always carries its own folder's date, so no snapshot spans two date folders: a day copied into another
+# (`cp -r` onto an existing date=… folder nests it) is refused, never staged under the wrong day.
+_SNAPSHOT_FILE = re.compile(r"date=\d{4}-\d{2}-\d{2}/\d{6}Z-[0-9a-f]{12}/page-\d{3}\.json\.gz", re.ASCII)
+
+
+def _snapshot_file(path: str) -> bool:
+    """Whether a path relative to raw/ is a snapshot page where the collector writes one."""
+    return _SNAPSHOT_FILE.fullmatch(path) is not None
+
+
+def _in_a_date_folder(path: str) -> bool:
+    """Whether a path relative to receipts/ lies in one of its date=… folders, at any depth."""
+    first, _, rest = path.partition("/")
+    return first.startswith("date=") and rest != ""
+
+
+def _days(folder: Path, pattern: str, placed: Callable[[str], bool]) -> tuple[list[Path], list[str]]:
     """The date=… child folders of `folder` holding at least one file matching `pattern` (at any depth), sorted, and
-    the files matching it that lie outside every date=… folder, as sorted paths relative to `folder`."""
+    the files matching it whose path relative to `folder` is not `placed`, as sorted POSIX paths."""
     days = [d for d in sorted(folder.glob("date=*")) if d.is_dir() and any(d.rglob(pattern))]
-    inside = {d.name for d in folder.glob("date=*") if d.is_dir()}
-    outside = sorted(f.relative_to(folder).as_posix() for f in folder.rglob(pattern)
-                     if f.relative_to(folder).parts[0] not in inside)
-    return days, outside
+    misplaced = sorted(p for p in (f.relative_to(folder).as_posix() for f in folder.rglob(pattern)) if not placed(p))
+    return days, misplaced
 
 
 def _copy(con, query: str, path: Path) -> None:
@@ -53,9 +71,9 @@ def _copy(con, query: str, path: Path) -> None:
 
 def stage(con, raw_dir: Path, receipts_dir: Path | None, stage_dir: Path) -> Stage:
     """Stage every date folder of raw_dir and receipts_dir (none when it is None or not a folder) into stage_dir.
-    ValueError, before any day is staged, when a snapshot file or a receipt lies outside the date folders, or when
-    raw_dir holds no snapshot file at all."""
-    raw_days, names = _days(raw_dir, "*.json.gz")
+    ValueError, before any day is staged, when a snapshot file lies anywhere but date=…/HHMMSSZ-<sha12>/page-NNN.json.gz,
+    when a receipt lies outside the date folders, or when raw_dir holds no snapshot file at all."""
+    raw_days, names = _days(raw_dir, "*.json.gz", _snapshot_file)
     if names:
         n = len(names)
         raise ValueError(f"{n} files under {raw_dir} have a path that is not date=YYYY-MM-DD/HHMMSSZ-<sha12>/page-NNN.json.gz: {names[:10]}")
@@ -63,7 +81,7 @@ def stage(con, raw_dir: Path, receipts_dir: Path | None, stage_dir: Path) -> Sta
         raise ValueError(f"no snapshot files under {raw_dir}")
     receipt_days: list[Path] = []
     if receipts_dir is not None and receipts_dir.is_dir():
-        receipt_days, names = _days(receipts_dir, "*.json")
+        receipt_days, names = _days(receipts_dir, "*.json", _in_a_date_folder)
         if names:
             n = len(names)
             raise ValueError(f"{n} receipt files under {receipts_dir} are outside its date=YYYY-MM-DD folders: {names[:10]}")
