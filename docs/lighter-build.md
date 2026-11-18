@@ -2,7 +2,7 @@
 
 Grade: production-lean, the data model's own grade ([data-model.md](data-model.md)): tested rules, a mutation check, a fresh review before anything ships, code only, no new infrastructure.
 
-Status: a design, nothing built. Written 2026-11-18. The measurements and the prototype are an agent's (Fable 5.2); I settled the four calls under "For the owner" on 2026-11-18, all as recommended. It tests step 1 of "Nightly run" in [data-model.md](data-model.md) rather than assuming it, and would replace that step.
+Status: the design is built, to [lighter-build-plan.md](lighter-build-plan.md); the comparison against the tagged code is under "The comparison against the tagged code" below. Written 2026-11-18. The measurements and the prototype are an agent's (Fable 5.2); I settled the four calls under "For the owner" on 2026-11-18, all as recommended. It tested step 1 of "Nightly run" in [data-model.md](data-model.md) rather than assuming it, and replaced that step.
 
 Data: Israel Airports Authority, published on data.gov.il (dataset `flydata`). The counts here are of archived boards, not official figures.
 

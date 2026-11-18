@@ -14,3 +14,5 @@ Written while building the project: each note says what was decided and why, the
 - [flight-lookup-figures.md](flight-lookup-figures.md): the queries and results behind that design's figures, cited in it as (A1), (A2) and so on.
 - [flight-lookup-plan.md](flight-lookup-plan.md): the plan that built it, task by task, with the deviations found along the way.
 - [will-it-fly-plan.md](will-it-fly-plan.md): the plan that built "Will It Fly?" (q27), task by task, with the deviations found along the way and the back-test of the blend.
+- [lighter-build.md](lighter-build.md): the design of the lighter model build (q5): what was measured, the staging of each date folder's work, the limits, and the comparison against the tagged code.
+- [lighter-build-plan.md](lighter-build-plan.md): the plan that built it, task by task, with the deviations found along the way.
