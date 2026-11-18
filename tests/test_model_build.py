@@ -35,6 +35,26 @@ def archive(base: Path, status: str = "ON TIME") -> tuple[Path, Path, str]:
     return raw, rec, sid
 
 
+def refused_archive(base: Path) -> tuple[Path, Path]:
+    """(raw, receipts) of an archive the build refuses: its receipt counts two rows, its file holds one."""
+    raw, rec = base / "raw", base / "receipts"
+    write_receipt(rec, write_snapshot(raw, at(6, day=30), [row()]), rows=2)
+    return raw, rec
+
+
+def stopped_between_the_renames(tmp_path: Path, tables: tuple[str, ...] = build.TABLES) -> dict[str, bytes]:
+    """tmp_path/model as a build killed between write_model's two renames leaves it: no model, the last model in
+    model.old (a first build's, cut to `tables`), and one table file in model.building. Returns model.old's files."""
+    raw, rec, _ = archive(tmp_path / "first")
+    build.build(raw, tmp_path / "model", rec)
+    (tmp_path / "model").rename(tmp_path / "model.old")
+    for name in {f"{table}.parquet" for table in build.TABLES} - {f"{table}.parquet" for table in tables}:
+        (tmp_path / "model.old" / name).unlink()
+    (tmp_path / "model.building").mkdir()
+    (tmp_path / "model.building" / "snapshots.parquet").write_bytes(b"the new model, cut short")
+    return files(tmp_path / "model.old")
+
+
 def files(folder: Path) -> dict[str, bytes]:
     """Each file in `folder`, by name, with its bytes."""
     return {p.name: p.read_bytes() for p in sorted(folder.iterdir())}
@@ -162,12 +182,7 @@ def test_a_stop_between_the_renames_keeps_the_last_model(tmp_path, monkeypatch):
     <out>.old is then the last whole model (Review Focus 1). The next build puts it back first, so that one failing
     too still leaves the last model in place."""
     out = tmp_path / "model"
-    raw, rec, _ = archive(tmp_path / "first")
-    build.build(raw, out, rec)
-    before = files(out)
-    out.rename(tmp_path / "model.old")
-    (tmp_path / "model.building").mkdir()
-    (tmp_path / "model.building" / "snapshots.parquet").write_bytes(b"the new model, cut short")
+    before = stopped_between_the_renames(tmp_path)
     raw, rec, _ = archive(tmp_path / "second", status="DELAYED")
     stop_at_the_third_table(monkeypatch, ValueError)
     with pytest.raises(ValueError, match="the third table"):
@@ -176,13 +191,42 @@ def test_a_stop_between_the_renames_keeps_the_last_model(tmp_path, monkeypatch):
     assert no_leftovers(out)
 
 
+def test_a_whole_last_model_is_put_back_before_any_work(tmp_path):
+    """The same stop, then a build whose archive is refused while it is staged, before the model is written: the
+    last model is back in place all the same."""
+    out = tmp_path / "model"
+    before = stopped_between_the_renames(tmp_path)
+    raw, rec = refused_archive(tmp_path / "refused")
+    with pytest.raises(ValueError, match="differ from their files"):
+        build.build(raw, out, rec)
+    assert files(out) == before
+    assert not (tmp_path / "model.old").exists()
+
+
+def test_a_partial_last_model_is_never_put_back(tmp_path):
+    """A model.old holding two of the five tables and no model (a build killed while removing model.old, then model
+    deleted by hand) is not a whole model: it is never put in place, and the next build clears it."""
+    out = tmp_path / "model"
+    partial = stopped_between_the_renames(tmp_path, build.TABLES[:2])
+    raw, rec = refused_archive(tmp_path / "refused")
+    with pytest.raises(ValueError, match="differ from their files"):
+        build.build(raw, out, rec)
+    assert not out.exists()
+    assert files(tmp_path / "model.old") == partial
+
+    raw, rec, sid = archive(tmp_path / "second", status="DELAYED")
+    build.build(raw, out, rec)
+    assert sorted(p.name for p in out.iterdir()) == MODEL_FILES
+    assert snapshot_ids(out) == [sid]
+    assert no_leftovers(out)
+
+
 def test_a_refused_archive_leaves_the_last_model_as_it_was(tmp_path):
     out = tmp_path / "model"
     raw, rec, _ = archive(tmp_path / "first")
     build.build(raw, out, rec)
     before = files(out)
-    raw, rec = tmp_path / "refused" / "raw", tmp_path / "refused" / "receipts"
-    write_receipt(rec, write_snapshot(raw, at(6, day=30), [row()]), rows=2)  # the receipt counts two rows, the file one
+    raw, rec = refused_archive(tmp_path / "refused")
     with pytest.raises(ValueError, match="differ from their files"):
         build.build(raw, out, rec)
     assert files(out) == before
@@ -235,3 +279,30 @@ def test_a_folder_that_is_not_a_model_is_never_replaced(tmp_path, folder, foreig
     assert mine.read_text() == "mine"
     assert sorted(p.name for p in (tmp_path / folder).iterdir()) == sorted([name, "snapshots.parquet"])
     assert sorted(p.name for p in tmp_path.iterdir()) == ["archive", folder, "systmp"]
+
+
+def listing(folder: Path) -> list[str]:
+    """Every file and folder under `folder`, as sorted POSIX paths relative to it."""
+    return sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*"))
+
+
+@pytest.mark.parametrize("where", ["archive folder", "inside raw", "receipts"])
+def test_a_stage_folder_that_overlaps_the_archive_is_refused(tmp_path, where):
+    """`--stage data` would write each day's staged files into raw/date=… and receipts/date=…, and the next build
+    would read a marker.json there as a receipt: a stage folder that is, holds or lies inside the archive's folders is
+    refused before any work."""
+    raw, rec, _ = archive(tmp_path / "archive")
+    stage_dir = {"archive folder": raw.parent, "inside raw": raw / "x", "receipts": rec}[where]
+    before = listing(tmp_path / "archive")
+    refusal = re.escape(f"the stage folder {stage_dir} overlaps the archive ({raw}, {rec}); refusing to stage there")
+    with pytest.raises(ValueError, match=refusal):
+        build.build(raw, tmp_path / "model", rec, stage_dir=stage_dir)
+    assert listing(tmp_path / "archive") == before
+    assert not (tmp_path / "model").exists()
+
+
+def test_a_stage_folder_beside_the_archive_is_used(tmp_path):
+    raw, rec, sid = archive(tmp_path / "archive")
+    build.build(raw, tmp_path / "model", rec, stage_dir=tmp_path / "archive" / "stage")
+    assert snapshot_ids(tmp_path / "model") == [sid]
+    assert (tmp_path / "archive" / "stage" / "raw" / "date=2026-10-30" / "marker.json").exists()

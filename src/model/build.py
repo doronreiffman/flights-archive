@@ -63,6 +63,32 @@ def refuse_foreign(out_dir: Path) -> None:
                 raise ValueError(f"{folder} holds files that are not a model's: {names}; refusing to replace it")
 
 
+def put_back(out_dir: Path) -> None:
+    """A build killed between write_model's two renames leaves no out_dir and the last model, whole, in <out>.old:
+    put it back as out_dir. A <out>.old holding fewer than the five tables (a build killed while removing it, with
+    out_dir then deleted by hand) is not a whole model: it stays a leftover, which the next write clears. Run after
+    refuse_foreign, so that <out>.old holds nothing but table files."""
+    old = _siblings(out_dir)[1]
+    if not out_dir.exists() and old.is_dir() and _every_table_in(old):
+        old.rename(out_dir)
+
+
+def _every_table_in(folder: Path) -> bool:
+    """Whether `folder` holds the five table files and nothing else."""
+    return sorted(p.name for p in folder.iterdir()) == sorted(f"{table}.parquet" for table in TABLES)
+
+
+def refuse_overlap(stage_dir: Path, raw_dir: Path, receipts_dir: Path | None) -> None:
+    """ValueError when the stage folder is raw_dir or receipts_dir, lies inside one, or holds one: staging there
+    would write each day's files into the archive's own date=… folders (`--stage data`), where the next build would
+    read a marker.json as a receipt. Paths are compared resolved."""
+    stage = stage_dir.resolve()
+    for source in (raw_dir, receipts_dir):
+        if source is not None and (stage.is_relative_to(source.resolve()) or source.resolve().is_relative_to(stage)):
+            raise ValueError(f"the stage folder {stage_dir} overlaps the archive ({raw_dir}, {receipts_dir}); "
+                             "refusing to stage there")
+
+
 def _copy_out(con, table: str, path: Path) -> None:
     """One table to `path` as Parquet, as the build wrote it at the tag."""
     con.execute(f"COPY {table} TO '{_sql(str(path))}' (FORMAT PARQUET)")
@@ -70,14 +96,13 @@ def _copy_out(con, table: str, path: Path) -> None:
 
 def write_model(con, out_dir: Path) -> None:
     """The five tables on con written beside out_dir, as <out>.building, then swapped in: the last model moves to
-    <out>.old, the new one moves in, and the old one is removed. A failure of any kind while writing, Ctrl-C included,
-    removes <out>.building and leaves the last model as it was. A build killed outright leaves the last model or the
-    new one in <out>, with its leftovers beside it, which the next build clears; or, killed between the two renames,
-    no <out> and the last model whole in <out>.old, which the next build puts back first."""
+    <out>.old, the new one moves in, and the old one is removed. Leftover <out>.building and <out>.old folders are
+    removed first. A failure of any kind while writing, Ctrl-C included, removes <out>.building and leaves the last
+    model as it was. A build killed outright leaves the last model or the new one in out_dir, with leftovers beside it
+    that the next write removes; or, killed between the two renames, no out_dir and the last model whole in
+    <out>.old, which the next build puts back before any work (put_back, in build)."""
     refuse_foreign(out_dir)  # before any work
     building, old = _siblings(out_dir)
-    if old.exists() and not out_dir.exists():  # only a stop between the two renames leaves this
-        old.rename(out_dir)
     for leftover in (building, old):
         if leftover.exists():
             shutil.rmtree(leftover)
@@ -100,9 +125,16 @@ def build(raw_dir: Path, out_dir: Path, receipts_dir: Path | None = None, *, sta
           temp_dir: Path | None = None) -> dict[str, int]:
     """The model of raw_dir (and receipts_dir) written to out_dir, whole or not at all. Staged in stage_dir, which is
     kept for the next build to reuse; DuckDB spills into temp_dir. Either one, when None, is a new folder under the
-    system's temp folder, removed afterwards whatever happens. ValueError, before any work, when out_dir or a folder
-    beside it holds anything but a model (refuse_foreign)."""
+    system's temp folder, removed afterwards whatever happens.
+
+    Before any work: ValueError when out_dir or a folder beside it holds anything but a model (refuse_foreign), or
+    when a stage_dir given overlaps raw_dir or receipts_dir (refuse_overlap); then a whole last model that a build
+    killed between write_model's two renames left in <out>.old is put back as out_dir (put_back), so it stays in
+    place even if this build fails."""
     refuse_foreign(out_dir)  # before any staging: `--out data` stops at once, not after minutes of work
+    if stage_dir is not None:
+        refuse_overlap(stage_dir, raw_dir, receipts_dir)
+    put_back(out_dir)
     with contextlib.ExitStack() as temporary:
         if temp_dir is None:
             temp_dir = Path(temporary.enter_context(tempfile.TemporaryDirectory(prefix="model-build-")))

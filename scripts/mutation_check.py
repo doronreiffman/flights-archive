@@ -717,7 +717,10 @@ COLLECTOR_MUTATIONS = {
     "build: half-written model kept after a Ctrl-C": (BUILD, "    except BaseException:\n", "    except Exception:\n"),
     "build: a folder that is not a model replaced": (BUILD, '            if names:\n                raise ValueError(f"{folder} holds files', '            if False:\n                raise ValueError(f"{folder} holds files'),
     "build: a folder that is not a model refused only after the staging": (BUILD, "    refuse_foreign(out_dir)  # before any staging", "    pass  # before any staging"),
-    "build: last model lost after a stop between the renames": (BUILD, "    if old.exists() and not out_dir.exists():  # only a stop between the two renames leaves this\n        old.rename(out_dir)\n", ""),
+    "build: last model lost after a stop between the renames": (BUILD, "        old.rename(out_dir)\n", "        pass\n"),
+    "build: a partial last model put back": (BUILD, " and _every_table_in(old):\n", ":\n"),
+    "build: a stage folder inside the archive accepted": (BUILD, "(stage.is_relative_to(source.resolve()) or source.resolve().is_relative_to(stage))", "(source.resolve().is_relative_to(stage))"),
+    "build: a stage folder holding the archive accepted": (BUILD, "(stage.is_relative_to(source.resolve()) or source.resolve().is_relative_to(stage))", "(stage.is_relative_to(source.resolve()))"),
     "build: a folder named like a table taken for one": (BUILD, "if p.name not in model_files or not p.is_file()", "if p.name not in model_files"),
     "build: write_model without its own refusal": (BUILD, "    refuse_foreign(out_dir)  # before any work\n", ""),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
