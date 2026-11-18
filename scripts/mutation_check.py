@@ -70,6 +70,7 @@ COUNTING = ("src/timeline/counting.py", ["tests/test_counting.py", "tests/test_f
 RATES = ("src/timeline/rates.py", ["tests/test_rates.py"])
 FROZEN_GUARD = ("src/timeline/counting.py", ["tests/test_frozen.py"])
 FIGURES = ("scripts/figures_check.py", ["tests/test_figures_check.py"])
+TAGGED_CHECK = ("scripts/tagged_check.py", ["tests/test_tagged_check.py"])
 RECORD = ("src/timeline/record.py", ["tests/test_record.py"])
 DISPLAY = ("src/timeline/display.py", ["tests/test_display.py"])
 BLEND = ("src/timeline/blend.py", ["tests/test_blend.py"])
@@ -633,6 +634,15 @@ COLLECTOR_MUTATIONS = {
     "figures: A3's split reversed": (FIGURES, 'by_id[fid]["last_seen_at"] < by_id[fid]["sched_utc_final"]', 'by_id[fid]["last_seen_at"] >= by_id[fid]["sched_utc_final"]'),
     "figures: A3's split counts a number last seen at its time as before": (FIGURES, 'by_id[fid]["last_seen_at"] < by_id[fid]["sched_utc_final"]', 'by_id[fid]["last_seen_at"] <= by_id[fid]["sched_utc_final"]'),
     "figures: A17's after and holds rows swapped": (FIGURES, 'a17 = (s.late_after, s.late_holds, s.late_unplaced, s.late_before)', 'a17 = (s.late_holds, s.late_after, s.late_unplaced, s.late_before)'),
+    # the tagged check: the tagged rules' build and the current one, two model folders compared four ways
+    "tagged check: the fixture's hash not checked": (TAGGED_CHECK, "    if found != TAGGED_SHA256:\n", "    if False:\n"),
+    "tagged check: a table skipped": (TAGGED_CHECK, "        for table in TABLES:\n            files = ", "        for table in TABLES[:-1]:\n            files = "),
+    "tagged check: repeats not counted": (TAGGED_CHECK, "EXCEPT ALL SELECT", "EXCEPT SELECT"),
+    "tagged check: rows compared one way only": (TAGGED_CHECK, "zip((files, files[::-1]), names)", "zip((files,), names)"),
+    "tagged check: types not compared": (TAGGED_CHECK, "[(name, kind) for name, kind, *_ in con.execute(", "[name for name, kind, *_ in con.execute("),
+    "tagged check: load() not compared": (TAGGED_CHECK, "for part in LOAD_PARTS if left[part] != right[part]", 'for part in LOAD_PARTS if part != "observations" and left[part] != right[part]'),
+    "tagged check: progress.json not compared": (TAGGED_CHECK, "    if first != second:\n", "    if False:\n"),
+    "tagged check: cut by rounding": (TAGGED_CHECK, "kept = math.floor(len(times) * fraction)", "kept = round(len(times) * fraction)"),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
     "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n'),
     "display: still listed before departed": (DISPLAY, '    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n', '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n'),
