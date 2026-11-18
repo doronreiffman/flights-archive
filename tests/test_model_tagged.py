@@ -142,6 +142,23 @@ BOUNDARY: dict[str, Callable[[Path, Path], None]] = {
     "duplicates": duplicates,
 }
 
+# What each case is there to show, read from the new build, so that a change to a helper above cannot hollow a case
+# out while the two builds still agree: one query and its rows per case.
+FEATURES: dict[str, tuple[str, list[tuple]]] = {
+    "repeated-store": ("SELECT fetched_at, identical_repeats FROM snapshot_runs WHERE repeat", [(at(0, 1, day=31), 1)]),
+    "superseded": ("SELECT fetched_at FROM snapshot_runs WHERE receipt = 'superseded'", [(at(23, 58, day=30),)]),
+    "retime": ("SELECT flight_no, retimes FROM flights", [("001", 1)]),
+    "codeshare": ("SELECT airline, codeshare_size FROM flights ORDER BY codeshare_size DESC",
+                  [("W4", 3), ("EY", 2), ("LY", 1)]),
+    "sighting": ("SELECT confirmed_until FROM snapshots ORDER BY snap_rn LIMIT 1", [(at(0, 20, day=31),)]),
+    "two-page": ("SELECT pages, rows FROM snapshots ORDER BY snap_rn LIMIT 1", [(2, 5)]),
+    "incomplete": ("SELECT fetched_at, (SELECT count(*) FROM rows WHERE snapshot_id = r.snapshot_id) "
+                   "FROM snapshot_runs r WHERE incomplete", [(at(23, 59, day=27), 0)]),
+    "pending-tail": ("SELECT fetched_at FROM snapshot_runs WHERE receipt = 'pending' "
+                     "AND snapshot_id NOT IN (SELECT snapshot_id FROM snapshots)", [(at(0, 10, day=31),)]),
+    "duplicates": ("SELECT duplicate_rows, key_conflicts FROM snapshots ORDER BY snap_rn LIMIT 1", [(1, 1)]),
+}
+
 # Condition 3's three named cases (docs/flight-lookup.md:706), cut at each of their moments; every case is also built
 # whole.
 CUT = ("leave-and-return", "retime-at-the-cut", "flight-changes-after")
@@ -166,7 +183,9 @@ def test_boundary_cases_match(tmp_path, name):
     assert len(list(raw.glob("date=*"))) == 2
     if name == "sighting":
         assert len(list(receipts.glob("date=*"))) == 2
-    model_helpers.build(raw, receipts)
+    con = model_helpers.build(raw, receipts)
+    sql, expected = FEATURES[name]
+    assert con.execute(sql).fetchall() == expected
 
 
 @pytest.mark.parametrize("name, moment", RECORD_CUT)
@@ -200,6 +219,17 @@ def test_a_refusal_on_one_side_only_is_caught(raw, rec, monkeypatch):
     write_snapshot(raw, at(6, 15), [row(status="DELAYED")])
     monkeypatch.setattr(rules, "PENDING_GRACE_MINUTES", 5)
     with pytest.raises(AssertionError, match="refused"):
+        model_helpers.build(raw, rec)
+
+
+def test_a_refusal_by_the_tagged_side_only_is_caught(raw, rec, monkeypatch):
+    """A board 40 minutes after the newest receipt: refused by the tagged build (35 minutes' grace), pending for the
+    new side with 60."""
+    a = write_snapshot(raw, at(6), [row()])
+    write_receipt(rec, a)
+    write_snapshot(raw, at(6, 40), [row(status="DELAYED")])
+    monkeypatch.setattr(rules, "PENDING_GRACE_MINUTES", 60)
+    with pytest.raises(AssertionError, match="the tagged build refused this archive .*, and the new build built it"):
         model_helpers.build(raw, rec)
 
 

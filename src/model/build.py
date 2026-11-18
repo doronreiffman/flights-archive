@@ -71,10 +71,13 @@ def _copy_out(con, table: str, path: Path) -> None:
 def write_model(con, out_dir: Path) -> None:
     """The five tables on con written beside out_dir, as <out>.building, then swapped in: the last model moves to
     <out>.old, the new one moves in, and the old one is removed. A failure of any kind while writing, Ctrl-C included,
-    removes <out>.building and leaves the last model as it was. A build killed outright leaves the last model, the new
-    one, or (only between the two renames) neither, with its leftovers beside it; the next build clears them."""
+    removes <out>.building and leaves the last model as it was. A build killed outright leaves the last model or the
+    new one in <out>, with its leftovers beside it, which the next build clears; or, killed between the two renames,
+    no <out> and the last model whole in <out>.old, which the next build puts back first."""
     refuse_foreign(out_dir)  # before any work
     building, old = _siblings(out_dir)
+    if old.exists() and not out_dir.exists():  # only a stop between the two renames leaves this
+        old.rename(out_dir)
     for leftover in (building, old):
         if leftover.exists():
             shutil.rmtree(leftover)

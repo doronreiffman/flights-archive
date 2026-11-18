@@ -128,6 +128,18 @@ def test_no_temp_file_under_the_working_directory(tmp_path, system_temp, monkeyp
 
 # --- the model folder: written whole or not at all --------------------------------------------------------------------
 
+def stop_at_the_third_table(monkeypatch, error: type[BaseException]) -> None:
+    """model.build._copy_out made to raise `error` when it comes to the third table."""
+    real = build._copy_out
+
+    def copy_out(con, table, path):
+        if table == build.TABLES[2]:
+            raise error("stopped while writing the third table")
+        real(con, table, path)
+
+    monkeypatch.setattr(build, "_copy_out", copy_out)
+
+
 @pytest.mark.parametrize("error", [ValueError, KeyboardInterrupt])
 def test_a_failed_build_leaves_the_last_model_as_it_was(tmp_path, system_temp, monkeypatch, error):
     """A build stopped while writing the model, by an error or by Ctrl-C (Review Focus 1): the last model stays
@@ -137,19 +149,31 @@ def test_a_failed_build_leaves_the_last_model_as_it_was(tmp_path, system_temp, m
     build.build(raw, out, rec)
     before = files(out)
     raw, rec, _ = archive(tmp_path / "second", status="DELAYED")  # another board, so a model written in place shows
-    real = build._copy_out
-
-    def copy_out(con, table, path):
-        if table == build.TABLES[2]:
-            raise error("stopped while writing the third table")
-        real(con, table, path)
-
-    monkeypatch.setattr(build, "_copy_out", copy_out)
+    stop_at_the_third_table(monkeypatch, error)
     with pytest.raises(error, match="the third table"):
         build.build(raw, out, rec)
     assert files(out) == before
     assert no_leftovers(out)
     assert list(system_temp.iterdir()) == []
+
+
+def test_a_stop_between_the_renames_keeps_the_last_model(tmp_path, monkeypatch):
+    """A build killed after <out> moved to <out>.old and before <out>.building moved in leaves no <out>, and
+    <out>.old is then the last whole model (Review Focus 1). The next build puts it back first, so that one failing
+    too still leaves the last model in place."""
+    out = tmp_path / "model"
+    raw, rec, _ = archive(tmp_path / "first")
+    build.build(raw, out, rec)
+    before = files(out)
+    out.rename(tmp_path / "model.old")
+    (tmp_path / "model.building").mkdir()
+    (tmp_path / "model.building" / "snapshots.parquet").write_bytes(b"the new model, cut short")
+    raw, rec, _ = archive(tmp_path / "second", status="DELAYED")
+    stop_at_the_third_table(monkeypatch, ValueError)
+    with pytest.raises(ValueError, match="the third table"):
+        build.build(raw, out, rec)
+    assert files(out) == before
+    assert no_leftovers(out)
 
 
 def test_a_refused_archive_leaves_the_last_model_as_it_was(tmp_path):
@@ -189,22 +213,25 @@ def test_leftovers_of_a_killed_build_are_cleared(tmp_path):
     assert snapshot_ids(out) == [sid]
 
 
-@pytest.mark.parametrize("folder", ["model", "model.building", "model.old"])
-def test_a_folder_that_is_not_a_model_is_never_replaced(tmp_path, folder):
+@pytest.mark.parametrize("folder, foreign", [("model", "notes.txt"), ("model.building", "notes.txt"),
+                                             ("model.old", "notes.txt"), ("model", "flights.parquet/")])
+def test_a_folder_that_is_not_a_model_is_never_replaced(tmp_path, folder, foreign):
     """`--out data` must not delete the archive copy (Review Focus 5): a folder holding anything but the model's
-    table files is refused, before any work, with nothing moved or deleted."""
+    table files, a folder named like a table included, is refused, before any work, with nothing moved or deleted."""
     out = tmp_path / "model"
     raw, rec, _ = archive(tmp_path / "archive")
     (tmp_path / folder).mkdir()
-    (tmp_path / folder / "flights.parquet").write_bytes(b"a table")
-    notes = tmp_path / folder / "notes.txt"
-    notes.write_text("mine")
-    refusal = re.escape(f"{tmp_path / folder} holds files that are not a model's: ['notes.txt']; refusing to replace it")
+    (tmp_path / folder / "snapshots.parquet").write_bytes(b"a table")
+    name = foreign.rstrip("/")
+    mine = tmp_path / folder / name / "notes.txt" if foreign.endswith("/") else tmp_path / folder / name
+    mine.parent.mkdir(exist_ok=True)
+    mine.write_text("mine")
+    refusal = re.escape(f"{tmp_path / folder} holds files that are not a model's: ['{name}']; refusing to replace it")
     with pytest.raises(ValueError, match=refusal):
         build.build(raw, out, rec, stage_dir=tmp_path / "stage")
     assert not (tmp_path / "stage").exists()  # refused before any staging
     with pytest.raises(ValueError, match=refusal):
-        build.write_model(None, out)  # refused before the connection is read
-    assert notes.read_text() == "mine"
-    assert sorted(p.name for p in (tmp_path / folder).iterdir()) == ["flights.parquet", "notes.txt"]
+        build.write_model(None, out)  # refused on its own, before the connection is read
+    assert mine.read_text() == "mine"
+    assert sorted(p.name for p in (tmp_path / folder).iterdir()) == sorted([name, "snapshots.parquet"])
     assert sorted(p.name for p in tmp_path.iterdir()) == ["archive", folder, "systmp"]

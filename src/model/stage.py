@@ -11,8 +11,8 @@ and beside each day's files its marker.json: {"fingerprint": …, "files": [[rel
 fingerprint and the listing of the day's source folder when it was staged. A staged day is reused only while it is
 current: its marker equals the fingerprint and the listing now, and its files are there. Anything else, a marker that
 cannot be read or parsed included, stages the day again. The marker is deleted before a day is staged and written
-after its files, so a build stopped midway leaves that day without one. The markers are the only state kept between
-builds.
+after its files, so a build stopped midway leaves that day without one; the <name>.<pid>.tmp file a stopped write
+leaves is removed when that day is staged again. The markers are the only state kept between builds.
 
 Staging goes by date folder because a snapshot's files never leave theirs: the collector writes every page of a
 snapshot under raw/date=<the run's date>/HHMMSSZ-<sha12>/, so every count per snapshot can be made from one folder. A
@@ -127,6 +127,8 @@ def _stage_day(con, day: Path, out: Path, pattern: str, read: Callable[[], None]
     if not restage and _current(out, marker, files):
         return False
     (out / MARKER).unlink(missing_ok=True)
+    for leftover in out.glob("*.tmp"):  # a stopped _copy's or _mark's temporary file
+        leftover.unlink()
     read()
     out.mkdir(parents=True, exist_ok=True)
     for name, query in files.items():

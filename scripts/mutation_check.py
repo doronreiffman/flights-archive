@@ -700,6 +700,8 @@ COLLECTOR_MUTATIONS = {
     "stage: a damaged marker stops the build": (STAGE, "    except (OSError, ValueError):\n        return False\n", "    except OSError:\n        return False\n"),
     "stage: staged files not checked": (STAGE, " and all((out / name).is_file() for name in files)", ""),
     "stage: restage ignored": (STAGE, "    if not restage and _current(out, marker, files):\n", "    if _current(out, marker, files):\n"),
+    "stage: leftover temp files kept": (STAGE, '    for leftover in out.glob("*.tmp"):  # a stopped _copy\'s or _mark\'s temporary file\n        leftover.unlink()\n', ""),
+    "stage: a staged receipts day read after its folder is gone": (STAGE, "receipt_days=tuple(d.name for d in receipt_days),", 'receipt_days=tuple(sorted(p.name for p in (stage_dir / "receipts").glob("date=*"))),'),
     # the build: DuckDB's memory limit, threads and temp folder, the options, and the model folder written whole
     "build: memory limit not set": (BUILD, """    con.execute(f"SET memory_limit = '{_sql(memory_limit)}'")\n""", ""),
     "build: threads not set": (BUILD, '    con.execute(f"SET threads = {int(threads)}")\n', ""),
@@ -715,6 +717,9 @@ COLLECTOR_MUTATIONS = {
     "build: half-written model kept after a Ctrl-C": (BUILD, "    except BaseException:\n", "    except Exception:\n"),
     "build: a folder that is not a model replaced": (BUILD, '            if names:\n                raise ValueError(f"{folder} holds files', '            if False:\n                raise ValueError(f"{folder} holds files'),
     "build: a folder that is not a model refused only after the staging": (BUILD, "    refuse_foreign(out_dir)  # before any staging", "    pass  # before any staging"),
+    "build: last model lost after a stop between the renames": (BUILD, "    if old.exists() and not out_dir.exists():  # only a stop between the two renames leaves this\n        old.rename(out_dir)\n", ""),
+    "build: a folder named like a table taken for one": (BUILD, "if p.name not in model_files or not p.is_file()", "if p.name not in model_files"),
+    "build: write_model without its own refusal": (BUILD, "    refuse_foreign(out_dir)  # before any work\n", ""),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
     "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n'),
     "display: still listed before departed": (DISPLAY, '    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n', '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n'),

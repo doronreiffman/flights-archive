@@ -355,6 +355,22 @@ def test_a_staged_day_whose_folder_is_gone_is_ignored(tmp_path):
     assert compare_with_fresh(raw, None, staged, tmp_path / "after") == []
 
 
+def test_a_staged_receipts_day_whose_folder_is_gone_is_ignored(tmp_path):
+    """An unchanged receipt for 30 October's board, filed under 31 October, staged, then gone from receipts/: the
+    board is confirmed only until its own time again, as in a fresh build."""
+    raw, rec, staged = tmp_path / "raw", tmp_path / "receipts", tmp_path / "stage"
+    sid = board(raw, rec, at(23, 50, day=30))
+    write_receipt(rec, sid, action="unchanged", when=at(0, 10, day=31))
+    stage.stage(rules.connect(), raw, rec, staged)
+    shutil.rmtree(rec / "date=2026-10-31")
+
+    st = stage.stage(rules.connect(), raw, rec, staged)
+    assert st.receipt_days == ("date=2026-10-30",) and st.staged == ()
+    assert (staged / "receipts" / "date=2026-10-31" / "marker.json").exists()  # still there, and not read
+    assert compare_with_fresh(raw, rec, staged, tmp_path / "after") == []
+    assert read(tmp_path / "after" / "staged" / "snapshots.parquet")[0]["confirmed_until"] == at(23, 50, day=30)
+
+
 @pytest.mark.parametrize("error", [ValueError, KeyboardInterrupt])
 @pytest.mark.parametrize("restage", [False, True], ids=["new stage", "restage"])
 def test_a_day_whose_marker_was_not_written_is_staged_again(tmp_path, monkeypatch, restage, error):
@@ -380,6 +396,24 @@ def test_a_day_whose_marker_was_not_written_is_staged_again(tmp_path, monkeypatc
     # Staging again stopped on 26 October; 27 October was staged by the first call and is current.
     assert st.staged == (("raw/date=2026-10-26",) if restage else ("raw/date=2026-10-26", "raw/date=2026-10-27"))
     assert compare_with_fresh(raw, None, staged, tmp_path / "after") == []
+
+
+def test_a_stopped_write_leaves_no_temporary_file_once_its_day_is_staged_again(tmp_path):
+    """A build stopped inside _copy or _mark leaves a file named <name>.<pid>.tmp beside the day's files (Review
+    Focus 1): it is removed when that day is staged again. A day that is reused is not touched."""
+    raw, staged = legacy_days(tmp_path)
+    stage.stage(rules.connect(), raw, None, staged)
+    leftovers = ["rows.parquet.12345.tmp", "marker.json.12345.tmp"]
+    for day in ("date=2026-10-26", "date=2026-10-27"):
+        for name in leftovers:
+            (staged / "raw" / day / name).write_bytes(b"stopped")
+    board(raw, None, at(7, day=26), "DELAYED")  # 26 October changes; 27 October is reused
+
+    assert stage.stage(rules.connect(), raw, None, staged).staged == ("raw/date=2026-10-26",)
+    assert sorted(p.name for p in (staged / "raw" / "date=2026-10-26").iterdir()) == \
+        ["counts.parquet", "marker.json", "rows.parquet"]
+    assert sorted(p.name for p in (staged / "raw" / "date=2026-10-27").iterdir()) == \
+        sorted(["counts.parquet", "marker.json", "rows.parquet", *leftovers])
 
 
 def test_a_changed_fingerprint_stages_every_day_again(tmp_path, monkeypatch):
@@ -423,11 +457,14 @@ def _damage(day: Path, how: str) -> None:
         (day / "marker.json").write_text('{"fingerprint": "')  # cut short
     elif how == "marker without files":
         (day / "marker.json").write_text(json.dumps({"fingerprint": stage.fingerprint()}))
+    elif how == "marker a JSON list":
+        (day / "marker.json").write_text(json.dumps([stage.fingerprint(), []]))
     else:  # a current marker; the day's staged file deleted by hand
         (day / ("rows.parquet" if day.parent.name == "raw" else "receipts.parquet")).unlink()
 
 
-@pytest.mark.parametrize("how", ["empty marker", "marker not JSON", "marker without files", "staged file deleted"])
+@pytest.mark.parametrize("how", ["empty marker", "marker not JSON", "marker without files", "marker a JSON list",
+                                 "staged file deleted"])
 def test_a_damaged_stage_is_staged_again(tmp_path, how):
     """A zero-byte or hand-edited marker, or a staged file deleted by hand (Review Focus 2): never trusted, and never
     stopping the build."""
