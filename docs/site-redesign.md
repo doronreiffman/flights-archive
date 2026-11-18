@@ -411,7 +411,7 @@ Settled on 2026-11-17: the dark scheme ships with q27; the round-4 mockups stay 
 
 ## Unverified
 
-- That a page served through the site's CloudFront distribution loads a font file from its own address has not been tried. The first upload shows it.
+- Settled by the first upload (2026-11-18): a page served through the site's CloudFront distribution loads its font files from its own address. The live `.woff2` files come back with the content type `font/woff2` and are byte-identical to the build, and a headless Chrome render of the live BZ 317 page (the README's screenshot) differs visibly from a local render of the same page with the font files removed, which falls back to the stack's next typeface.
 - How look A reads on Windows and Android when the font files fail to load: the designer rendered the fallback on a Mac only.
 - The page weights and first-screen measurements of the mockups are the designer's, apart from the file sizes named above.
 
