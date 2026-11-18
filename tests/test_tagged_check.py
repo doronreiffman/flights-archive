@@ -228,3 +228,148 @@ def test_a_cut_of_no_folder_or_past_the_last_is_refused(check, tmp_path, fractio
         write_snapshot(raw, at(6) + timedelta(minutes=15 * i), [row()])
     with pytest.raises(ValueError, match=f"a cut at {fraction} keeps"):
         check.cut_moments(raw, [fraction])
+
+
+def test_a_missing_progress_json_is_a_difference(check, model, tmp_path, monkeypatch):
+    """Two runs that both write nothing and exit with the same code are not the same progress."""
+    copy = copy_model(model, tmp_path / "copy")
+    monkeypatch.setattr(record, "main", lambda argv: 2)
+    assert check.compare_progress(model, copy, tmp_path / "both") == ["progress.json missing for tagged",
+                                                                     "progress.json missing for new"]
+    one_side = fake_record_main(copy, "{}\n", 0)
+    monkeypatch.setattr(record, "main", lambda argv: 0 if Path(argv[argv.index("--model") + 1]) == copy
+                        else one_side(argv))
+    assert check.compare_progress(model, copy, tmp_path / "one") == ["progress.json missing for new",
+                                                                    "progress.json differs"]
+
+
+def test_tag_rules_reads_the_tag_or_gives_none(check, tmp_path, monkeypatch):
+    found = check.tag_rules()
+    if found is not None:  # the tag is in this clone (CI clones without tags)
+        assert found == check.TAGGED_RULES.read_bytes()
+    monkeypatch.setattr(check, "ROOT", tmp_path)  # not a git repository
+    assert check.tag_rules() is None
+    monkeypatch.setenv("PATH", str(tmp_path))  # no git at all
+    assert check.tag_rules() is None
+
+
+def write_two_days(root: Path) -> tuple[Path, Path]:
+    """Eight boards 37 minutes apart, from 22:00 on 27 October to 02:19 on the 28th, each with its receipt and an
+    unchanged receipt 15 minutes after it, one flight's status moving along, so that every cut holds rows in every
+    table."""
+    raw, receipts = root / "raw", root / "receipts"
+    statuses = ("ON TIME", "ON TIME", "DELAYED", "DELAYED", "ON TIME", "CANCELED", "CANCELED", "CANCELED")
+    for i, status in enumerate(statuses):
+        when = at(22) + timedelta(minutes=37 * i)
+        snapshot = write_snapshot(raw, when, [row(status=status), row(airline="EY", flight_no="607")])
+        write_receipt(receipts, snapshot, rows=2)
+        write_receipt(receipts, snapshot, action="unchanged", when=when + timedelta(minutes=15))
+    assert [d.name for d in sorted(raw.glob("date=*"))] == ["date=2026-10-27", "date=2026-10-28"]
+    return raw, receipts
+
+
+def run_main(check, capsys, *argv) -> tuple[int, str, str]:
+    code = check.main([str(a) for a in argv])
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+def blocks(out: str) -> dict[str, list[str]]:
+    """main's output by archive: each label -> its lines, the first one included."""
+    found, label = {}, None
+    for line in out.splitlines():
+        if not line.startswith(" "):
+            label = line.split(":")[0]
+            found[label] = []
+        found[label].append(line)
+    return found
+
+
+def test_main_finds_no_difference_on_a_small_archive(check, tmp_path, monkeypatch, capsys):
+    raw, receipts = write_two_days(tmp_path)
+    monkeypatch.setattr(check, "tag_rules", lambda: check.TAGGED_RULES.read_bytes())
+    work = tmp_path / "work"
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts)
+    assert code == 0, out + err
+    found = blocks(out)
+    assert found["fixture tests/fixtures/rules_record_v1.py, SHA-256 " + RECORD_V1_SHA256] == [
+        f"fixture tests/fixtures/rules_record_v1.py, SHA-256 {RECORD_V1_SHA256}: equal to record-v1's "
+        "src/model/rules.py"]
+    assert found["archive " + str(raw)] == [f"archive {raw}: 8 snapshots, 16 receipts, last board 2026-10-28 02:19:00 UTC"]
+    kept = {"quarter": (2, "22:37"), "half": (4, "23:51"), "three quarters": (6, "01:05"), "whole": (8, "02:19")}
+    for label, (n, last) in kept.items():
+        lines = found[label]
+        folder = raw if label == "whole" else work / label / "archive" / "raw"
+        day = "2026-10-27" if last.startswith("2") else "2026-10-28"
+        assert lines[0] == f"{label}: {n} of 8 snapshots, to {day} {last}:00 UTC; {n} snapshot folders in {folder}"
+        assert lines[1].startswith("  tagged build ") and ", new build " in lines[1] and lines[1].endswith(" s")
+        for table, line in zip(TABLES, lines[2:7]):
+            tagged, new = line.removeprefix(f"  {table}: tagged ").removesuffix(" rows").split(", new ")
+            assert tagged == new and int(tagged) > 0, line
+        assert lines[7:] == ["  identical: columns, rows, load(), progress.json"]
+        for build in ("tagged", "new"):
+            assert sorted(p.name for p in (work / label / build).iterdir()) == sorted(f"{t}.parquet" for t in TABLES)
+            assert (work / label / f"{build}.log").is_file()
+        assert (work / label / "record" / "new" / record.TAG / "progress.json").is_file()
+    assert not (work / "whole" / "archive").exists()  # the whole archive is read where it is
+    assert (work / "half" / "archive" / "receipts").is_dir()
+
+
+def test_main_exits_1_on_a_difference(check, tmp_path, monkeypatch, capsys):
+    raw, receipts = write_two_days(tmp_path)
+    monkeypatch.setattr(check, "tag_rules", lambda: None)
+    monkeypatch.setattr(check, "compare_tables", lambda a, b: ["observations: 1 row only in new"])
+    work = tmp_path / "work"
+    work.mkdir()  # an empty folder is taken
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts, "--fractions", 1)
+    assert code == 1, out + err
+    assert out.splitlines()[0] == (f"fixture tests/fixtures/rules_record_v1.py, SHA-256 {RECORD_V1_SHA256}: tag "
+                                   "record-v1 not in this clone: checked against the pinned SHA-256 only")
+    assert blocks(out)["whole"][-1] == "  observations: 1 row only in new"
+    assert "identical" not in out
+
+
+def test_main_reports_a_build_that_fails_with_its_last_error_line(check, tmp_path, monkeypatch, capsys):
+    """A board with no receipt after receipts began: both builds refuse the archive, each child exits 1."""
+    raw, receipts = write_two_days(tmp_path)
+    write_snapshot(raw, at(23, 10), [row()])
+    monkeypatch.setattr(check, "tag_rules", lambda: None)
+    work = tmp_path / "work"
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts, "--fractions", 1)
+    assert code == 1, out + err
+    lines = blocks(out)["whole"]
+    assert [line.split(":")[0] for line in lines[2:]] == ["  tagged build exited 1", "  new build exited 1"]
+    for build, line in zip(("tagged", "new"), lines[2:]):
+        log = (work / "whole" / f"{build}.log").read_text().splitlines()
+        assert log[-1].startswith("ValueError: ") and "no receipt" in log[-1]
+        assert line == f"  {build} build exited 1: {log[-1]} (log: {work / 'whole' / f'{build}.log'})"
+
+
+def test_main_refuses_a_work_folder_in_use(check, tmp_path, capsys):
+    raw, receipts = write_two_days(tmp_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "notes.txt").write_text("mine\n")
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts, "--fractions", 1)
+    assert code == 2
+    assert [p.relative_to(work).as_posix() for p in work.rglob("*")] == ["notes.txt"]
+    assert err == f"{work} is not an empty folder: give a new folder, or an empty one\n" and out == ""
+
+
+@pytest.mark.parametrize("tag", [b"other bytes\n", None])
+def test_main_stops_when_the_tag_and_the_fixture_differ(check, tmp_path, monkeypatch, capsys, tag):
+    """Other bytes at the tag stop the run; so does a fixture that is not the pinned one, tag or no tag."""
+    raw, receipts = write_two_days(tmp_path)
+    monkeypatch.setattr(check, "tag_rules", lambda: tag)
+    if tag is None:
+        changed = tmp_path / "rules_record_v1.py"
+        changed.write_bytes(check.TAGGED_RULES.read_bytes() + b"\n")
+        monkeypatch.setattr(check, "TAGGED_RULES", changed)
+    work = tmp_path / "work"
+    code, out, err = run_main(check, capsys, "--work", work, "--raw", raw, "--receipts", receipts, "--fractions", 1)
+    assert code == 2 and out == "" and not work.exists()
+    if tag is None:
+        assert err.startswith(f"{changed} has SHA-256 ") and RECORD_V1_SHA256 in err
+    else:
+        assert err == (f"tests/fixtures/rules_record_v1.py differs from record-v1's src/model/rules.py (SHA-256 "
+                       f"{hashlib.sha256(tag).hexdigest()} at the tag)\n")

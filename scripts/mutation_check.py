@@ -662,6 +662,10 @@ COLLECTOR_MUTATIONS = {
     "tagged check: load() not compared": (TAGGED_CHECK, "for part in LOAD_PARTS if left[part] != right[part]", 'for part in LOAD_PARTS if part != "observations" and left[part] != right[part]'),
     "tagged check: progress.json not compared": (TAGGED_CHECK, "    if first != second:\n", "    if False:\n"),
     "tagged check: cut by rounding": (TAGGED_CHECK, "kept = math.floor(len(times) * fraction)", "kept = round(len(times) * fraction)"),
+    "tagged check: a missing progress.json not reported": (TAGGED_CHECK, "        if found is None:  # two runs that both write nothing", "        if False:  # two runs that both write nothing"),
+    "tagged check: exit 0 on a difference": (TAGGED_CHECK, "    return 1 if failed else 0\n", "    return 0\n"),
+    "tagged check: a work folder in use reused": (TAGGED_CHECK, "    if work.exists() and (not work.is_dir() or any(work.iterdir())):\n", "    if False:\n"),
+    "tagged check: tag and fixture not compared": (TAGGED_CHECK, "    if tag is not None and tag != TAGGED_RULES.read_bytes():\n", "    if False:\n"),
     # the stage: each date folder's per-board work staged on its own, and the whole-history rules reading it
     "tagged: a dropped snapshot's rows let into rows": (TAGGED, "        SELECT * FROM staged_rows\n        WHERE snapshot_id IN", "        SELECT * FROM staged_rows\n        WHERE true OR snapshot_id IN"),
     "tagged: a snapshot's raw count taken after duplicates are removed": (TAGGED, "count(DISTINCT page) AS pages, count(*) AS rows_raw,", "count(DISTINCT page) AS pages, count(DISTINCT ({fields})) AS rows_raw,"),
