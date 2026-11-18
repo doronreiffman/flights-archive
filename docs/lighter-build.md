@@ -2,7 +2,7 @@
 
 Grade: production-lean, the data model's own grade ([data-model.md](data-model.md)): tested rules, a mutation check, a fresh review before anything ships, code only, no new infrastructure.
 
-Status: the design is built, to [lighter-build-plan.md](lighter-build-plan.md); the comparison against the tagged code is under "The comparison against the tagged code" below. Written 2026-11-18. The measurements and the prototype are an agent's (Fable 5.2); I settled the four calls under "For the owner" on 2026-11-18, all as recommended. It tested step 1 of "Nightly run" in [data-model.md](data-model.md) rather than assuming it, and replaced that step.
+Status: the design is built, to [lighter-build-plan.md](lighter-build-plan.md); the comparison against the tagged code is under "The comparison against the tagged code" below. Every figure outside that section is from the design's runs of 18 November, on the unchanged build and the prototype. The built code's own figures are in that section, measured at today's size only (1,922 snapshots): the built code was not measured at four or eight times the archive. Written 2026-11-18. The measurements and the prototype are an agent's (Fable 5.2); I settled the four calls under "For the owner" on 2026-11-18, all as recommended. It tested step 1 of "Nightly run" in [data-model.md](data-model.md) rather than assuming it, and replaced that step.
 
 Data: Israel Airports Authority, published on data.gov.il (dataset `flydata`). The counts here are of archived boards, not official figures.
 
@@ -83,7 +83,7 @@ A group that is kept keeps all its rows, so its member list is the one built tod
 **2. Each day's per-board work is done once and kept.** For each date folder of `raw/`, the build reads that day's files with the model's own `load_raw` and writes two Parquet files into a stage folder (`data/stage/`, already ignored by git):
 
 - the day's rows after R1 and R2: local times converted, duplicates removed, board key added, for every snapshot of the day, trusted or not;
-- one row per snapshot: its fetch time, hash, pages, row counts, declared total, duplicate rows, key conflicts and scheduled-time range.
+- one row per snapshot: its fetch time, pages, raw row count, duplicate rows, key conflicts, and whether its files hold fewer rows than the reply's declared total (`incomplete`). That is the built code; this design listed the hash, the declared total and the scheduled-time range here. The hash comes from the snapshot id, and the scheduled-time range stays in `snapshots`, which reads `rows` ([lighter-build-plan.md](lighter-build-plan.md), "What this plan decided").
 
 For each date folder of `receipts/` it writes that day's rows of the `receipts` table, through the model's own `load_receipts` and its check. Receipts are staged because the JSON reader's memory grows with the number of files: 7,771 receipt files ran out of memory at a 1 GB limit.
 
@@ -159,7 +159,7 @@ Not this work. What the measurements say for it:
 
 - The staged build at a 1 GB limit and 2 threads peaked at 1.30 GB at the gate's size and 1.32 GB at twice that. A 2 GB function has room for that. Measured on this Mac only: a Lambda's processors, its memory accounting and reading from S3 instead of a local disk were not measured. UNVERIFIED.
 - [data-model.md](data-model.md)'s sketch gives the function 2 GB of temp disk and ten minutes. The build spilled 2.8 GB to disk at 4× and 6.0 GB at 8×, so the temp disk has to be larger than the sketch says; the time depends on the Lambda's speed.
-- Each night it would stage one or two days and read every staged file: 14 MB today, about 0.7 MB more a day.
+- Each night it would stage one or two days and read every staged file: 56.4 MB for 22 days of boards on 18 November, about 2.6 MB more a day (56.4 / 22; "The comparison against the tagged code").
 - The build time grows with the history (16 s, 114 s and 200 s for 1×, 4× and 8×). When that outgrows the function, the choice is a larger function or the narrower step above. Decide then, on a measurement taken in a Lambda.
 
 ## The frozen record
@@ -199,14 +199,14 @@ The existing model tests and their 62 mutation entries then run through the new 
 
 ## Cost
 
-$0 a month. The change is code, run on the Mac; nothing is deployed and no AWS call is added. Local disk: 14 MB of staged files today, about 0.7 MB a day, and temp files while a build runs (0.5 GB today, 2.8 GB at 4×, 6.0 GB at 8×), removed afterwards. The nightly function's cost is q2's to estimate.
+$0 a month. The change is code, run on the Mac; nothing is deployed and no AWS call is added. Local disk: 56.4 MB of staged files for 22 days of boards on 18 November, about 2.6 MB a day (56.4 / 22; "The comparison against the tagged code"), and temp files while a build runs (0.5 GB today, 2.8 GB at 4×, 6.0 GB at 8×), removed afterwards. The nightly function's cost is q2's to estimate.
 
 ## What you might not think to ask
 
 - **State that drifts.** Anything kept between builds can quietly stop matching a build from scratch, and nobody notices until a figure is wrong. Here only per-day work that depends on that day's files is kept, and a test compares a build that reuses it with a build from scratch.
 - **The same input twice.** A step is safe to retry when running it again gives the same result (idempotent). Staging a day twice gives the same rows, so a retry after a failure cannot double-count a day.
 - **Partial writes.** A build killed midway must not leave something that looks finished: staged files get a temporary name, a rename and a marker written last. The model's own output folder has this gap today (five files written in turn); question 4 below closes it.
-- **Late and repaired data.** A pipeline that only looks at new days misses a file that lands in an old one, so the marker compares every folder's listing. It compares names and sizes, not contents; the archive is write-once, and a receipted snapshot's row and page counts are checked on every build.
+- **Late and repaired data.** A pipeline that only looks at new days misses a file that lands in an old one, so the marker compares every folder's listing. It compares names and sizes, not contents, so a file rewritten at the same size goes unseen: on a reused day the receipt check, which runs on every build, compares a stored receipt's row and page counts with the staged counts, not with the files. `--restage` reads every file again. What guards the names is upstream: the bucket is write-once (S3 Object Lock), and a snapshot folder's name carries the first 12 characters of its raw reply's SHA-256 (`src/collector/core.py`), which no build checks.
 - **A change of rules or tools.** Kept results are right only for the code that made them, so the fingerprint covers the model's source and the DuckDB version.
 - **The reference can stop running.** The proof compares with the tagged code, and the tagged code is the build that is outgrowing the machine: the whole-archive comparison should be run while it still takes minutes.
 - **"Identical" needs a definition.** Today's build does not write byte-identical files twice in a row, so the check is the same rows and equal `load()`, which is what the frozen figures depend on.
