@@ -242,6 +242,73 @@ My calls, 2026-11-18: housekeeping under condition 2, continuing `record-v1`; al
 - A comparison on a stretch that does not begin at the archive's start was not tried.
 - The marker, the fingerprint and the temporary-folder default were not in the prototype.
 
+## The comparison against the tagged code
+
+Run on 18 November 2026, 20:07 to 20:14 UTC, on the 8 GB development Mac with nothing else running. The code was commit e2a5a26: the built code of [lighter-build-plan.md](lighter-build-plan.md) (bdb608e) and a Deviations entry. `src/model`, `scripts/tagged_check.py` and the fixture had no uncommitted changes.
+
+The archive was synced the same evening with `sh scripts/sync.sh`. It holds 1,922 snapshots and 2,040 receipts, and its last board is from 18 November, 18:02:45 UTC. No file lies outside `raw/date=…/HHMMSSZ-<sha12>/page-NNN.json.gz` or `receipts/date=…/`, and no folder in it is a symbolic link.
+
+```sh
+perl -e 'alarm 3600; exec @ARGV' env PYTHONPATH=src .venv/bin/python scripts/tagged_check.py --work <scratch>/tagged-check-2026-11-18
+```
+
+It exited 0. Its lines, as printed, with the work folder shortened to `<work>`:
+
+```
+fixture tests/fixtures/rules_record_v1.py, SHA-256 57a07619159113601e3ac9311a7ccd69ee27f93fc1a57ad7860d20a4c6bf4162: equal to record-v1's src/model/rules.py
+code e2a5a26: clean (src/model, scripts/tagged_check.py, tests/fixtures/rules_record_v1.py)
+archive data/raw: 1,922 snapshots, 2,040 receipts, last board 2026-11-18 18:02:45 UTC
+quarter: 480 of 1,922 snapshots, to 2026-11-03 13:02:45 UTC; 480 snapshot folders in <work>/quarter/archive/raw
+  tagged build 15.2 s, new build 10.6 s
+  snapshots: tagged 480, new 480 rows
+  snapshot_runs: tagged 480, new 480 rows
+  observations: tagged 14,817, new 14,817 rows
+  flights: tagged 5,858, new 5,858 rows
+  receipts: tagged 495, new 495 rows
+  identical: columns, rows, load(), progress.json
+half: 961 of 1,922 snapshots, to 2026-11-08 14:46:45 UTC; 961 snapshot folders in <work>/half/archive/raw
+  tagged build 26.3 s, new build 21.4 s
+  snapshots: tagged 961, new 961 rows
+  snapshot_runs: tagged 961, new 961 rows
+  observations: tagged 24,660, new 24,660 rows
+  flights: tagged 8,312, new 8,312 rows
+  receipts: tagged 1,010, new 1,010 rows
+  identical: columns, rows, load(), progress.json
+three quarters: 1,441 of 1,922 snapshots, to 2026-11-13 16:16:45 UTC; 1,441 snapshot folders in <work>/three quarters/archive/raw
+  tagged build 61.3 s, new build 30.3 s
+  snapshots: tagged 1,441, new 1,441 rows
+  snapshot_runs: tagged 1,441, new 1,441 rows
+  observations: tagged 36,503, new 36,503 rows
+  flights: tagged 10,834, new 10,834 rows
+  receipts: tagged 1,530, new 1,530 rows
+  identical: columns, rows, load(), progress.json
+whole: 1,922 of 1,922 snapshots, to 2026-11-18 18:02:45 UTC; 1,922 snapshot folders in data/raw
+  tagged build 100.6 s, new build 48.3 s
+  snapshots: tagged 1,922, new 1,922 rows
+  snapshot_runs: tagged 1,922, new 1,922 rows
+  observations: tagged 46,937, new 46,937 rows
+  flights: tagged 13,197, new 13,197 rows
+  receipts: tagged 2,040, new 2,040 rows
+  identical: columns, rows, load(), progress.json
+```
+
+The record's `progress.json` is still a weak check, as "Unverified" says. On the whole archive it reports 0 cancelled and no days counted, on both sides.
+
+The new build alone on the whole archive, twice in a row, with a stage folder of its own:
+
+```sh
+/usr/bin/time -l env PYTHONPATH=src .venv/bin/python -m model.build --raw data/raw --out <scratch>/model-q5 --stage <scratch>/stage-q5
+```
+
+| run | wall | peak memory footprint | maximum resident set size |
+|---|---|---|---|
+| first: stages all 22 days of boards and 21 of receipts | 42.7 s | 1.24 GB | 1.16 GB |
+| later: reuses every day (no marker rewritten) | 10.7 s | 1.25 GB | 1.19 GB |
+
+Both runs wrote the same row counts as the comparison. The stage holds 56.4 MB in 108 files, 55.9 MB of it the boards' rows. That is four times the prototype's 14 MB ("What was measured, and how"). The prototype sorted each staged table before writing it, and the built code does not; whether that accounts for the difference was not measured.
+
+The tagged build of the whole archive took 100.6 s here, against 450 s for 1,837 snapshots in the design's run. This run did not measure its memory, and the difference in time was not investigated.
+
 ## All runs (2026-11-18)
 
 "Unchanged" is `rules.build_all` as tagged. "Change 1" adds the codeshare filter at run time. "Staged" is the prototype of all three changes; "first" stages every day, "later" reuses the stage. Limits are as given to DuckDB (it reads 1 GB as 953.6 MiB). Spill is the most temp storage DuckDB reported.
