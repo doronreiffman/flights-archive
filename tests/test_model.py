@@ -1,4 +1,5 @@
 """Rules R1-R8 of docs/data-model.md, each on a tiny synthetic world of snapshots."""
+import hashlib
 import json
 from pathlib import Path
 
@@ -287,6 +288,26 @@ def test_codeshare_group_is_taken_at_last_appearance(raw):
     write_snapshot(raw, at(6, 15), [row(), row(airline="W4", flight_no="6406")])
     got = q(run(raw), "SELECT * FROM flights")
     assert {r["codeshare_size"] for r in got} == {2} and len({r["codeshare_group_id"] for r in got}) == 1
+
+
+def test_codeshare_group_holds_partners_last_seen_elsewhere(raw):
+    pair = dict(counters="12-21")
+    for t in (at(6), at(6, 15), at(6, 30)):
+        rows = [row(airline="EY", flight_no="607", **pair), row(airline="LY", flight_no="9614", **pair)]
+        if t == at(6, 15):
+            rows.append(row(airline="W4", flight_no="6406", **pair))
+        write_snapshot(raw, t, rows)
+    con = run(raw)
+    got = {r["flight_no"]: r for r in q(con, "SELECT * FROM flights")}
+    ey, w4, ly = got["607"], got["6406"], got["9614"]
+    assert ey["codeshare_size"] == ly["codeshare_size"] == 2
+    assert ey["codeshare_group_id"] == ly["codeshare_group_id"]
+    assert (ey["operating_flight_no"], ey["operating_is_guess"]) == ("607", True)
+    assert w4["codeshare_size"] == 3 and (w4["operating_flight_no"], w4["operating_is_guess"]) == ("607", True)
+    assert w4["codeshare_group_id"] != ey["codeshare_group_id"]
+    ids = [x["flight_id"] for x in (ey, w4, ly)]
+    assert w4["codeshare_group_id"] == hashlib.md5("|".join(ids).encode()).hexdigest()
+    assert one(con, "SELECT count(*) AS n FROM codeshares")["n"] == 3
 
 
 # R7 outcomes ----------------------------------------------------------------

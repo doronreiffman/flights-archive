@@ -424,15 +424,15 @@ def build_flights(con) -> None:
                    md5(concat_ws('|', r.snapshot_id, r.direction, r.airport, r.sched_local::VARCHAR,
                                  coalesce(r.est_local::VARCHAR, ''), coalesce(r.terminal::VARCHAR, ''), coalesce(r.counters, ''))) AS group_key
             FROM rows r JOIN keymap k USING (key_id) JOIN snapshots s USING (snapshot_id)
+        ), at_last AS (
+            SELECT flight_id, arg_max(group_key, snap_rn) AS group_key, arg_max(counters, snap_rn) AS counters
+            FROM r GROUP BY flight_id
         ), groups AS (
             SELECT group_key,
                    list(struct_pack(flight_id := flight_id, airline := airline, flight_no := flight_no,
                                     num := try_cast(regexp_extract(flight_no, '[0-9]+') AS INTEGER))
                         ORDER BY try_cast(regexp_extract(flight_no, '[0-9]+') AS INTEGER) NULLS LAST, airline, flight_id) AS members
-            FROM r GROUP BY group_key
-        ), at_last AS (
-            SELECT flight_id, arg_max(group_key, snap_rn) AS group_key, arg_max(counters, snap_rn) AS counters
-            FROM r GROUP BY flight_id
+            FROM r WHERE group_key IN (SELECT group_key FROM at_last) GROUP BY group_key
         )
         SELECT a.flight_id,
                md5(list_aggregate(list_transform(g.members, lambda m: m.flight_id), 'string_agg', '|')) AS codeshare_group_id,
