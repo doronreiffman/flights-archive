@@ -307,6 +307,8 @@ The new build alone on the whole archive, twice in a row, with a stage folder of
 
 Both runs wrote the same row counts as the comparison. The stage holds 56.4 MB in 108 files, 55.9 MB of it the boards' rows. That is four times the prototype's 14 MB ("What was measured, and how"). The prototype sorted each staged table before writing it, and the built code does not; whether that accounts for the difference was not measured.
 
+Reuse on new boards, the same evening: after a second sync (1,932 snapshots, 2,050 receipts, the last board 18 November 20:32:45 UTC), a build on the stage above staged again only the day of 18 November, boards and receipts, and reused the other 41 days. Its five tables and `load()` were the same as those of a build on a new stage (`compare_tables` and `compare_load` of `scripts/tagged_check.py`: no difference).
+
 The tagged build of the whole archive took 100.6 s here, against 450 s for 1,837 snapshots in the design's run. This run did not measure its memory, and the difference in time was not investigated.
 
 ## All runs (2026-11-18)
