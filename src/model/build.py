@@ -11,26 +11,30 @@ from . import rules, stage
 TABLES = ("snapshots", "snapshot_runs", "observations", "flights", "receipts")
 
 
-def run(con, raw_dir: Path, receipts_dir: Path | None, stage_dir: Path) -> dict[str, int]:
-    """Stage raw_dir and receipts_dir into stage_dir, then build every table on con from the stage. Returns row counts
-    per output table."""
-    st = stage.stage(con, raw_dir, receipts_dir, stage_dir)
+def run(con, raw_dir: Path, receipts_dir: Path | None, stage_dir: Path, restage: bool = False) -> dict[str, int]:
+    """Stage raw_dir and receipts_dir into stage_dir (every day again when restage is true, otherwise only the days not
+    current there), then build every table on con from the stage. Returns row counts per output table."""
+    st = stage.stage(con, raw_dir, receipts_dir, stage_dir, restage=restage)
     stage.open_stage(con, stage_dir, st)
     return rules.build_tables(con)
 
 
-def build(raw_dir: Path, out_dir: Path, receipts_dir: Path | None = None) -> dict[str, int]:
-    """The model of raw_dir (and receipts_dir) written to out_dir, staged in a temporary folder removed afterwards."""
-    with tempfile.TemporaryDirectory(prefix="model-stage-") as stage_dir:
-        con = rules.connect()
-        try:
-            counts = run(con, raw_dir, receipts_dir, Path(stage_dir))
-            out_dir.mkdir(parents=True, exist_ok=True)
-            for table in TABLES:
-                target = str(out_dir / f"{table}.parquet").replace("'", "''")
-                con.execute(f"COPY {table} TO '{target}' (FORMAT PARQUET)")
-        finally:
-            con.close()  # before the stage it reads is removed
+def build(raw_dir: Path, out_dir: Path, receipts_dir: Path | None = None, *, stage_dir: Path | None = None,
+          restage: bool = False) -> dict[str, int]:
+    """The model of raw_dir (and receipts_dir) written to out_dir. Staged in stage_dir, which is kept for the next
+    build to reuse; with none, in a temporary folder removed afterwards."""
+    if stage_dir is None:
+        with tempfile.TemporaryDirectory(prefix="model-stage-") as temp:
+            return build(raw_dir, out_dir, receipts_dir, stage_dir=Path(temp), restage=restage)
+    con = rules.connect()
+    try:
+        counts = run(con, raw_dir, receipts_dir, stage_dir, restage)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for table in TABLES:
+            target = str(out_dir / f"{table}.parquet").replace("'", "''")
+            con.execute(f"COPY {table} TO '{target}' (FORMAT PARQUET)")
+    finally:
+        con.close()  # before a temporary stage it reads is removed
     return counts
 
 

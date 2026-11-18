@@ -41,7 +41,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # (two planted bugs in the runner leave a hung test or a held pipe the full 20 s) and every other one 14 s at most.
 # Measured again 2026-11-18, once every model build stages each date folder (src/model/stage.py): the model tests took
 # 8.7 to 9.0 s, against 7.0 to 7.3 s for the build before staging on the same Mac that hour; tests/test_model_stage.py
-# 0.8 to 1.6 s, and the day-boundary cases of tests/test_model_tagged.py, each built twice, 2.8 to 3.6 s.
+# 0.8 to 1.6 s, and the day-boundary cases of tests/test_model_tagged.py, each built twice, 2.8 to 3.6 s. Once a
+# staged day is reused while its marker matches, with the tests of that reuse (each builds twice and compares),
+# tests/test_model_stage.py took 5.2 to 5.4 s (2026-11-18).
 # 120 s is about ten times the slowest unmutated run: room for a slower CI runner and for a break that slows its tests
 # without hanging them.
 TIME_LIMIT = 120
@@ -669,6 +671,18 @@ COLLECTOR_MUTATIONS = {
     "stage: the date in a staged path read as a column": (STAGE, "hive_partitioning = false", "hive_partitioning = true"),
     "stage: a nested date folder accepted": (STAGE, "    return _SNAPSHOT_FILE.fullmatch(path) is not None\n", "    return _SNAPSHOT_FILE.search(path) is not None\n"),
     "stage: a snapshot path with an impossible time read": (("src/model/rules.py", ["tests/test_model_stage.py"]), "    if bad:\n", "    if False:\n"),
+    # reuse: a staged day used again only while its marker matches its files, the model's source and DuckDB
+    "stage: a changed folder's stage reused": (STAGE, "    return found == marker and", '    return found["fingerprint"] == marker["fingerprint"] and'),
+    "stage: file sizes left out of the listing": (STAGE, "[f.relative_to(day).as_posix(), f.stat().st_size]", "[f.relative_to(day).as_posix(), 0]"),
+    "stage: a staged day read after its folder is gone": (STAGE, "    return Stage(raw_days=tuple(d.name for d in raw_days),", '    return Stage(raw_days=tuple(sorted(p.name for p in (stage_dir / "raw").glob("date=*"))),'),
+    "stage: marker written first": (STAGE, "    for name, query in files.items():\n        _copy(con, query, out / name)\n    _mark(out, marker)\n", "    _mark(out, marker)\n    for name, query in files.items():\n        _copy(con, query, out / name)\n"),
+    "stage: old marker kept while staging again": (STAGE, "    (out / MARKER).unlink(missing_ok=True)\n", ""),
+    "stage: fingerprint not compared": (STAGE, "    return found == marker and", '    return found["files"] == marker["files"] and'),
+    "stage: fingerprint without the DuckDB version": (STAGE, "    digest.update(duckdb_version.encode())\n", ""),
+    "stage: fingerprint of rules.py only": (STAGE, '        sources = sorted(Path(__file__).resolve().parent.glob("*.py"))\n', '        sources = [Path(__file__).resolve().parent / "rules.py"]\n'),
+    "stage: a damaged marker stops the build": (STAGE, "    except (OSError, ValueError):\n        return False\n", "    except OSError:\n        return False\n"),
+    "stage: staged files not checked": (STAGE, " and all((out / name).is_file() for name in files)", ""),
+    "stage: restage ignored": (STAGE, "    if not restage and _current(out, marker, files):\n", "    if _current(out, marker, files):\n"),
     # rules shown only on pages: C10's label and DELAYED, C9's warning, the count line and the late line
     "display: cancelled label before still listed": (DISPLAY, '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if "canceled" in outcomes:\n        return CANCELLED\n', '    if "canceled" in outcomes:\n        return CANCELLED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n'),
     "display: still listed before departed": (DISPLAY, '    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n', '    if "open" in outcomes:\n        return UPCOMING if f.key[2] > last_fetch else NO_NEWS_YET  # key[2]: the slot\'s scheduled time\n    if outcomes & OPERATED:\n        return DEPARTED if "departed" in outcomes else LANDED\n'),
