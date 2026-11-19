@@ -2,7 +2,7 @@
 
 Grade: production-lean, the data model's own grade ([data-model.md](data-model.md)): tested code, a mutation check (the code is broken on purpose and a test must fail), a fresh review before anything ships. Cheap, boring infrastructure: one function, one bucket, one schedule.
 
-Status: a design. Nothing is built and nothing is deployed. Written 2026-11-19. The design and its measurements are an agent's (Fable 5.2); the six calls under "For the owner" are open. Its figures and quotes were checked against their sources, and the Linux-against-Mac comparison was rerun, by the main session; a fresh reviewer (Opus 5.5) read it the same day, and its twelve findings are folded in (three important: two overlapping runs sharing a kept stage, the trigger for keeping the stage, and the pointer's build expiring during a long stop). It replaces step 2 of "Nightly run" in [data-model.md](data-model.md), the earlier sketch of this function. Every figure marked "this Mac" was measured on the 8 GB development Mac. Nothing was run in AWS.
+Status: an approved design. Nothing is built and nothing is deployed. Written 2026-11-19. The design and its measurements are an agent's (Fable 5.2); I settled the six calls under "For the owner" on 2026-11-19, all as recommended. Its figures and quotes were checked against their sources, and the Linux-against-Mac comparison was rerun, by the main session; a fresh reviewer (Opus 5.5) read it the same day, and its twelve findings are folded in (three important: two overlapping runs sharing a kept stage, the trigger for keeping the stage, and the pointer's build expiring during a long stop). It replaces step 2 of "Nightly run" in [data-model.md](data-model.md), the earlier sketch of this function. Every figure marked "this Mac" was measured on the 8 GB development Mac. Nothing was run in AWS.
 
 Data: Israel Airports Authority, published on data.gov.il (dataset `flydata`). The counts here are of archived boards, not official figures.
 
@@ -450,6 +450,8 @@ Open, and not q2's to decide:
 - **UTC and Israel time.** The schedule is in UTC, so the run moves by an hour on the Israeli clock when the clocks change.
 
 ## For the owner
+
+My calls, 2026-11-19: all six as recommended. The questions as they were put:
 
 1. **Rebuild the stage every night, or keep it in S3 from the first day?** Recommended: rebuild every night, and add the S3-kept stage when a night passes 300 s. Under that answer: the least code now, and every night is a from-scratch build; expect to plan the second step around the turn of the year if a Lambda runs at half this Mac's speed. If kept from day one: one plan, not two; more code and tests now; a cache to reason about before any measurement says it is needed.
 2. **healthchecks.io alone, or a CloudWatch alarm as well?** Recommended: healthchecks.io alone, with a new check that the owner creates. Under that answer: $0, one more ping call, and no alert if healthchecks.io itself is down. If an alarm is added: an alarm on the function's `Errors` emailing a new SNS topic, $0.10 a month at list price and likely free, one more address to confirm, and a second path that catches a timeout at once.
