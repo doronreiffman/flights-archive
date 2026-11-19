@@ -108,11 +108,15 @@ NIGHTLY_OUTPUT = ("src/nightly/output.py", ["tests/test_nightly_output.py"])
 NIGHTLY_HANDLER = ("src/nightly/handler.py", ["tests/test_nightly_handler.py"])
 # The nightly build's stack (model-stack/): its template, the DuckDB layer's pin and the folder's own samconfig.toml;
 # and the collector's requirements, which must never gain DuckDB (docs/nightly-model.md, section 7). The check edits
-# src/requirements.txt only while its entry runs, and restores it.
+# src/requirements.txt only while its entry runs, and restores it. The deploy script's tests read the folder's
+# samconfig.toml too: the script refuses one that does not name the model's stack.
 MODEL_STACK = ("model-stack/template.yaml", ["tests/test_model_stack.py"])
 MODEL_LAYER = ("model-stack/layer/requirements.txt", ["tests/test_model_stack.py"])
-MODEL_SAMCONFIG = ("model-stack/samconfig.toml", ["tests/test_model_stack.py"])
+MODEL_SAMCONFIG = ("model-stack/samconfig.toml", ["tests/test_model_stack.py", "tests/test_deploy_nightly.py"])
 COLLECTOR_REQUIREMENTS = ("src/requirements.txt", ["tests/test_model_stack.py"])
+# The deploy script (scripts/deploy_nightly.sh): identity first, the model's stack and its own build folder named, the
+# address read with echo off at a terminal and never printed (docs/nightly-model.md, section 5).
+DEPLOY_NIGHTLY = ("scripts/deploy_nightly.sh", ["tests/test_deploy_nightly.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -975,6 +979,18 @@ COLLECTOR_MUTATIONS = {
     "model stack: layer on another DuckDB": (MODEL_LAYER, "duckdb==1.5.6", "duckdb==1.5.5"),
     "model stack: samconfig aimed at the collector": (MODEL_SAMCONFIG, 'stack_name = "flights-archive-model"', 'stack_name = "flights-archive"'),
     "model stack: duckdb in the collector's requirements": (COLLECTOR_REQUIREMENTS, "boto3==1.43.119\n", "boto3==1.43.119\nduckdb==1.5.6\n"),
+    # the deploy script: identity first, the model's stack and its own build folder named, the address kept off screen
+    "deploy: identity not checked": (DEPLOY_NIGHTLY, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
+    "deploy: stack not named": (DEPLOY_NIGHTLY, ' --stack-name "$STACK"', ""),
+    "deploy: build folder not named": (DEPLOY_NIGHTLY, " --build-dir .aws-sam/build", ""),
+    "deploy: run where it was started": (DEPLOY_NIGHTLY, 'cd "$FOLDER"\n', ""),
+    "deploy: any argument accepted": (DEPLOY_NIGHTLY, '  *) echo "the only argument taken is DISABLED (the default) or ENABLED; nothing deployed" >&2; exit 1 ;;', "  *) state=${1:-DISABLED} ;;"),
+    "deploy: the stack name check removed": (DEPLOY_NIGHTLY, 'if ! grep -qsxF "stack_name = \\"$STACK\\"" "$FOLDER/samconfig.toml"; then', "if false; then"),
+    "deploy: any address accepted": (DEPLOY_NIGHTLY, "  https://hc-ping.com/*) ;;", "  *) ;;"),
+    "deploy: the address printed": (DEPLOY_NIGHTLY, "  https://hc-ping.com/*) ;;", '  https://hc-ping.com/*) echo "ping address: $url" ;;'),
+    "deploy: the address echoed at a terminal": (DEPLOY_NIGHTLY, "  stty -echo\n", ""),
+    "deploy: echo left off after an interrupt": (DEPLOY_NIGHTLY, "  trap 'stty echo' EXIT\n", ""),
+    "deploy: echo off through sam deploy's keypress": (DEPLOY_NIGHTLY, "  stty echo\n", ""),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
