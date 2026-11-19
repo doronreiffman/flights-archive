@@ -8,7 +8,7 @@
 
 **Goal:** A Lambda function in a stack of its own, `flights-archive-model`, that once a night copies the archive's `receipts/` and `raw/` to its own disk, runs `model.build.build()` unchanged, uploads the five tables write-once under `models/<build id>/` with a manifest, moves `latest.json` forward and reports to healthchecks.io; with the script that deploys it and the local script that compares its model with a Mac build of the same boards.
 
-**Architecture:** A new package, `src/nightly/`, beside `model/`, written as the collector is: a plain `run()` that is given its two buckets, its clock, its ping function and its build function, and a thin `handler()` that wires the real ones. `bucket.py` holds the S3 calls and the in-memory stand-in the tests use; `archive.py` the listings, the copy and the shrink check; `output.py` the manifest, the uploads, the pointer and the clean-up; `measure.py` the peaks and the build's phase times; `handler.py` the night. The infrastructure sits in `model-stack/`: the template, a `samconfig.toml` of its own, and the DuckDB layer's requirements file. `scripts/deploy_nightly.sh` builds and deploys it; `scripts/nightly_check.py` runs the comparison.
+**Architecture:** A new package, `src/nightly/`, beside `model/`, written as the collector is: a plain `run()` that is given its two buckets, its clock, its ping function and its build function, and a thin `handler()` that wires the real ones. `bucket.py` holds the S3 calls and the in-memory stand-in the tests use; `archive.py` the listings, the copy and the shrink check; `output.py` the manifest, the uploads, the pointer and the clean-up; `measure.py` the peaks and the staging time; `handler.py` the night. The infrastructure sits in `model-stack/`: the template, a `samconfig.toml` of its own, and the DuckDB layer's requirements file. `scripts/deploy_nightly.sh` builds and deploys it; `scripts/nightly_check.py` runs the comparison.
 
 **Tech Stack:** Python 3.13 (`.venv`), boto3 1.43.119 (`src/requirements.txt`), DuckDB 1.5.6 (the layer, and `requirements-dev.txt`), AWS SAM (CLI 1.170.0 on this Mac), pytest 9 with botocore's `Stubber`, cfn-lint 1.58.0, POSIX `sh`. No new dependency.
 
@@ -67,7 +67,7 @@ The input classes the design implies but its test table does not name, most like
 ## Order, and why
 
 - Tasks 1 to 3 are the parts `run()` is made of, each tested alone: the S3 calls first, since the in-memory stand-in every later test uses is checked there against what S3 answers.
-- Task 4 is small and touches frozen modules at run time (it wraps three of their functions to time them, without editing them), so it gets a review of its own.
+- Task 4 is small: it reads the staging time off the markers staging writes, so the frozen modules are never touched, not even at run time (the owner's call, 2026-11-19).
 - Task 5 puts the night together and holds the design's "whole path" test.
 - Tasks 6 to 8 are the infrastructure and the two scripts. Task 7's tests read Task 6's `model-stack/samconfig.toml`; Task 8 compares Task 5's output.
 - Task 9 reviews the whole branch before the documents describe it; Task 11 measures the counts the documents carry.
@@ -77,7 +77,7 @@ The input classes the design implies but its test table does not name, most like
 | 1 | The bucket: S3 calls and the in-memory stand-in; coverage in CI | integration (Opus) |
 | 2 | The archive: listings, the copy, the shrink check | integration (Opus) |
 | 3 | The output: manifest, uploads, pointer, clean-up | integration (Opus) |
-| 4 | Measurements: peaks and the build's phase times | integration (Opus) |
+| 4 | Measurements: peaks and the staging time | integration (Opus) |
 | 5 | The night: `run()`, pings, extensions, the handler | integration (Opus) |
 | 6 | The model stack: template, `samconfig.toml`, layer; lint in CI | integration (Opus) |
 | 7 | The deploy script | integration (Opus) |
@@ -112,8 +112,8 @@ The design leaves these to the plan.
 - **The deploy script** takes one argument, `DISABLED` (the default) or `ENABLED`, and nothing else. It reads the healthchecks.io address from standard input, with echo off at a terminal, and refuses an address that does not start with `https://hc-ping.com/`. It changes into `model-stack/` before any `sam` call and names on the command line every setting it relies on, so no `samconfig.toml` can change its target ("Design and code", 1, 5 and 6).
 - **Reserved concurrency (main session, before Task 6).** `aws sts get-caller-identity --profile flights-sam` (account 137953273942, user doron-admin), then the read-only `aws lambda get-account-settings --profile flights-sam --region il-central-1 --query AccountLimit`. The field is `UnreservedConcurrentExecutions` (botocore's Lambda model, `GetAccountSettings`). AWS lets a function reserve up to that value minus 100 (the design's quote), so at 101 or more Task 6 adds `ReservedConcurrentExecutions: 1` with a test pinning it; below that it adds nothing. The figure and the outcome go in "Deviations". If the main session does not run the check, the owner runs it before Task 6 starts.
 - **`MaximumEventAgeInSeconds: 60`**, the shortest Lambda allows: cfn-lint 1.58.0's schema for `AWS::Lambda::EventInvokeConfig` gives 60 to 21,600.
-- **The x86-64 run** is the owner's (step 3 below), and only if the first arm64 run's build, its staging, statements and writing together, takes more than 144 s, three times this Mac's 48 s. The design's 48 s is a build without the copy, so the copy is left out of the comparison.
-- **The phase times.** The design's switch rule reads "staging is its largest step", which a single "staging and build" figure cannot show ("Design and code", 3). `measure.phase_timers()` wraps `model.stage.stage`, `model.rules.build_tables` and `model.build.write_model` in timers for the length of one build and puts the originals back after. No frozen file changes, and a test shows a timed build's tables equal an untimed one's.
+- **The x86-64 run** is the owner's (step 3 below), and only if the first arm64 run's build (the summary's `build` seconds) takes more than 144 s, three times this Mac's 48 s. The design's 48 s is a build without the copy, so the copy is left out of the comparison.
+- **The staging time.** The design's switch rule reads "staging is its largest step", which a single "staging and build" figure cannot show ("Design and code", 3). `measure.staging_seconds()` reads it off the stage: the newest `marker.json` written since the build started, minus the start. The rest of the build (the whole-history statements and writing the tables) is `build` minus `staging`. Nothing wraps or patches a frozen module's function, even at run time: the owner's call, 2026-11-19, over the first draft's timers wrapped around three frozen functions (the timers were exact; the marker times are close enough for a 300 s rule and leave the frozen code untouched while it runs).
 - **The function's code fingerprint** is computed the way the collector's is (`src/collector/core.py:230`), by a copy of that five-line function in `nightly/output.py`, since the function must not import `collector`; a test holds the two equal on the same folder.
 - **One run at a time on the disk.** `run()` empties `/tmp/nightly` first and builds with the stage, temp and model folders inside it: every night is a from-scratch build, option (a). The manifest's `build.stage_reused` is therefore always `false` until option (b).
 - **CI.** `--cov=nightly` from Task 1; `model-stack/template.yaml` added to the cfn-lint line in Task 6.
@@ -126,7 +126,7 @@ Where the plan departs from or adds to the design, and what in the design proved
 
 1. **`sam build` takes no stack name.** The design: the script "names the template, the build folder and the stack `flights-archive-model` on every `sam` call". SAM CLI 1.170.0's `sam build --help` lists `--template-file` and `--build-dir` but no `--stack-name`. The stack is named on every `sam deploy`; `sam build` names the template and the build folder.
 2. **No multipart upload, so the lifecycle rule has nothing to end.** The design's lifecycle rule rests on "boto3 uploads a file over 8 MB in parts (`multipart_threshold`, `s3transfer`)". But s3transfer 0.19.3, the version installed with the pinned boto3, does not accept `IfNoneMatch` in `upload_file` (`TransferManager.ALLOWED_UPLOAD_ARGS`), so a write-once upload of a file cannot go through it. The tables go up as single `put_object` calls (4.5 MB today, about 80 MB at one year by the design's figures). The rule ending unfinished multipart uploads after 1 day stays as the design has it: it is free and covers a later change to multipart. The owner may drop it; the template test pins it until then.
-3. **The phase times are an addition.** The design logs "seconds for each step (listing, copy, staging and build, upload)", one figure for the build, yet its switch rule needs "staging is its largest step". The plan logs the build's three phases beside the build's total, timed from outside `build()` (above). Without them, the 300 s rule could not be applied from the log.
+3. **The staging time is an addition.** The design logs "seconds for each step (listing, copy, staging and build, upload)", one figure for the build, yet its switch rule needs "staging is its largest step". The plan logs staging beside the build's total, read off the stage's markers (above). Without it, the 300 s rule could not be applied from the log.
 4. **The manifest's `measured`** can only hold what is known when it is written: the seconds of the listing, the copy and the build (with its phases), and the peaks. The upload, pointer and clean-up seconds and the total come after it, so they are in the summary line only.
 5. **"It refuses any other stack name"** has no input to refuse as the design describes the script: it names its stack itself. The plan reads it as two refusals. No argument may carry a stack name, since anything but `DISABLED` or `ENABLED` is refused. And `model-stack/samconfig.toml` must name `flights-archive-model`, so that the folder's settings, which a bare `sam` command typed there follows, cannot drift to the collector's stack.
 6. **Identity first.** The script refuses a bad argument or a wrong `samconfig.toml` before its identity check, since neither needs AWS. The identity check is still its first AWS call and comes before every `sam` call.
@@ -305,40 +305,43 @@ Implementer: integration (Opus). Design: section 4, "Output and readers" (the la
 - [ ] **Step 6: Commit** (`q2: the manifest, the write-once uploads, a pointer that only moves forward, and the 30-day clean-up`).
 - [ ] **Step 7: Review (Opus).**
 
-### Task 4: Measurements: peaks and the build's phase times
+### Task 4: Measurements: peaks and the staging time
 
 Implementer: integration (Opus). Design: section 3, "What the function logs each night"; "Design and code", 3.
+
+The owner's call (2026-11-19): the staging time is read off the files staging writes, never by wrapping or patching the frozen modules' functions, even at run time. Nothing in `src/nightly/` assigns to an attribute of a `model` module.
 
 **Files:**
 - Create: `src/nightly/measure.py`, `tests/test_nightly_measure.py`
 - Modify: `scripts/mutation_check.py` (`NIGHTLY_MEASURE = ("src/nightly/measure.py", ["tests/test_nightly_measure.py"])`, the entries)
 
 **Interfaces:**
-- Consumes: `model.stage.stage`, `model.rules.build_tables`, `model.build.write_model` (read, wrapped, put back; never edited). `model.build.run` looks up `stage.stage` and `rules.build_tables` on their modules at call time, and `build()` calls `write_model` by its module-level name (`src/model/build.py:44`, `:46`, `:146`), so a wrapper set on each module is the one called.
+- Consumes: `model.stage.MARKER` (the constant `"marker.json"`, read, never changed). `src/model/stage.py` writes a day's `marker.json` after that day's files and stages every day before `model.build.run` opens the stage and builds the tables (`src/model/build.py:44-46`), so on a from-scratch night the newest marker's modification time is when staging ended.
 - Produces, in `src/nightly/measure.py`:
   - `peak_memory_mb() -> float`: `resource.getrusage(resource.RUSAGE_SELF).ru_maxrss` in MB, read as bytes on `darwin` and as kilobytes elsewhere;
   - `class Sampler(read: Callable[[], int], every: float = 1.0)`, a context manager: a daemon thread calls `read` every `every` seconds while the block runs, and once at entry and once at exit; `peak: int` is the largest value read. The thread is stopped and joined at exit;
-  - `PHASES = (("staging", model.stage, "stage"), ("statements", model.rules, "build_tables"), ("writing", model.build, "write_model"))`;
-  - `phase_timers(seconds: dict[str, float]) -> ContextManager[None]`: for the block, each function in `PHASES` is replaced by a wrapper that adds its wall time to `seconds[name]`, raised or not. The originals are put back at exit, raised or not.
+  - `staging_seconds(stage_dir: Path, started: float) -> float`: the newest modification time (`st_mtime`, the same clock as `time.time()`) of any `MARKER` file under `stage_dir`, minus `started`; `0.0` when there is none, or when the newest is older than `started` (a stage that was reused, not written; never the case under option (a)).
 
 - [ ] **Step 1: Write the failing tests:**
   - `test_the_sampler_keeps_the_peak`: `read` gives 3, 9, 4 and then 4; `every=0.01`; after the block, `peak == 9`.
   - `test_the_sampler_stops_its_thread`: after the block, no thread the sampler started is alive.
   - `test_peak_memory_is_in_megabytes_on_this_platform`: `20 < peak_memory_mb() < 65536` (a Python process with DuckDB loaded). Read as the wrong unit, macOS gives about 1,000 times too much and Linux 1,000 times too little; CI runs it on Linux and the Mac locally.
-  - `test_phase_timers_time_a_real_build`: a two-day archive written with `tests/model_helpers.py`; `model.build.build` inside `phase_timers(s)`; `s` has the three names, each above 0, their sum at most the build's wall time.
-  - `test_a_timed_build_equals_an_untimed_one`: the same archive built with and without the timers; `compare_tables` and `compare_load` (`model_helpers.check_script()`) give `[]`.
-  - `test_phase_timers_put_the_functions_back`, parametrized over a block that ends and one that raises `ValueError`: afterwards `model.stage.stage`, `model.rules.build_tables` and `model.build.write_model` are the originals (`is`).
+  - `test_staging_seconds_is_the_newest_marker`: three `marker.json` files in nested day folders under a temp stage, their times set with `os.utime` to `started + 3`, `started + 7` and `started + 5`, and a newer file that is not a marker at `started + 20`; the result is `7.0` (within 0.01).
+  - `test_no_marker_written_since_the_start_means_no_staging`: an empty stage gives `0.0`; a stage whose only marker is older than `started` gives `0.0`.
+  - `test_staging_seconds_of_a_real_build`: a two-day archive written with `tests/model_helpers.py`; `started = time.time()`; `model.build.build` with a new stage folder; `0 < staging_seconds(stage, started) <= time.time() - started`.
 - [ ] **Step 2: Run; fail.**
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run; pass.** Then the full suite, and `tests/test_model_tagged.py` alone: the frozen modules' own tests must not notice the timers.
+- [ ] **Step 4: Run; pass.** Then the full suite.
 - [ ] **Step 5: Mutation entries** (`NIGHTLY_MEASURE`):
-  - "nightly: phase timers left in place" → `test_phase_timers_put_the_functions_back`;
+  - "nightly: the oldest marker taken" (`max` turned to `min`) → `test_staging_seconds_is_the_newest_marker`;
+  - "nightly: any newest file taken, not only markers" → `test_staging_seconds_is_the_newest_marker`;
+  - "nightly: a marker older than the start counted" → `test_no_marker_written_since_the_start_means_no_staging`;
   - "nightly: sampler keeps the last reading" → `test_the_sampler_keeps_the_peak`;
   - "nightly: peak memory in the wrong unit" (the platform test turned round) → `test_peak_memory_is_in_megabytes_on_this_platform`.
 
   Run the entries of `src/nightly/measure.py`.
-- [ ] **Step 6: Commit** (`q2: peak memory and disk, and the build's staging, statements and writing timed from outside`).
-- [ ] **Step 7: Review (Opus).** The reviewer confirms that `src/model/` is untouched and that nothing outside a `phase_timers` block sees a wrapper.
+- [ ] **Step 6: Commit** (`q2: peak memory and disk, and the staging time read off the stage's markers`).
+- [ ] **Step 7: Review (Opus).** The reviewer confirms that `src/model/` is untouched and that nothing in `src/nightly/` assigns to, wraps or patches anything in a `model` module.
 
 ### Task 5: The night: `run()`, pings, extensions, the handler
 
@@ -366,7 +369,7 @@ Implementer: integration (Opus). Design: "What one night does", steps 1 to 10, a
     5. `started = clock()`, which must be timezone-aware UTC; `build_id(started, runtime.request_id)`;
     6. `previous = read_pointer(models)`, then `list_archive(archive)`, then `check_not_shrunk` on the pointer's manifest or `None` (timed together as `list`);
     7. `copy` of the receipts, then of the boards, into `<work>/archive` (`copy`);
-    8. inside `Sampler(lambda: shutil.disk_usage(cfg.work_dir).used)` and `phase_timers`: `build(raw_dir=<work>/archive/raw, out_dir=<work>/out, receipts_dir=<work>/archive/receipts, stage_dir=<work>/stage, temp_dir=<work>/temp, memory_limit=MEMORY_LIMIT, threads=THREADS)` (`build`);
+    8. inside `Sampler(lambda: shutil.disk_usage(cfg.work_dir).used)`, with `build_started = time.time()` just before it (the real clock, not the injected `clock`: the markers' times are real) and `staging_seconds(<work>/stage, build_started)` read just after: `build(raw_dir=<work>/archive/raw, out_dir=<work>/out, receipts_dir=<work>/archive/receipts, stage_dir=<work>/stage, temp_dir=<work>/temp, memory_limit=MEMORY_LIMIT, threads=THREADS)` (`build`);
     9. `extensions()` not empty: `ExtensionError`, "after the build";
     10. `table_entries`, `finished = clock()`, `manifest(...)` with `measured` (the seconds so far, `memory_mb`, `tmp_mb`);
     11. `upload_build` (`upload`), `move_pointer(models, manifest, receipts.newest_key or "")` (`pointer`), `clean_up(models, started, keep=<the pointer's build id>)` (`clean_up`);
@@ -376,7 +379,7 @@ Implementer: integration (Opus). Design: "What one night does", steps 1 to 10, a
 
     ```python
     {"action": "built", "build_id": str, "pointer": "moved" | "kept", "pointer_build_id": str,
-     "seconds": {"list", "copy", "build", "staging", "statements", "writing", "upload", "pointer", "clean_up", "total"},
+     "seconds": {"list", "copy", "build", "staging", "upload", "pointer", "clean_up", "total"},
      "seconds_left": float,
      "copied": {"receipts": {"objects": int, "bytes": int}, "raw": {"objects": int, "bytes": int}},
      "memory_mb": {"peak": float, "size": runtime.memory_mb},
@@ -403,7 +406,7 @@ Every run test passes `extensions=lambda: []` unless it tests the check, so that
     - `latest.json` holds the same bytes as `models/<id>/manifest.json`;
     - each table's SHA-256 in the manifest is the stored object's;
     - the manifest's listings equal those of the bucket;
-    - the summary's `seconds` has the ten names, `staging`, `statements` and `writing` each above 0.
+    - the summary's `seconds` has the eight names, `staging` above 0 and at most `build`.
   - `test_the_build_gets_the_copys_folders_and_the_limits`: `fake_build`'s call has exactly `raw_dir`, `out_dir`, `receipts_dir`, `stage_dir`, `temp_dir` as in `run`'s step 8, `memory_limit == "1GB"`, `threads == 2`, and no `restage`.
   - `test_the_work_folder_is_emptied_first`: a file and an `out.building` folder left in `work_dir` are gone when the build is called, and its stage folder does not exist yet.
   - `test_the_work_folder_is_emptied_after_a_success`.
@@ -696,7 +699,7 @@ Not agent tasks. Each step on the owner's go, at the terminal, from the merged a
 3. **One run by hand**, the first measurement in a Lambda:
    - `aws lambda invoke --function-name <ModelFunctionName> --invocation-type Event --payload '{}' --cli-binary-format raw-in-base64-out out.json`;
    - read the summary: the success ping's body in healthchecks.io, or the log group `/flights-archive-model/nightly`. Seconds for each step, peak memory, peak disk;
-   - if the build (`staging + statements + writing`) took more than 144 s, try x86-64 once: the function's `Architectures` and the layer's `BuildArchitecture` and `CompatibleArchitectures`, with their test pins, deployed, run once, the faster kept. Both figures go in `nightly-model.md`.
+   - if the build (`build`) took more than 144 s, try x86-64 once: the function's `Architectures` and the layer's `BuildArchitecture` and `CompatibleArchitectures`, with their test pins, deployed, run once, the faster kept. Both figures go in `nightly-model.md`.
 4. **The comparison.** `sh scripts/sync.sh`, then `PYTHONPATH=src .venv/bin/python scripts/nightly_check.py --bucket <ModelBucketName> --work <a new folder>`. Expected: exit 0 and `identical: columns, rows, load(), progress.json`. Its output, date and command go into `docs/nightly-model.md`, under "The frozen record", before the schedule is switched on.
 5. **The drill.** The same invoke with `--payload '{"drill": true}'`. healthchecks.io shows a failure and the email arrives. A run by hand (step 3's command) clears it.
 6. **Live.** `sh scripts/deploy_nightly.sh ENABLED`. The next morning: a start and a success in healthchecks.io, and a new `latest.json` (`aws s3 cp s3://<ModelBucketName>/latest.json -`). Then a documents commit: the deploy date in `docs/operations.md`, `docs/data-model.md` ("Nightly run") and `docs/nightly-model.md`'s status line, and the function in `README.md`'s "What it does today".
