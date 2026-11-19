@@ -104,6 +104,8 @@ NIGHTLY_ARCHIVE = ("src/nightly/archive.py", ["tests/test_nightly_archive.py"])
 NIGHTLY_MEASURE = ("src/nightly/measure.py", ["tests/test_nightly_measure.py"])
 # The nightly build's output (src/nightly/output.py): the manifest, the write-once uploads, the pointer, the clean-up.
 NIGHTLY_OUTPUT = ("src/nightly/output.py", ["tests/test_nightly_output.py"])
+# The nightly run (src/nightly/handler.py): the steps in their order, the build's folders and limits, the pings.
+NIGHTLY_HANDLER = ("src/nightly/handler.py", ["tests/test_nightly_handler.py"])
 # The nightly build's stack (model-stack/): its template, the DuckDB layer's pin and the folder's own samconfig.toml;
 # and the collector's requirements, which must never gain DuckDB (docs/nightly-model.md, section 7). The check edits
 # src/requirements.txt only while its entry runs, and restores it.
@@ -931,6 +933,24 @@ COLLECTOR_MUTATIONS = {
     "nightly: manifest before the tables": (NIGHTLY_OUTPUT, '    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n', '    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n'),
     "nightly: a table not uploaded": (NIGHTLY_OUTPUT, "    for table in TABLES:\n        models.put_new(", "    for table in TABLES[1:]:\n        models.put_new("),
     "nightly: function fingerprint ignores file content": (NIGHTLY_OUTPUT, 'h.update(path.name.encode() + b"\\0" + hashlib.sha256(path.read_bytes()).digest())', 'h.update(path.name.encode() + b"\\0")'),
+    # the night: an emptied work folder, the build given the copy's folders and the limits, tables before the pointer,
+    # a failure that stops everything after it, the shrink and extension checks, the pings, the drill first
+    "nightly: work folder not emptied first": (NIGHTLY_HANDLER, "    if work.exists():\n        shutil.rmtree(work)\n    work.mkdir(parents=True)\n", "    work.mkdir(parents=True, exist_ok=True)\n"),
+    "nightly: tables uploaded from the wrong folder": (NIGHTLY_HANDLER, "upload_build(models, build_name, out, body)", "upload_build(models, build_name, stage, body)"),
+    "nightly: memory limit not passed": (NIGHTLY_HANDLER, "memory_limit=MEMORY_LIMIT, ", ""),
+    "nightly: temp folder not passed": (NIGHTLY_HANDLER, 'temp_dir=work / "temp", ', ""),
+    "nightly: pointer moved before the tables": (NIGHTLY_HANDLER, '    with _timed(seconds, "upload"):\n        upload_build(models, build_name, out, body)\n    with _timed(seconds, "pointer"):\n        moved, pointer_build = move_pointer(models, body, receipts.newest_key or "")\n', '    with _timed(seconds, "pointer"):\n        moved, pointer_build = move_pointer(models, body, receipts.newest_key or "")\n    with _timed(seconds, "upload"):\n        upload_build(models, build_name, out, body)\n'),
+    "nightly: a failed upload ignored": (NIGHTLY_HANDLER, "        upload_build(models, build_name, out, body)\n", "        try:\n            upload_build(models, build_name, out, body)\n        except Exception:\n            pass\n"),
+    "nightly: clean-up before the build": (NIGHTLY_HANDLER, "        build_started = time.time()", '        clean_up(models, started, keep=previous["build_id"] if previous else "")\n        build_started = time.time()'),
+    "nightly: shrink check skipped": (NIGHTLY_HANDLER, "        check_not_shrunk(previous, receipts, raw)\n", ""),
+    "nightly: extensions not checked before": (NIGHTLY_HANDLER, '    _no_extensions(extensions, "before the build")\n', ""),
+    "nightly: extensions not checked after": (NIGHTLY_HANDLER, '    _no_extensions(extensions, "after the build")\n', ""),
+    "nightly: no start ping": (NIGHTLY_HANDLER, '    pinger(f"{url}/start" if url else "", "")\n', ""),
+    "nightly: no reason in the fail ping": (NIGHTLY_HANDLER, 'pinger(f"{url}/fail" if url else "", f"{type(err).__name__}: {err}")', 'pinger(f"{url}/fail" if url else "", "")'),
+    "nightly: summary not sent": (NIGHTLY_HANDLER, "        pinger(url, line)\n", ""),
+    "nightly: drill after the listing": (NIGHTLY_HANDLER, "        raise DrillError(", "        list_archive(archive)\n        raise DrillError("),
+    "nightly: ping error raised": (NIGHTLY_HANDLER, "    except Exception as err:  # noqa: BLE001 - monitoring must not fail the build\n", "    except ValueError as err:  # noqa: BLE001 - monitoring must not fail the build\n"),
+    "nightly: imports collector": (NIGHTLY_HANDLER, "from __future__ import annotations\n", "from __future__ import annotations\nimport collector.core\n"),
     # the nightly build's stack: sizes, no retries, the schedule, a private bucket, a read-only hold on the archive
     "model stack: function retries": (MODEL_STACK, "      EventInvokeConfig:\n        MaximumRetryAttempts: 0\n", "      EventInvokeConfig:\n        MaximumRetryAttempts: 2\n"),
     "model stack: schedule retries": (MODEL_STACK, "            RetryPolicy:\n              MaximumRetryAttempts: 0\n", "            RetryPolicy:\n              MaximumRetryAttempts: 2\n"),
