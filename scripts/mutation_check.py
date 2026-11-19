@@ -102,6 +102,8 @@ NIGHTLY_BUCKET = ("src/nightly/bucket.py", ["tests/test_nightly_bucket.py"])
 NIGHTLY_ARCHIVE = ("src/nightly/archive.py", ["tests/test_nightly_archive.py"])
 # The nightly build's measurements (src/nightly/measure.py): peak memory, the sampled peak, the staging time.
 NIGHTLY_MEASURE = ("src/nightly/measure.py", ["tests/test_nightly_measure.py"])
+# The nightly build's output (src/nightly/output.py): the manifest, the write-once uploads, the pointer, the clean-up.
+NIGHTLY_OUTPUT = ("src/nightly/output.py", ["tests/test_nightly_output.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -910,6 +912,18 @@ COLLECTOR_MUTATIONS = {
     "nightly: sampler keeps the last reading": (NIGHTLY_MEASURE, "        self.peak = max(self.peak, value)\n", "        self.peak = value\n"),
     "nightly: the sampler not read as its block ends": (NIGHTLY_MEASURE, "        self._thread.join()\n        self._keep(self.read())\n", "        self._thread.join()\n"),
     "nightly: peak memory in the wrong unit": (NIGHTLY_MEASURE, 'sys.platform == "darwin"', 'sys.platform != "darwin"'),
+    # the output: tables hashed and uploaded before the manifest, a pointer that only moves forward and reads again
+    # when refused, at most three times, and a clean-up that keeps the pointer's build and anything 30 days old or less
+    "nightly: pointer comparison turned round": (NIGHTLY_OUTPUT, "        if newest < newest_receipt(pointer):\n", "        if newest > newest_receipt(pointer):\n"),
+    "nightly: pointer tried four times": (NIGHTLY_OUTPUT, "POINTER_TRIES = 3\n", "POINTER_TRIES = 4\n"),
+    "nightly: a refused pointer write not read again": (NIGHTLY_OUTPUT, "        except ConditionFailed:  # changed since it was read (412), or another write raced this one (409)\n            continue\n", "        except ConditionFailed:  # changed since it was read (412), or another write raced this one (409)\n            raise\n"),
+    "nightly: a lost first write not read again": (NIGHTLY_OUTPUT, "            except ConditionFailed:  # another run wrote the first pointer meanwhile: read it and decide again\n                continue\n", "            except ConditionFailed:  # another run wrote the first pointer meanwhile: read it and decide again\n                raise\n"),
+    "nightly: the pointer's build deleted": (NIGHTLY_OUTPUT, "        if build != keep and started is not None and started < cutoff:\n", "        if started is not None and started < cutoff:\n"),
+    "nightly: a 30-day build deleted": (NIGHTLY_OUTPUT, "        if build != keep and started is not None and started < cutoff:\n", "        if build != keep and started is not None and started <= cutoff:\n"),
+    "nightly: table hash of the wrong file": (NIGHTLY_OUTPUT, '        path = out_dir / f"{table}.parquet"\n', '        path = out_dir / f"{TABLES[0]}.parquet"\n'),
+    "nightly: manifest before the tables": (NIGHTLY_OUTPUT, '    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n', '    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n'),
+    "nightly: a table not uploaded": (NIGHTLY_OUTPUT, "    for table in TABLES:\n        models.put_new(", "    for table in TABLES[1:]:\n        models.put_new("),
+    "nightly: function fingerprint ignores file content": (NIGHTLY_OUTPUT, 'h.update(path.name.encode() + b"\\0" + hashlib.sha256(path.read_bytes()).digest())', 'h.update(path.name.encode() + b"\\0")'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
