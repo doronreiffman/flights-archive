@@ -117,6 +117,10 @@ COLLECTOR_REQUIREMENTS = ("src/requirements.txt", ["tests/test_model_stack.py"])
 # The deploy script (scripts/deploy_nightly.sh): identity first, the model's stack and its own build folder named, the
 # address read with echo off at a terminal and never printed (docs/nightly-model.md, section 5).
 DEPLOY_NIGHTLY = ("scripts/deploy_nightly.sh", ["tests/test_deploy_nightly.py"])
+# The comparison script (scripts/nightly_check.py): the Lambda's tables fetched with their hashes checked, the same
+# boards laid out from data/ with the digests compared, the model code's fingerprint, and the four checks
+# (docs/nightly-model.md, "The frozen record").
+NIGHTLY_CHECK = ("scripts/nightly_check.py", ["tests/test_nightly_check.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -991,6 +995,15 @@ COLLECTOR_MUTATIONS = {
     "deploy: the address echoed at a terminal": (DEPLOY_NIGHTLY, "  stty -echo\n", ""),
     "deploy: echo left off after an interrupt": (DEPLOY_NIGHTLY, "  trap 'stty echo' EXIT\n", ""),
     "deploy: echo off through sam deploy's keypress": (DEPLOY_NIGHTLY, "  stty echo\n", ""),
+    # the comparison script: hashes, digests and fingerprint checked; dot-files and later boards left out; four checks
+    "nightly check: input digest not compared": (NIGHTLY_CHECK, '        if digest != read["listing_sha256"]:\n', "        if False:\n"),
+    "nightly check: boards after the newest key kept": (NIGHTLY_CHECK, "        if key <= newest:\n", "        if True:\n"),
+    "nightly check: dot-files counted": (NIGHTLY_CHECK, '        if not path.is_file() or any(part.startswith(".") for part in relative.parts):\n', "        if not path.is_file():\n"),
+    "nightly check: table hash not checked": (NIGHTLY_CHECK, '        if size != entry["bytes"] or sha != entry["sha256"]:\n', '        if size != entry["bytes"]:\n'),
+    "nightly check: fingerprint not compared": (NIGHTLY_CHECK, "    if found != built:\n", "    if False:\n"),
+    "nightly check: rows not compared": (NIGHTLY_CHECK, "    lines = (compare_tables(lambda_model, mac_model, names=NAMES) + compare_load(lambda_model, mac_model)\n", "    lines = (compare_load(lambda_model, mac_model)\n"),
+    "nightly check: exit 0 on a difference": (NIGHTLY_CHECK, "    return 1 if lines else 0\n", "    return 0\n"),
+    "nightly check: identity not checked": (NIGHTLY_CHECK, "    if arn != IDENTITY:\n", "    if False:\n"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
