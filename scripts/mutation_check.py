@@ -99,6 +99,7 @@ TAGGED_STAGE = ("src/model/stage.py", [BOUNDARY])
 BUILD = ("src/model/build.py", ["tests/test_model_build.py"])
 # The nightly build (src/nightly/, docs/nightly-model.md): its S3 calls and the in-memory bucket its tests use.
 NIGHTLY_BUCKET = ("src/nightly/bucket.py", ["tests/test_nightly_bucket.py"])
+NIGHTLY_ARCHIVE = ("src/nightly/archive.py", ["tests/test_nightly_archive.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -889,6 +890,17 @@ COLLECTOR_MUTATIONS = {
     "nightly: stored checksum not checked": (NIGHTLY_BUCKET, 'reply = self.client.get_object(Bucket=self.name, Key=key, ChecksumMode="ENABLED")', "reply = self.client.get_object(Bucket=self.name, Key=key)"),
     "nightly: a missing pointer raises": (NIGHTLY_BUCKET, 'MISSING_CODES = ("NoSuchKey", "404")', "MISSING_CODES = ()"),
     "nightly: memory bucket replaces an existing key": (NIGHTLY_BUCKET, "        if key in self.objects:\n", "        if False:\n"),
+    # the archive: receipts listed before boards, a digest of every key and size, a copy that is the listing or fails,
+    # downloads at once, and a listing smaller than the last build's stops the night
+    "nightly: boards listed before receipts": (NIGHTLY_ARCHIVE, "    receipts = Listing(RECEIPTS, tuple(archive.list(RECEIPTS)))\n    raw = Listing(RAW, tuple(archive.list(RAW)))\n", "    raw = Listing(RAW, tuple(archive.list(RAW)))\n    receipts = Listing(RECEIPTS, tuple(archive.list(RECEIPTS)))\n"),
+    "nightly: listing digest ignores sizes": (NIGHTLY_ARCHIVE, 'digest.update(f"{key}\\t{size}\\n".encode("utf-8"))', 'digest.update(f"{key}\\n".encode("utf-8"))'),
+    "nightly: copied size not checked": (NIGHTLY_ARCHIVE, "    if copied != item.size:\n", "    if False:\n"),
+    "nightly: a failed download ignored": (NIGHTLY_ARCHIVE, "            done.result()  # raises the download's own error\n", "            pass\n"),
+    "nightly: a key outside the work folder copied": (NIGHTLY_ARCHIVE, "    if root not in path.parents:\n", "    if False:\n"),
+    "nightly: a folder object copied": (NIGHTLY_ARCHIVE, '    if key.endswith("/"):\n', "    if False:\n"),
+    "nightly: one download at a time": (NIGHTLY_ARCHIVE, "ThreadPoolExecutor(max_workers=workers)", "ThreadPoolExecutor(max_workers=1)"),
+    "nightly: fewer objects accepted": (NIGHTLY_ARCHIVE, '        if listing.objects < before["objects"]:\n', "        if False:\n"),
+    "nightly: an older newest key accepted": (NIGHTLY_ARCHIVE, '        if newest is not None and (listing.newest_key or "") < newest:\n', "        if False:\n"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
