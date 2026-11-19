@@ -2,7 +2,7 @@
 
 Grade: production-lean, the data model's own grade ([data-model.md](data-model.md)): tested code, a mutation check (the code is broken on purpose and a test must fail), a fresh review before anything ships. Cheap, boring infrastructure: one function, one bucket, one schedule.
 
-Status: a design. Nothing is built and nothing is deployed. Written 2026-11-19. The design and its measurements are an agent's (Fable 5.2); the six calls under "For the owner" are open. It replaces step 2 of "Nightly run" in [data-model.md](data-model.md), the earlier sketch of this function. Every figure marked "this Mac" was measured on the 8 GB development Mac. Nothing was run in AWS.
+Status: a design. Nothing is built and nothing is deployed. Written 2026-11-19. The design and its measurements are an agent's (Fable 5.2); the six calls under "For the owner" are open. Its figures and quotes were checked against their sources, and the Linux-against-Mac comparison was rerun, by the main session; a fresh reviewer (Opus 5.5) read it the same day, and its twelve findings are folded in (three important: two overlapping runs sharing a kept stage, the trigger for keeping the stage, and the pointer's build expiring during a long stop). It replaces step 2 of "Nightly run" in [data-model.md](data-model.md), the earlier sketch of this function. Every figure marked "this Mac" was measured on the 8 GB development Mac. Nothing was run in AWS.
 
 Data: Israel Airports Authority, published on data.gov.il (dataset `flydata`). The counts here are of archived boards, not official figures.
 
@@ -12,9 +12,9 @@ Today the model is built by hand. `sh scripts/sync.sh` copies the archive to the
 
 - **One function, once a night.** A Lambda function (code that AWS runs on request and bills by the second) copies the archive to its own temporary disk, runs the same `model.build.build()` the Mac runs, and uploads the five tables to a bucket of its own.
 - **Copy the archive, do not read it in place.** The build lists folders on a local disk, so with a local copy it runs unchanged. Reading S3 directly would mean editing `src/model/`, which is frozen under `record-v1`, and adding a DuckDB extension that is not in the package. With a copy, no frozen file changes.
-- **Start from an empty disk every night, for now.** Nothing is kept between nights, so nothing can drift. Today that build takes 48 s on this Mac, and 65 to 133 s in a small Linux container on it. It grows by about 2 s a night for every day of history. When a night passes 300 s, the staged work moves to S3 (designed below).
+- **Start from an empty disk every night, for now.** Nothing is kept between nights, so nothing can drift. Today that build takes 48 s on this Mac, and 65 to 133 s in a small Linux container on it. Staging alone grows by about 2 s for every day of history; the whole from-scratch build grew about 4 s a day on this Mac's figures (48 s now, about 261 s at the gate). The copy from S3 comes on top and was not measured. When a night passes 300 s and staging is its largest step, the staged work moves to S3 (designed below).
 - **Size.** 3,008 MB of memory, a 10,240 MB temporary disk, the 900 s maximum timeout, arm64 processors. The build runs as on the Mac: DuckDB held to 1 GB, 2 threads.
-- **It will outgrow Lambda, and the log will say when.** On this Mac's figures the 15-minute limit arrives between the record's gate (mid-January 2027) and the middle of 2027, depending on how fast a Lambda really is. The 10 GB disk fills at about eleven times today's archive, late May 2027. Each night logs its seconds, its peak memory and its peak disk use beside those limits.
+- **It will outgrow Lambda, and the log will say when.** On this Mac's figures the 15-minute limit arrives between the record's gate (mid-January 2027) and the middle of 2027, depending on how fast a Lambda really is and how long the copy takes (not measured). The 10 GB disk fills at about eleven times today's archive, late May 2027. Each night logs its seconds, its peak memory and its peak disk use beside those limits.
 - **A reader never sees half a model.** Each night's tables go under a folder of their own. One small pointer file, written last, names the newest complete night. S3 replaces a single object in one step, so a reader gets the old night or the new one.
 - **A stack of its own**, `flights-archive-model`. It can read `raw/` and `receipts/` in the archive bucket and do nothing else there. Deploying it never puts a change on the collector's stack.
 - **Alerts through healthchecks.io.** One check, pinged at the start and at the end of each run. A failed night, a night that was killed and a night that never ran all reach the owner. $0.
@@ -71,13 +71,14 @@ Three sizes are used below. "Today" is the copy above: 3,982 objects, 95 MB. "Th
 
 1. Tell healthchecks.io the run has started. Empty the work folder under `/tmp`, the function's only writable disk.
 2. Check that DuckDB has nothing installed beyond its built-in extensions.
-3. List `receipts/` in the archive bucket, then list `raw/`, one straight after the other. Note the counts, the bytes, the newest key and a digest of each listing.
+3. List `receipts/` in the archive bucket, then list `raw/`, one straight after the other. Note the counts, the bytes, the newest key and a digest of each listing. The archive only grows, so if either listing holds fewer objects, or an older newest key, than the manifest `latest.json` names, stop: a wrong bucket or a listing fault, not a smaller archive.
 4. Download every listed object to the same relative path under the work folder. Check each file's size against the listing.
 5. Call `model.build.build()` on the copy, with a stage folder and a temp folder inside the work folder, a 1 GB memory limit and 2 threads.
 6. Check DuckDB's extensions again. Hash the five tables.
-7. Upload the five tables under `models/<build id>/`, then a manifest (a small JSON file describing the build) beside them.
+7. Upload the five tables under `models/<build id>/`, then a manifest (a small JSON file describing the build) beside them. Every upload there is write-once (`If-None-Match`), so no run can replace another's files.
 8. Move the pointer `latest.json` to this build, only forward (below).
-9. Log one summary line, send it to healthchecks.io as the success ping, and empty the work folder.
+9. Delete the builds under `models/` older than 30 days, never the one the pointer names (section 4).
+10. Log one summary line, send it to healthchecks.io as the success ping, and empty the work folder.
 
 Anything that goes wrong at any step is logged, sent to healthchecks.io as a failure with its reason, and raised. The pointer does not move. The function never calls data.gov.il: it reads S3 and pings healthchecks.io, nothing else.
 
@@ -115,7 +116,7 @@ What the copy costs. Every night reads every object again: 3,982 today, about 15
 
 The stage is each day's per-board work, kept as Parquet so that the next build skips it ([lighter-build.md](lighter-build.md), "The design", 2). A Lambda's disk does not last from one night to the next, so the stage is either rebuilt or kept somewhere.
 
-**Recommended: rebuild it every night on an emptied disk. Move it to S3 when a night's run passes 300 s.**
+**Recommended: rebuild it every night on an emptied disk. Keep it in S3 when a night's run passes 300 s and staging is the largest step.**
 
 | | (a) From scratch each night | (b) Stage kept in S3 | (c) Stage and archive on EFS |
 |---|---|---|---|
@@ -126,8 +127,8 @@ The stage is each day's per-board work, kept as Parquet so that the next build s
 | New code | none beyond the function | download the stage first, upload the changed days after | a private network (VPC), a file system, mount settings |
 | Kept between nights | nothing | the stage, a cache | the archive copy and the stage |
 | Can drift from a full rebuild | no: every night is one | only if a staged day goes stale; the build's own marker check runs every night | the same, and the copy itself can fall out of step with the bucket |
-| Monthly cost today / gate / one year, list price | $0.24 / $0.96 / does not fit | $0.19 / $0.73 / $2.19 | not priced |
-| The same, if Lambda's free allowance covers the run time | $0.06 / $0.22 / does not fit | $0.06 / $0.23 / $1.08 | not priced |
+| Monthly cost today / gate / one year, list price | $0.24 / $0.96 / does not fit | $0.20 / $0.80 / $2.54 | not priced |
+| The same, if Lambda's free allowance covers the run time | $0.06 / $0.22 / does not fit | $0.08 / $0.30 / $1.43 | not priced |
 
 The times leave out the copy from S3, which was not measured. The costs assume run lengths, because a Lambda's speed is not known: 150 s today and 600 s at the gate for (a); 100 s and 400 s for (b); the full 900 s at one year. The sums are under "Cost".
 
@@ -135,15 +136,16 @@ Why (a) first. It keeps nothing, so there is nothing to go stale and nothing to 
 
 Why not (a) for long. Staging grows by 1.5 to 2 s a night for every day collected, and it does not get faster with more processors: the prototype staged 78 days in 147 s on 8 threads, the same rate as on 2. If a Lambda runs at half this Mac's speed, a from-scratch night takes about 9 minutes at the gate and passes 15 minutes before the end of March 2027.
 
-When to switch. When a night's logged run passes 300 s, a third of the limit, build (b). From there the run has to triple before it reaches the limit. On the prototype's growth that means the archive more than doubling, which is at least a month.
+When to switch. The trigger is the step (b) removes, not the total. When a night's logged run passes 300 s, a third of the limit, and staging is its largest step, build (b). From there the run has to triple before it reaches the limit. On the prototype's growth that means the archive more than doubling, which is at least a month. If the copy is the largest step instead, (b) does not help, since it still copies the whole archive: that night calls for the step after (under "Sizing"), where the archive copy lasts between runs.
 
 (b), designed now so the switch needs only a plan:
 
-- The stage folder is mirrored under `stage/` in the model bucket: for each day `rows.parquet`, `counts.parquet` and `marker.json`, and for each day of receipts `receipts.parquet` and `marker.json`. That is 108 objects and 57 MB today, about 2.6 MB more a day.
-- Before the build the function downloads `stage/` into its stage folder. The whole archive is still copied, because a staged day is only reused when its source folder is there.
+- Each build keeps its own stage, beside its tables: `stages/<build id>/`, holding for each day `rows.parquet`, `counts.parquet` and `marker.json`, and for each day of receipts `receipts.parquet` and `marker.json`. That is 108 objects and 57 MB today, about 2.6 MB more a day. The manifest names it.
+- Before the build the function downloads the stage of the build `latest.json` names into its stage folder. The whole archive is still copied, because a staged day is only reused when its source folder is there.
 - `build()` decides what to reuse, by its own marker rule. The function decides nothing.
-- After the pointer has moved, the function uploads the days whose files changed: the Parquet files first, the marker last. A crash between leaves a marker that no longer matches, and that day is staged again the next night.
-- A manual event `{"restage": true}` passes `restage=True`: the from-scratch build, which also rewrites the stage in S3.
+- After the build, the function uploads its whole stage to its own `stages/<build id>/`, before the pointer moves. No stage is ever written by two runs: `build()`'s reuse check (`_current` in `src/model/stage.py`) trusts any marker whose listing matches and whose files are there, so one run's `rows.parquet` beside another run's marker would be reused unseen. A stage shared between runs could get exactly that from two overlapping runs.
+- A missing stage is harmless: the build stages every day, as tonight's does. So `stages/` expires after 3 days by a lifecycle rule (S3 deleting objects by age, by itself). A run of failed nights longer than that costs one from-scratch build, nothing else.
+- A manual event `{"restage": true}` passes `restage=True`: the from-scratch build.
 - Proof: the Mac comparison under "The frozen record" is against a fresh Mac build, so it also checks a model built on a reused stage.
 
 Why not (c), EFS (a network file system a Lambda can mount, which lasts between runs). It is the only option that stops re-reading the whole archive every night. It needs a private network (a VPC) around the function, the first thing in this project with a network to look after. Whether a function inside one can still reach healthchecks.io without a paid gateway was not checked, and EFS's prices were not in today's price files. Not for a job this size.
@@ -160,6 +162,7 @@ Why not (c), EFS (a network file system a Lambda can mount, which lasts between 
 | `threads` | `2` | The default. On the Mac, 2 threads were faster than 8 on the 4-times archive ([lighter-build.md](lighter-build.md)). |
 | `temp_dir`, `stage_dir`, `out_dir` | folders inside the work folder under `/tmp` | Left out, `build()` makes its temp and stage folders under the system's temp folder. Named, all of the function's disk use sits in one folder that is emptied and measured. |
 | Retries | none, on the schedule and on the function | A build that failed will fail again the same way. The next night is the retry. |
+| Runtime updates | "Function update" | AWS then moves the function to a newer Python runtime only when the function is deployed ("Update to the most recent and secure runtime version when you update your function", AWS's page on runtime updates). A runtime change then always falls on a deploy, which is followed by the comparison under "The frozen record". |
 
 If AWS refuses 3,008 MB. "New AWS accounts have reduced concurrency and memory quotas" (AWS's Lambda quotas page). This account is from October 2026 and its quota is not known. If the deploy is refused, use 2,048 MB and 1 thread: 1.16 processors' worth, and the container's one-thread build took 109 s.
 
@@ -178,7 +181,7 @@ In the Linux container the same from-scratch build took 1.3 to 2.8 times the Mac
 
 When it outgrows Lambda, roughly:
 
-- **The 15 minutes, from scratch.** At the Mac's own speed, not before the middle of 2027 if growth stays linear (it was not measured past 8 times). At half that speed, before the end of March 2027. Moving the stage to S3 takes staging out of the night and pushes this back by months.
+- **The 15 minutes, from scratch.** At the Mac's own speed, not before the middle of 2027 if growth stays linear (it was not measured past 8 times). At half that speed, before the end of March 2027. Moving the stage to S3 takes staging out of the night and pushes this back by months. The copy from S3 adds to every figure here and was not measured.
 - **The 10 GB disk.** Temp files grow by about 0.75 GB for each multiple of today's archive at a 1 GB limit. With the archive copy and the stage beside them the disk is full at about eleven times today's archive, late May 2027, whether or not the stage is kept. A higher DuckDB limit writes less to disk (3.3 GB at a 1 GB limit, 1.8 GB at 3 GB, on the 4-times archive at 8 threads), but needs more function memory than 3,008 MB.
 - **The copy.** 72,000 downloads a night at one year. Not measured.
 
@@ -199,7 +202,7 @@ What the function logs each night, in one JSON line, as the collector does:
 - rows in each table that `build()` reports, and each table's size;
 - the build id, the model's fingerprint and the DuckDB version.
 
-Lambda's own `REPORT` line adds the billed duration and "Max Memory Used". The same summary is the body of the success ping, so recent nights can be read in healthchecks.io: about fifty of them, since it keeps 100 log entries and a night sends two. Act when a night passes 300 s (build (b)); and when, with the stage kept, a night passes 450 s, temp files pass 5 GB, or memory passes 2,400 MB (plan the step after).
+Lambda's own `REPORT` line adds the billed duration and "Max Memory Used". The same summary is the body of the success ping, so recent nights can be read in healthchecks.io: about fifty of them, since it keeps 100 log entries and a night sends two. Act when a night passes 300 s with staging its largest step (build (b)). Plan the step after when a night passes 300 s with the copy its largest step, or when, with the stage kept, a night passes 450 s, temp files pass 5 GB, or memory passes 2,400 MB.
 
 ### 4. Output and readers
 
@@ -215,7 +218,7 @@ models/<build id>/manifest.json            what this build is
 latest.json                                the same bytes as the newest build's manifest
 ```
 
-The build id is the run's start time and a few characters of the run's request id, for example `20261120T014003Z-1a2b3c4d`. It is new on every run, so no night ever overwrites another's tables.
+The build id is the run's start time and a few characters of the run's request id, for example `20261120T014003Z-1a2b3c4d`. Every upload under `models/` carries `If-None-Match` (write only if no object has that key), so even if two runs ever got the same id, neither could replace the other's tables: the second fails.
 
 How a reader stays whole. S3 has no folder rename and cannot change several objects in one step: "There is no way to make atomic updates across keys." It does replace one object in one step: "Updates to a single key are atomic", and a reader gets "either the old data or the new data, but never partial or corrupt data" (S3 User Guide, "Amazon S3 data consistency model"). So:
 
@@ -225,7 +228,7 @@ How a reader stays whole. S3 has no folder rename and cannot change several obje
 
 A reader that started on last night's pointer still finds last night's files when a new night lands, because old builds stay for 30 days.
 
-The pointer only moves forward. Lambda can deliver one scheduled event twice ("it's possible for it to receive the same event from Lambda multiple times", Lambda's guide on asynchronous invocation), and a run by hand can overlap the nightly one. Two builds cannot hurt each other: each has its own disk and its own folder in the bucket. The pointer is the one thing they share. A build replaces it only when the newest receipt it read is the same as or newer than the one the pointer names, and the write carries S3's `If-Match` condition (replace only if the object is still the one just read; S3 answers 412 otherwise, and the function reads again). The first ever write uses `If-None-Match`, the condition the collector uses.
+The pointer only moves forward. Lambda can deliver one scheduled event twice ("it's possible for it to receive the same event from Lambda multiple times", Lambda's guide on asynchronous invocation), and a run by hand can overlap the nightly one. Two builds cannot hurt each other: each has its own disk and its own folder in the bucket. The pointer is the one thing they share. A build replaces it only when the newest receipt it read is the same as or newer than the one the pointer names, and the write carries S3's `If-Match` condition: replace only if the object is still the one just read. S3 answers 412 Precondition Failed when it is not, and 409 ConditionalRequestConflict when another write raced it, for which S3 says to "fetch the object's ETag and retry the upload" (the `IfMatch` documentation of `PutObject` in botocore's S3 model, pinned in this repository's environment; the 412 also in S3 User Guide, "Conditional writes"). On either answer the function reads the pointer again and decides again, at most three times, then fails the night. The first ever write uses `If-None-Match`, the condition the collector uses.
 
 What the manifest records, so a model in S3 can be traced to its code and its boards:
 
@@ -240,7 +243,7 @@ What the manifest records, so a model in S3 can be traced to its code and its bo
 
 The boards are named by their listing's digest and newest key. The bucket is write-once and its keys sort by time, so the boards of any build can be laid out again from a later copy: every key up to the newest one, checked against the digest.
 
-Lifecycle and retention. A lifecycle rule (S3 deleting objects by age, by itself) removes everything under `models/` after 30 days. `latest.json` sits outside it. No versioning and no Object Lock: the model can always be rebuilt from the archive, which is the thing that is kept. Thirty nights are 0.14 GB today and about 2.3 GB at one year, 6 cents a month. If no build succeeds for 30 days, the last one expires and the pointer names files that are gone; a reader must then stop, not guess. By then the alert has been down for 30 days.
+Retention. After the pointer has moved, the function deletes the builds under `models/` that started more than 30 days ago, except the one the pointer names. Deleting only after a success means a run of failed nights deletes nothing, so the build the pointer names is always there. That matters here: some of the model's stops can last weeks. A board with no receipt between receipts stops every build until it is listed in `KNOWN_ORPHANS` in `src/model/rules.py`, a frozen file, which takes a proof against the tag and the owner's go ([flight-lookup.md](flight-lookup.md), "The record", condition 2). A lifecycle rule (S3 deleting objects by age, by itself) was rejected for `models/` for that reason: it would delete the pointer's build after 30 failed nights. The bucket's one lifecycle rule (two once the stage is kept: `stages/` after 3 days, section 2) removes unfinished multipart uploads after 1 day: boto3 uploads a file over 8 MB in parts (`multipart_threshold`, `s3transfer`), the model reaches about 80 MB at one year, and a run killed mid-upload can leave its parts behind. No versioning and no Object Lock: the model can always be rebuilt from the archive, which is the thing that is kept. Thirty nights are 0.14 GB today and about 2.3 GB at one year, 6 cents a month.
 
 Why not a `model/` prefix in the archive bucket. It would give a second function a write permission on the bucket that holds the archive, where today the collector is the only function that writes and a test pins what it may do. The storage costs the same in either bucket. That bucket keeps every version of every object, so each night's leftovers would need a lifecycle rule on it, and a lifecycle rule there is a change to the collector's stack.
 
@@ -255,7 +258,7 @@ Two ways a deploy could reach the collector, both closed by the deploy script:
 - `samconfig.toml` names `flights-archive` as the default stack. A bare `sam deploy` of the model's template from the repository root would aim the model's resources at the collector's stack.
 - `sam build` writes to `.aws-sam/build` by default, and the collector's documented deploy is a bare `sam build` and `sam deploy` that use that folder. A model built there, followed by a bare `sam deploy`, would send the model's template to the collector's stack.
 
-So the model is built and deployed only by a script, as the site is uploaded only by `scripts/publish.sh`. It checks the AWS identity first, as `scripts/sync.sh` does. It names the template, a build folder of its own and the stack `flights-archive-model` on every `sam` call. It refuses any other stack name. A test with a fake `sam` holds it to that.
+So the model's template lives in a folder of its own, beside a `samconfig.toml` of its own that names `flights-archive-model`: a `sam` command typed in that folder aims at the model's stack, and its build folder is that folder's own `.aws-sam/`, never the collector's. And the model is built and deployed only by a script, as the site is uploaded only by `scripts/publish.sh`. It checks the AWS identity first, as `scripts/sync.sh` does. It names the template, the build folder and the stack `flights-archive-model` on every `sam` call. It refuses any other stack name. A test with a fake `sam` holds it to that. A `sam build` typed at the repository root with the model's template named is the one path left open: it would still use the root `.aws-sam/`. The deploy steps say to use the script.
 
 Permissions (IAM, the rules for what a function may call). The function's role gets exactly:
 
@@ -264,10 +267,11 @@ Permissions (IAM, the rules for what a function may call). The function's role g
 | the archive bucket | `s3:GetObject` | `raw/*` and `receipts/*` |
 | the archive bucket | `s3:ListBucket` | only with a prefix under `raw/` or `receipts/` |
 | the model bucket | `s3:PutObject` | `models/*` and `latest.json` |
+| the model bucket | `s3:DeleteObject` | `models/*` (the 30-day clean-up) |
 | the model bucket | `s3:GetObject` | `latest.json` |
-| the model bucket | `s3:ListBucket` | so a missing pointer answers 404, not 403, as the collector's comment explains |
+| the model bucket | `s3:ListBucket` | so a missing pointer answers 404, not 403, as the collector's comment explains, and to find old builds |
 
-Nothing lets it write, delete, change retention or read `state/` in the archive bucket. A template test asserts that every statement naming the archive bucket holds only those two read actions. The archive's objects are encrypted with S3's own keys (`AES256` in `template.yaml`), so no key permission is needed. The S3-kept stage, when it comes, adds `GetObject` and `PutObject` on `stage/*` in the model bucket.
+Nothing lets it write, delete, change retention or read `state/` in the archive bucket. A template test asserts that every statement naming the archive bucket holds only those two read actions, and that no statement lets it delete `latest.json`. The archive's objects are encrypted with S3's own keys (`AES256` in `template.yaml`), so no key permission is needed. The S3-kept stage, when it comes, adds `GetObject` and `PutObject` on `stages/*` in the model bucket.
 
 One build at a time. The design does not depend on it: two builds at once are harmless (section 4). Reserved concurrency (a cap on how many copies of a function run at once, free) set to 1 would also stop the second one. AWS allows it only when 100 units stay unreserved in the account: "You can reserve up to the Unreserved account concurrency value minus 100." A new account's quota may be too small for that. The plan checks with the read-only `aws lambda get-account-settings` and adds the cap if the account allows it. Rejected: a lock file in S3. It needs a rule for a lock left by a killed run, which is more code and more tests than the harm it prevents.
 
@@ -295,10 +299,10 @@ Why one path is enough here. A missed night loses nothing: the archive is untouc
 
 **Recommended: DuckDB as a layer in the model's stack; the function's code is `src/`.**
 
-- The layer is one folder with one requirements file, `duckdb==1.5.6`, built by SAM for `python3.13` and `arm64` (measured above: it builds on this Mac without Docker). A test holds its version equal to the one in `requirements-dev.txt`, which is what the Mac and CI install.
+- The layer is one folder with one requirements file, `duckdb==1.5.6`, built by SAM for `python3.13` and `arm64` (measured above: it builds on this Mac without Docker). The folder sits outside `src/`, beside the model's template: anything inside `src/` also lands in the collector's package (its `CodeUri` is `src/`). A test holds its version equal to the one in `requirements-dev.txt`, which is what the Mac and CI install.
 - The function's `CodeUri` is `src/`, as the collector's is, so it imports `model` exactly as the Mac does. Its own code is a new package beside `model/`. It gets the pinned `boto3` from `src/requirements.txt`, as the collector does.
 - Size: the layer is 55 MB unzipped and `src/` with `boto3` 28 MB (the collector's last local build), against a limit of 250 MB for a function with its layers.
-- The same layer serves q23, whose site build reads the tables with DuckDB.
+- The same layer serves q23, whose site build reads the tables with DuckDB. The site's code also converts times with Python's `zoneinfo` (`ZoneInfo("Asia/Jerusalem")`, `src/timeline/words.py`), which needs time-zone data that the model's build does not (DuckDB's connection converts with its own built-in `icu`). Whether the Python 3.13 Lambda image carries that data is not known; q23 may need the `tzdata` package in its layer.
 
 What the collector deploys. `src/requirements.txt` holds only `boto3` (DuckDB is in `requirements-dev.txt`), and that does not change: a test asserts it. The collector's template does not change. One side effect: the collector's `CodeUri` is also `src/`, so its package gains the new package's few files at its next deploy, unused, as it already carries `model/` and `timeline/` (its last local build, 2 November). The collector's code fingerprint covers `src/collector/` only and does not move. The function must not import from `collector/`, so that a need of the model's never becomes an edit to the collector.
 
@@ -352,13 +356,15 @@ The function is written as the collector is: a plain `run()` that takes its S3 c
 | Work folder | a folder left by an earlier run is emptied first | the folder not emptied |
 | Build call | `build()` gets the copy's folders, the stage and temp folders, `1GB` and `2` | a limit or a folder not passed |
 | The whole path | a synthetic archive in the in-memory S3; the uploaded tables equal a direct `model.build.build()` of the same archive (`compare_tables`, `compare_load`) | a table not uploaded; tables from the wrong folder |
-| Upload order | tables, then manifest, then pointer | pointer first |
+| Upload order | tables, then manifest, then pointer; every `models/` upload write-once | pointer first; `If-None-Match` dropped |
 | Failure | a build that raises, a failed upload: the pointer is as it was | pointer written anyway |
-| Pointer | moves forward, stays put when an older build tries, reads again on a 412, first write | the comparison turned round; the condition dropped |
+| Pointer | moves forward, stays put when an older build tries, reads again on a 412 or a 409 at most three times, first write | the comparison turned round; the condition dropped; a 409 not retried; no cap |
+| Clean-up | after a success, builds started over 30 days ago are deleted and the pointer's build stays even when older; after a failure nothing is deleted | the pointer's build deleted; clean-up run after a failure |
+| A shrinking archive | a listing with fewer objects, or an older newest key, than the pointer's manifest fails the night | the check skipped |
 | Manifest | bytes, hashes and listing digests equal what was copied and uploaded | a hash of the wrong file; a digest that ignores sizes |
 | Extensions | an installed extension that is not built in fails the night, before and after | either check skipped |
 | Pings | start, success with the summary, `/fail` with the reason for each kind of failure, the drill; a ping that fails never fails the run | a ping missing; a ping error raised |
-| Template | no retries on the schedule or the function; the cron expression; `ScheduleState` default off; 3,008 MB, 10,240 MB, 900 s, arm64; the log group first; the secret parameter `NoEcho`; the bucket private, encrypted, with the 30-day rule on `models/` only | each value changed |
+| Template | no retries on the schedule or the function; the cron expression; `ScheduleState` default off; 3,008 MB, 10,240 MB, 900 s, arm64; the log group first; the secret parameter `NoEcho`; runtime updates on "Function update"; the bucket private, encrypted, its one lifecycle rule ending unfinished uploads after 1 day | each value changed |
 | Permissions | the table in section 5, exactly; archive statements read-only | a write action on the archive; a wider prefix |
 | Packaging | the layer's DuckDB version equals `requirements-dev.txt`'s; `src/requirements.txt` has no `duckdb` | either pin changed |
 | Deploy script | identity first; the stack, template and build folder named on every `sam` call; any other stack refused | the stack name check removed |
@@ -367,6 +373,8 @@ The function is written as the collector is: a plain `run()` that takes its S3 c
 CI lints the new template with the other two. That checks its shape, not its sizes (measured above).
 
 ## Deploy and prove (each step on the owner's go)
+
+The owner runs the deploy script at the terminal, as with `scripts/publish.sh`: the coding agent's tooling refuses to run a production deploy even after the owner's go.
 
 1. The owner creates the healthchecks.io check (period 1 day, grace 1 hour) and keeps its address out of the repository.
 2. The deploy script, from a clean committed tree, with `ScheduleState` left `DISABLED`. The change set must show only new resources in a new stack. A refusal of 3,008 MB shows here. Afterwards the collector's stack shows no change, and its next receipt arrives on time.
@@ -402,7 +410,7 @@ Run lengths are assumed, because a Lambda was not measured: 150 s today and 600 
 
 The one-year column is a ceiling for a run that uses the whole limit; from scratch it is not expected to fit by then. The temporary disk is charged in full in every sum, inside the free allowance or not.
 
-With the stage kept in S3, option (b), on the same prices and assumed run lengths of 100 s, 400 s and 900 s: a run costs $0.006, $0.024 and $0.070. The stage adds 108, about 395 and about 1,825 downloads a night, and 0.06, 0.2 and 0.95 GB of storage. A month comes to $0.19, $0.73 and $2.19 at list price, and $0.06, $0.23 and $1.08 if the free allowance covers Lambda's memory time.
+With the stage kept in S3, option (b), on the same prices and assumed run lengths of 100 s, 400 s and 900 s: a run costs $0.0065, $0.026 and $0.080. The stage adds 108, about 395 and about 1,825 downloads a night and as many uploads (each build writes its whole stage to its own folder), and three days of stages in storage: 0.17, 0.6 and 2.9 GB. A month comes to $0.20, $0.80 and $2.54 at list price, and $0.08, $0.30 and $1.43 if the free allowance covers Lambda's memory time.
 
 Lambda's free allowance is 400,000 GB-seconds a month across the account. The nightly run would use about 13,000 of them a month today and 53,000 at the gate. The collector draws on the same allowance, and its use was not measured.
 
@@ -429,7 +437,7 @@ Open, and not q2's to decide:
 - **The same run twice.** Lambda may deliver one event twice. Each run writes to its own folder and the pointer only moves forward, so a second run costs what one run costs and changes nothing.
 - **A run that cannot say it failed.** A timeout or an out-of-memory kill stops the code mid-line. Only something outside the function can notice. That is why the check gets a start ping and a grace time.
 - **A success that is wrong.** A build of half a copy would look fine and be missing days. So an incomplete copy fails the night, and the manifest records what was copied.
-- **The build stopping on purpose.** The model stops on a board with no receipt between receipts, a misplaced receipt and the like ([data-model.md](data-model.md), "Inputs"). That is the model working. It needs a person, and until then every night fails and the pointer stays where it was.
+- **The build stopping on purpose.** The model stops on a board with no receipt between receipts, a misplaced receipt and the like ([data-model.md](data-model.md), "Inputs"). That is the model working. It needs a person, and until then every night fails and the pointer stays where it was. It can last weeks: clearing a board with no receipt means editing `KNOWN_ORPHANS` in a frozen file, with a proof against the tag and the owner's go. So nothing deletes the build the pointer names.
 - **Half a result.** S3 cannot swap a folder. A reader follows one pointer; nothing is ever updated in place.
 - **Same code, another machine.** CI runs on Linux with small made-up boards. The real archive had only ever been built on the Mac. It has now been built once on Linux, here, and compared.
 - **Two copies of one dependency.** DuckDB is pinned in the layer and in `requirements-dev.txt`. A test keeps them equal, and the manifest names the version that built each model.
@@ -446,7 +454,7 @@ Open, and not q2's to decide:
 1. **Rebuild the stage every night, or keep it in S3 from the first day?** Recommended: rebuild every night, and add the S3-kept stage when a night passes 300 s. Under that answer: the least code now, and every night is a from-scratch build; expect to plan the second step around the turn of the year if a Lambda runs at half this Mac's speed. If kept from day one: one plan, not two; more code and tests now; a cache to reason about before any measurement says it is needed.
 2. **healthchecks.io alone, or a CloudWatch alarm as well?** Recommended: healthchecks.io alone, with a new check that the owner creates. Under that answer: $0, one more ping call, and no alert if healthchecks.io itself is down. If an alarm is added: an alarm on the function's `Errors` emailing a new SNS topic, $0.10 a month at list price and likely free, one more address to confirm, and a second path that catches a timeout at once.
 3. **A bucket and a stack of its own?** Recommended: yes. Under that answer: one new bucket and one new stack in the account, and the collector's stack is never touched. The other answer, a `model/` prefix in the archive bucket: no new bucket, but a second writer on the archive bucket and a lifecycle change on the collector's stack.
-4. **How long are nightly models kept?** Recommended: 30 days. That is 6 cents a month at one year. Seven days would be 1 cent. Keeping all of them would pass 13 GB in the first year and keep growing.
+4. **How long are nightly models kept?** Recommended: 30 days, deleted by the function after each successful night, never the build the pointer names. That is 6 cents a month at one year. Seven days would be 1 cent. Keeping all of them would pass 13 GB in the first year and keep growing. Whatever the number, a run of failed nights deletes nothing (section 4, "Retention").
 5. **When does it run?** Recommended: daily at 01:40 UTC, moved from the sketch's 01:30 because a board is stored then. Any other hour costs the same. More than once a day is q23's question, at the prices in section 8.
 6. **May the collector's package gain the new package's files at its next deploy?** Recommended: yes. They are unused there, as `model/` and `timeline/` already are, and the collector's code fingerprint does not move. If no: the function's code lives outside `src/` and its package is assembled by a build step of the project's own, which is more to build and test.
 
@@ -480,6 +488,8 @@ Open, and not q2's to decide:
 - That `aws lambda get-account-settings` is the command that shows the account's concurrency quota: named from memory.
 - Whether the owner's healthchecks.io account is on the Hobbyist plan with a free slot.
 - The allowed range of `MaximumEventAgeInSeconds`.
+- Whether the Python 3.13 Lambda image carries time-zone data for `zoneinfo` (q23's concern, not the model's).
+- How often S3 answers `If-Match` with 409 rather than 412; the retry handles both.
 - That SAM uploads and attaches the layer as built. The build was run here; the deploy was not.
 - Lambda's `Errors` metric counting an out-of-memory kill. AWS's page names timeouts; it lists memory exhaustion among invoke failures elsewhere.
 - The exact words of healthchecks.io's and DuckDB's documentation: they are given here in paraphrase, from pages read today. The DuckDB page read was the current one, for version 2.0, not 1.5.6.
