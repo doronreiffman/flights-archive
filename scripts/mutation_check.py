@@ -104,6 +104,13 @@ NIGHTLY_ARCHIVE = ("src/nightly/archive.py", ["tests/test_nightly_archive.py"])
 NIGHTLY_MEASURE = ("src/nightly/measure.py", ["tests/test_nightly_measure.py"])
 # The nightly build's output (src/nightly/output.py): the manifest, the write-once uploads, the pointer, the clean-up.
 NIGHTLY_OUTPUT = ("src/nightly/output.py", ["tests/test_nightly_output.py"])
+# The nightly build's stack (model-stack/): its template, the DuckDB layer's pin and the folder's own samconfig.toml;
+# and the collector's requirements, which must never gain DuckDB (docs/nightly-model.md, section 7). The check edits
+# src/requirements.txt only while its entry runs, and restores it.
+MODEL_STACK = ("model-stack/template.yaml", ["tests/test_model_stack.py"])
+MODEL_LAYER = ("model-stack/layer/requirements.txt", ["tests/test_model_stack.py"])
+MODEL_SAMCONFIG = ("model-stack/samconfig.toml", ["tests/test_model_stack.py"])
+COLLECTOR_REQUIREMENTS = ("src/requirements.txt", ["tests/test_model_stack.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -924,6 +931,30 @@ COLLECTOR_MUTATIONS = {
     "nightly: manifest before the tables": (NIGHTLY_OUTPUT, '    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n', '    models.put_new(f"{MODELS}{build_id}/{MANIFEST}", manifest)\n    for table in TABLES:\n        models.put_new(_table_key(build_id, table), (out_dir / f"{table}.parquet").read_bytes())\n'),
     "nightly: a table not uploaded": (NIGHTLY_OUTPUT, "    for table in TABLES:\n        models.put_new(", "    for table in TABLES[1:]:\n        models.put_new("),
     "nightly: function fingerprint ignores file content": (NIGHTLY_OUTPUT, 'h.update(path.name.encode() + b"\\0" + hashlib.sha256(path.read_bytes()).digest())', 'h.update(path.name.encode() + b"\\0")'),
+    # the nightly build's stack: sizes, no retries, the schedule, a private bucket, a read-only hold on the archive
+    "model stack: function retries": (MODEL_STACK, "      EventInvokeConfig:\n        MaximumRetryAttempts: 0\n", "      EventInvokeConfig:\n        MaximumRetryAttempts: 2\n"),
+    "model stack: schedule retries": (MODEL_STACK, "            RetryPolicy:\n              MaximumRetryAttempts: 0\n", "            RetryPolicy:\n              MaximumRetryAttempts: 2\n"),
+    "model stack: late events kept 6 hours": (MODEL_STACK, "MaximumEventAgeInSeconds: 60\n", "MaximumEventAgeInSeconds: 21600\n"),
+    "model stack: runs at 01:30": (MODEL_STACK, "ScheduleExpression: cron(40 1 * * ? *)", "ScheduleExpression: cron(30 1 * * ? *)"),
+    "model stack: schedule on by default": (MODEL_STACK, "    Default: DISABLED\n", "    Default: ENABLED\n"),
+    "model stack: memory 2048": (MODEL_STACK, "      MemorySize: 3008\n", "      MemorySize: 2048\n"),
+    "model stack: disk 512": (MODEL_STACK, "      EphemeralStorage:\n        Size: 10240\n", "      EphemeralStorage:\n        Size: 512\n"),
+    "model stack: timeout 600": (MODEL_STACK, "      Timeout: 900\n", "      Timeout: 600\n"),
+    "model stack: x86_64": (MODEL_STACK, "      Architectures:\n        - arm64\n", "      Architectures:\n        - x86_64\n"),
+    "model stack: runtime updated automatically": (MODEL_STACK, "UpdateRuntimeOn: FunctionUpdate", "UpdateRuntimeOn: Auto"),
+    "model stack: ping address shown": (MODEL_STACK, "    NoEcho: true\n", ""),
+    "model stack: more than one build at a time": (MODEL_STACK, "      ReservedConcurrentExecutions: 1\n", "      ReservedConcurrentExecutions: 2\n"),
+    "model stack: bucket public": (MODEL_STACK, "        BlockPublicPolicy: true\n", "        BlockPublicPolicy: false\n"),
+    "model stack: bucket unencrypted": (MODEL_STACK, "      BucketEncryption:\n        ServerSideEncryptionConfiguration:\n          - ServerSideEncryptionByDefault:\n              SSEAlgorithm: AES256\n", ""),
+    "model stack: bucket versioned": (MODEL_STACK, "      BucketEncryption:\n", "      VersioningConfiguration:\n        Status: Enabled\n      BucketEncryption:\n"),
+    "model stack: lifecycle rule removed": (MODEL_STACK, "      LifecycleConfiguration:\n        Rules:\n          - Id: end-unfinished-uploads\n            Status: Enabled\n            AbortIncompleteMultipartUpload:\n              DaysAfterInitiation: 1\n", ""),
+    "model stack: a write on the archive": (MODEL_STACK, "            - Sid: ReadTheArchive\n              Effect: Allow\n              Action: s3:GetObject\n", "            - Sid: ReadTheArchive\n              Effect: Allow\n              Action:\n                - s3:GetObject\n                - s3:PutObject\n"),
+    "model stack: archive listing not held to its prefixes": (MODEL_STACK, "              Condition:\n                StringLike:\n                  s3:prefix:\n                    - raw/*\n                    - receipts/*\n", ""),
+    "model stack: delete on the pointer": (MODEL_STACK, '              Action: s3:DeleteObject\n              Resource: !Sub "${ModelBucket.Arn}/models/*"\n', '              Action: s3:DeleteObject\n              Resource:\n                - !Sub "${ModelBucket.Arn}/models/*"\n                - !Sub "${ModelBucket.Arn}/latest.json"\n'),
+    "model stack: logs outside their group": (MODEL_STACK, "      LoggingConfig:\n        LogGroup: !Ref ModelLogs\n", ""),
+    "model stack: layer on another DuckDB": (MODEL_LAYER, "duckdb==1.5.6", "duckdb==1.5.5"),
+    "model stack: samconfig aimed at the collector": (MODEL_SAMCONFIG, 'stack_name = "flights-archive-model"', 'stack_name = "flights-archive"'),
+    "model stack: duckdb in the collector's requirements": (COLLECTOR_REQUIREMENTS, "boto3==1.43.119\n", "boto3==1.43.119\nduckdb==1.5.6\n"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS

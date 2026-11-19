@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  flights-archive nightly model build (docs/nightly-model.md): once a night a Lambda copies the archive, builds the
+  model with DuckDB and writes it to a private bucket of its own. Separate from the collector's stack so a change to
+  the model never puts a change set on the live collector or the locked archive.
+
+Parameters:
+  ArchiveBucketName:
+    Type: String
+    Description: The collector's archive bucket, read only. Given here, not imported from the collector's stack, so the two stacks stay apart.
+  HealthcheckUrl:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: healthchecks.io ping URL, e.g. https://hc-ping.com/<uuid>. Given on the command line, never in a file.
+  ScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Start DISABLED to test the stack without the nightly run; redeploy with ENABLED to go live.
+
+Resources:
+  # No versioning and no Object Lock: the model can always be rebuilt from the archive (docs/nightly-model.md, section 4).
+  ModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # Old builds are deleted by the function after a successful night, never by age: a rule on models/ would delete
+      # the pointer's build after 30 failed nights. This one rule only ends uploads left unfinished, over the whole bucket.
+      LifecycleConfiguration:
+        Rules:
+          - Id: end-unfinished-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  # DuckDB stays out of src/requirements.txt, which would put it in the collector's package too (section 7).
+  DuckDBLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: layer/
+      CompatibleRuntimes:
+        - python3.13
+      CompatibleArchitectures:
+        - arm64
+    Metadata:
+      BuildMethod: python3.13
+      BuildArchitecture: arm64
+
+  ModelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/
+      Handler: nightly.handler.handler
+      Runtime: python3.13
+      # Sizes from section 3: 1.7 processors' worth for DuckDB's 2 threads, the largest /tmp, the longest run.
+      Architectures:
+        - arm64
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      Timeout: 900
+      # One build at a time: the account check allowed it (docs/nightly-model-plan.md, "Deviations").
+      ReservedConcurrentExecutions: 1
+      Layers:
+        - !Ref DuckDBLayer
+      # A newer Python runtime arrives only with a deploy, which the comparison under "The frozen record" follows.
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: FunctionUpdate
+      # A failed build fails again the same way: the next night is the retry. A throttled or late copy of a night's
+      # event is dropped after 60 s, the shortest Lambda allows, rather than run as a second build hours later.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 60
+      LoggingConfig:
+        LogGroup: !Ref ModelLogs
+      Environment:
+        Variables:
+          ARCHIVE_BUCKET: !Ref ArchiveBucketName
+          MODEL_BUCKET: !Ref ModelBucket
+          HEALTHCHECK_URL: !Ref HealthcheckUrl
+      # Section 5's table, exactly. Nothing writes, deletes or reads state/ in the archive bucket.
+      Policies:
+        - Statement:
+            - Sid: ReadTheArchive
+              Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${ArchiveBucketName}/raw/*"
+                - !Sub "arn:aws:s3:::${ArchiveBucketName}/receipts/*"
+            - Sid: ListTheArchiveUnderRawAndReceipts
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !Sub "arn:aws:s3:::${ArchiveBucketName}"
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - raw/*
+                    - receipts/*
+            - Sid: WriteBuildsAndThePointer
+              Effect: Allow
+              Action: s3:PutObject
+              Resource:
+                - !Sub "${ModelBucket.Arn}/models/*"
+                - !Sub "${ModelBucket.Arn}/latest.json"
+            # The 30-day clean-up. Never latest.json.
+            - Sid: DeleteOldBuilds
+              Effect: Allow
+              Action: s3:DeleteObject
+              Resource: !Sub "${ModelBucket.Arn}/models/*"
+            - Sid: ReadThePointer
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${ModelBucket.Arn}/latest.json"
+            # Without ListBucket, S3 answers a missing latest.json with 403 instead of 404, as the collector's
+            # template explains for its state file; it also finds the old builds to delete.
+            - Sid: ListTheModelBucket
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ModelBucket.Arn
+      Events:
+        # 01:40 UTC, ten minutes after the 01:30 board is stored with its receipt (section 8).
+        Nightly:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: cron(40 1 * * ? *)
+            State: !Ref ScheduleState
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+
+  # Created before the function, under its own name, so the first run can't race CloudFormation by
+  # auto-creating /aws/lambda/<name>.
+  ModelLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${AWS::StackName}/nightly"
+      RetentionInDays: 30
+
+Outputs:
+  ModelBucketName:
+    Value: !Ref ModelBucket
+  ModelFunctionName:
+    Value: !Ref ModelFunction
