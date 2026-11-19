@@ -134,14 +134,19 @@ def test_the_memory_bucket_answers_as_s3_does(tmp_path):
     with pytest.raises(ConditionFailed, match="latest.json"):
         bucket.replace("latest.json", b"v3", etag)
     assert bucket.read("latest.json") == second
-    with pytest.raises(ConditionFailed, match="missing.json"):
+    # If-Match on a missing key: S3 answers 404, not a refused condition, and nothing changes
+    before = dict(bucket.objects)
+    with pytest.raises(ClientError, match="NoSuchKey") as missing:
         bucket.replace("missing.json", b"x", second[1])
-    assert "missing.json" not in bucket.objects
+    assert missing.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+    assert not isinstance(missing.value, ConditionFailed)
+    assert bucket.objects == before and bucket.read("latest.json") == second
 
     # a missing key reads as None; a download of one fails as S3's does
     assert bucket.read("missing.json") is None
-    with pytest.raises(ClientError, match="NoSuchKey"):
+    with pytest.raises(ClientError, match="NoSuchKey") as missing:
         bucket.download("missing.json", tmp_path / "missing.json")
+    assert missing.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
 
     # one prefix's keys, in key order, with their sizes
     assert bucket.list("models/") == [Item("models/a/x.parquet", 3), Item("models/b/y.parquet", 2),
@@ -155,7 +160,7 @@ def test_the_memory_bucket_answers_as_s3_does(tmp_path):
     assert bucket.ops == [("read", "latest.json"), ("put_new", "latest.json"), ("read", "latest.json"),
                           ("put_new", "models/c/z.parquet"), ("replace", "latest.json"), ("read", "latest.json"),
                           ("replace", "latest.json"), ("read", "latest.json"), ("replace", "missing.json"),
-                          ("read", "missing.json"), ("download", "missing.json"), ("list", "models/"),
+                          ("read", "latest.json"), ("read", "missing.json"), ("download", "missing.json"), ("list", "models/"),
                           ("delete", "models/c/z.parquet"), ("delete", "models/c/z.parquet"), ("list", "models/"),
                           ("list", "raw/")]
 

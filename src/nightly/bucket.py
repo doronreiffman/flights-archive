@@ -106,6 +106,12 @@ class S3Bucket:
         self.client.delete_object(Bucket=self.name, Key=key)
 
 
+def _not_found(key: str, operation: str) -> ClientError:
+    """S3's 404 for a missing key, as a botocore ClientError: one shape, code NoSuchKey and status 404."""
+    return ClientError({"Error": {"Code": "NoSuchKey", "Message": key}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                       operation)
+
+
 class MemoryBucket:
     """The protocol in memory, for tests. It refuses what S3 refuses, and lets a test fail a call, shorten a
     download, run something just before a call, or write as another run would."""
@@ -149,7 +155,7 @@ class MemoryBucket:
     def download(self, key: str, path: Path) -> None:
         self._call("download", key)
         if key not in self.objects:
-            raise ClientError({"Error": {"Code": "NoSuchKey", "Message": key}}, "GetObject")
+            raise _not_found(key, "GetObject")
         body = self.objects[key]
         path.write_bytes(body[:-1] if key in self.short else body)
 
@@ -167,7 +173,12 @@ class MemoryBucket:
 
     def replace(self, key: str, body: bytes, etag: str) -> None:
         self._call("replace", key)
-        if key not in self.objects or self._etag(key) != etag:
+        # S3 User Guide, "Conditional write behavior", If-Match: "If there's no current object version with the same
+        # name, or if the current object version is a delete marker, the operation fails with a 404 Not Found error."
+        # The page names no error code; NoSuchKey is this stand-in's, the code its other missing keys carry.
+        if key not in self.objects:
+            raise _not_found(key, "PutObject")
+        if self._etag(key) != etag:
             raise ConditionFailed(f"{key}: PreconditionFailed")
         self._write(key, body)
 
