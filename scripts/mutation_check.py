@@ -97,6 +97,8 @@ TAGGED = ("src/model/rules.py", [BOUNDARY])
 TAGGED_STAGE = ("src/model/stage.py", [BOUNDARY])
 # The build (src/model/build.py): DuckDB's limits and temp folder, the options, and the model folder written whole.
 BUILD = ("src/model/build.py", ["tests/test_model_build.py"])
+# The nightly build (src/nightly/, docs/nightly-model.md): its S3 calls and the in-memory bucket its tests use.
+NIGHTLY_BUCKET = ("src/nightly/bucket.py", ["tests/test_nightly_bucket.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -879,6 +881,14 @@ COLLECTOR_MUTATIONS = {
     'runner: cached bytecode kept': (RUNNER, '        cached.unlink()\n', '        pass\n'),
     'runner: the last output read with no limit': (RUNNER, '                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed\n', '                stdout, stderr = process.communicate()\n'),
     'runner: a process that left the session holding the pipes crashes the check': (RUNNER, '            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading\n', '            except ZeroDivisionError as late:\n'),
+    # the nightly build's S3 calls: write-once and conditional uploads, every page listed, checksums asked for
+    "nightly: write-once condition dropped": (NIGHTLY_BUCKET, 'IfNoneMatch="*",', ""),
+    "nightly: pointer condition dropped": (NIGHTLY_BUCKET, "IfMatch=etag,", ""),
+    "nightly: a 409 not a failed condition": (NIGHTLY_BUCKET, 'CONDITION_CODES = ("PreconditionFailed", "ConditionalRequestConflict")', 'CONDITION_CODES = ("PreconditionFailed",)'),
+    "nightly: listing stops after the first page": (NIGHTLY_BUCKET, '            if not page.get("IsTruncated"):\n', "            if True:\n"),
+    "nightly: stored checksum not checked": (NIGHTLY_BUCKET, 'reply = self.client.get_object(Bucket=self.name, Key=key, ChecksumMode="ENABLED")', "reply = self.client.get_object(Bucket=self.name, Key=key)"),
+    "nightly: a missing pointer raises": (NIGHTLY_BUCKET, 'MISSING_CODES = ("NoSuchKey", "404")', "MISSING_CODES = ()"),
+    "nightly: memory bucket replaces an existing key": (NIGHTLY_BUCKET, "        if key in self.objects:\n", "        if False:\n"),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
