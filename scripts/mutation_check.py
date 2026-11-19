@@ -100,6 +100,8 @@ BUILD = ("src/model/build.py", ["tests/test_model_build.py"])
 # The nightly build (src/nightly/, docs/nightly-model.md): its S3 calls and the in-memory bucket its tests use.
 NIGHTLY_BUCKET = ("src/nightly/bucket.py", ["tests/test_nightly_bucket.py"])
 NIGHTLY_ARCHIVE = ("src/nightly/archive.py", ["tests/test_nightly_archive.py"])
+# The nightly build's measurements (src/nightly/measure.py): peak memory, the sampled peak, the staging time.
+NIGHTLY_MEASURE = ("src/nightly/measure.py", ["tests/test_nightly_measure.py"])
 
 # name -> (file, text as it stands, the broken replacement) ; model entries use MODEL below
 MODEL_MUTATIONS = {
@@ -901,6 +903,13 @@ COLLECTOR_MUTATIONS = {
     "nightly: one download at a time": (NIGHTLY_ARCHIVE, "ThreadPoolExecutor(max_workers=workers)", "ThreadPoolExecutor(max_workers=1)"),
     "nightly: fewer objects accepted": (NIGHTLY_ARCHIVE, '        if listing.objects < before["objects"]:\n', "        if False:\n"),
     "nightly: an older newest key accepted": (NIGHTLY_ARCHIVE, '        if newest is not None and (listing.newest_key or "") < newest:\n', "        if False:\n"),
+    # the nightly build's measurements: the staging time off the newest marker, the sampled peak, peak memory's unit
+    "nightly: the oldest marker taken": (NIGHTLY_MEASURE, "    newest = max((marker", "    newest = min((marker"),
+    "nightly: any newest file taken, not only markers": (NIGHTLY_MEASURE, "stage_dir.rglob(MARKER)", 'stage_dir.rglob("*")'),
+    "nightly: a marker older than the start counted": (NIGHTLY_MEASURE, "    return max(newest - started, 0.0)\n", "    return newest - started\n"),
+    "nightly: sampler keeps the last reading": (NIGHTLY_MEASURE, "        self.peak = max(self.peak, value)\n", "        self.peak = value\n"),
+    "nightly: the sampler not read as its block ends": (NIGHTLY_MEASURE, "        self._thread.join()\n        self._keep(self.read())\n", "        self._thread.join()\n"),
+    "nightly: peak memory in the wrong unit": (NIGHTLY_MEASURE, 'sys.platform == "darwin"', 'sys.platform != "darwin"'),
 }
 
 MUTATIONS = {name: (MODEL, old, new) for name, (old, new) in MODEL_MUTATIONS.items()} | COLLECTOR_MUTATIONS
