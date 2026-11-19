@@ -706,3 +706,18 @@ Not agent tasks. Each step on the owner's go, at the terminal, from the merged a
 7. **After a week.** The seven summaries beside the table under "Sizing", and the call on the stage by the 300 s rule.
 
 ## Deviations
+
+Departures from the plan, in the order they were made, each with its reason.
+
+1. **Pre-flight, before Task 1 (2026-11-20).** A read-only scan of the plan against the design and the code (Opus) found tests that could not catch their planned breaks, one promise the interfaces did not keep, and three breaks the design names that had no entry. Each was checked against its source before the change below.
+   - **A pointer without a newest receipt** (Review Focus 3) now fails the night before anything is read or written: `run()`'s step 6 reads `newest_receipt()` of the pointer's manifest straight after `read_pointer()`. As planned, only `move_pointer()` read it, at step 11, after the uploads. `test_an_unreadable_pointer_fails_the_night` covers all three cases: not JSON, not an object, no `newest_key`.
+   - **Timers.** `run()` times its steps with `time.monotonic()`; the injected clock gives only `started` and `finished`. The plan named no timer, and the tests fix the clock.
+   - **Staging in the whole-path test** is asserted as at least 0 and at most `build`: a two-day archive stages so quickly that a figure rounded to 0.1 s can be 0.0. A new test, `test_staging_is_read_from_the_builds_stage`, has the fake build write a marker 5 s in the future and expects about 5 s, so `run()` is shown to read its own stage from its own start.
+   - **`test_a_failed_night_deletes_nothing`** holds a second old build that the pointer does not name. With only the pointer's build, which the clean-up never deletes, a clean-up run before the build could not have been caught.
+   - **`test_installed_extensions_lists_only_what_is_not_built_in`** sets the connection's `extension_directory` to an empty folder under `tmp_path` for its `[]` case, so extensions installed on the machine cannot decide it.
+   - **`test_a_failed_download_fails_the_copy`** matches the error's message ("reset"): the size check's own `FileNotFoundError` is also an `OSError`, and would have let a download whose failure was ignored pass.
+   - **`test_peak_memory_is_in_megabytes_on_this_platform`** bounds the figure at 16,384 MB, not 65,536. Measured on this Mac on 2026-11-20: a Python process with DuckDB loaded peaked at 48.3 MB, which the wrong unit reads as 49,424, under the old bound.
+   - **`test_the_sampler_keeps_the_peak`** waits inside the block until the reader has been called at least four times. Without a wait it may read only twice, 3 and 9, and a sampler keeping the last reading would pass.
+   - **Four entries added**, from the design's test table: "nightly: a table not uploaded" (Task 3); "model stack: bucket public" and "model stack: bucket unencrypted" (Task 6); "model stack: duckdb in the collector's requirements" (Task 6), whose target is `src/requirements.txt` with `tests/test_model_stack.py`. The mutation check edits that file only while the entry runs; the committed file does not change.
+   - **Left as it is:** a night whose `receipts/` listing is empty would write a pointer with no newest receipt, and every later night would then fail with a `/fail` ping. The archive's receipts are write-once under Object Lock, and the shrink check stops a smaller listing, so this cannot arise on the real archive.
+   - Task 5's tests load `compare_tables` and `compare_load` through `tests/model_helpers.py`'s `check_script()`, the route the existing tests use.
