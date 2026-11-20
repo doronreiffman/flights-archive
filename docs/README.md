@@ -16,3 +16,5 @@ Written while building the project: each note says what was decided and why, the
 - [will-it-fly-plan.md](will-it-fly-plan.md): the plan that built "Will It Fly?" (q27), task by task, with the deviations found along the way and the back-test of the blend.
 - [lighter-build.md](lighter-build.md): the design of the lighter model build (q5): what was measured, the staging of each date folder's work, the limits, and the comparison against the tagged code.
 - [lighter-build-plan.md](lighter-build-plan.md): the plan that built it, task by task, with the deviations found along the way.
+- [nightly-model.md](nightly-model.md): the design of the nightly model build (q2): a function that copies the archive, builds the model once a night and writes it to a bucket of its own; sizing, permissions, the alert and the cost.
+- [nightly-model-plan.md](nightly-model-plan.md): the plan that built it, task by task, with the deviations found along the way and the owner's deploy checklist.

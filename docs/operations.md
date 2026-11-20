@@ -89,8 +89,8 @@ From the repo root:
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest --cov=collector --cov=model --cov=timeline
-cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
+pytest --cov=collector --cov=model --cov=nightly --cov=timeline
+cfn-lint --regions il-central-1 -- template.yaml site-template.yaml model-stack/template.yaml
 python scripts/mutation_check.py
 ```
 
@@ -100,7 +100,47 @@ The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once t
 
 ## Model
 
-`src/model/` turns the raw snapshots into Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time), plus `receipts` and `snapshot_runs`. It trusts only snapshots with a receipt, or from before receipts existed, and stops when the local copy looks out of step; `sh scripts/sync.sh` copies receipts, then snapshots, into `data/`. The rules, what is still uncertain about them, and how to run the build are in [data-model.md](data-model.md); `data-quality-*.md` are reports from real snapshots. It runs locally for now; a nightly Lambda is proposed in the same doc.
+`src/model/` turns the raw snapshots into Parquet tables with DuckDB: `snapshots`, `observations` (one row per flight per change) and `flights` (one row per marketed flight with its retimes linked; the codeshare group is the physical movement; outcome, cancellation lead time), plus `receipts` and `snapshot_runs`. It trusts only snapshots with a receipt, or from before receipts existed, and stops when the local copy looks out of step; `sh scripts/sync.sh` copies receipts, then snapshots, into `data/`. The rules, what is still uncertain about them, and how to run the build are in [data-model.md](data-model.md); `data-quality-*.md` are reports from real snapshots. It runs locally, and nightly in AWS once deployed ([Nightly model build](#nightly-model-build), below).
+
+## Nightly model build
+
+Built, not deployed: no stack exists yet. Design, sizes and the reasons: [nightly-model.md](nightly-model.md); how it was built, and where the build departed from the plan: [nightly-model-plan.md](nightly-model-plan.md), "Deviations". Once a night (01:40 UTC) a second Lambda function, in a stack of its own, `flights-archive-model` (`model-stack/template.yaml`), does this:
+
+1. Pings healthchecks.io's `/start`, empties its work folder under `/tmp` and checks that DuckDB has nothing installed beyond its built-in extensions.
+2. Lists `receipts/` and `raw/` in the archive bucket and stops if either listing is smaller than the last build's. It then copies exactly what it listed and builds the five model tables on the copy (a 1 GB DuckDB limit, 2 threads).
+3. Uploads the tables and a manifest under `models/<build id>/` in its own bucket, never replacing a file.
+4. Moves the pointer `latest.json` to the new build, only forward, then deletes builds older than 30 days, never the one the pointer names.
+5. Logs one summary line and sends it as the success ping. Any error is logged, sent to `/fail` and raised; the pointer stays where it was and nothing is deleted.
+
+The function only reads the archive bucket (`raw/` and `receipts/`) and writes its own bucket; it never calls data.gov.il. The stack is separate so that a change to the model puts no change set on the collector or the locked archive.
+
+**Deploying** (on the owner's go, from a clean committed tree: `git status --porcelain` prints nothing). Run `sh scripts/deploy_nightly.sh` in a terminal window, not through the coding agent's `!` prefix. It checks that the `flights-sam` profile is the project's user, then asks for the healthchecks.io ping address with echo off and never prints it; paste it at the prompt. It builds in `model-stack/`, names the template, the build folder and the stack explicitly, and runs `sam deploy` with `--confirm-changeset`: review the change set, which on the first deploy must hold only new resources in `flights-archive-model`, and confirm. The schedule is left `DISABLED`; `sh scripts/deploy_nightly.sh ENABLED` switches it on. Create the healthchecks.io check first (period 1 day, grace 1 hour) and keep its address out of the repository.
+
+**A run by hand**, which is also the first measurement in a Lambda, and clears a failure shown by the drill:
+
+```bash
+aws lambda invoke --function-name <ModelFunctionName> --invocation-type Event --payload '{}' \
+  --cli-binary-format raw-in-base64-out out.json --profile flights-sam --region il-central-1
+```
+
+The function name and `ModelBucketName` are the stack's outputs. The summary is the success ping's body in healthchecks.io, and in the log group `/flights-archive-model/nightly`. The drill fails on purpose before anything is read, to prove the alert: the same command with `--payload '{"drill": true}'`; healthchecks.io should show a failure and send its email.
+
+**The comparison** checks the Lambda's model against a build on the Mac of the same boards. After `sh scripts/sync.sh`:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/nightly_check.py --bucket <ModelBucketName> --work <a new folder>
+```
+
+It reads `latest.json` and the five tables from the model bucket, refuses tables that differ from the manifest's sizes or hashes, lays out from `data/` the same receipts and boards, builds the model on them and compares the two by the four checks of `scripts/tagged_check.py` (the tables' columns and types, their rows, `timeline.load.load()`, `progress.json`). Exit 0 when identical, 1 on any difference, 2 when it refuses to compare. `--work` must be a new or empty folder outside `data/raw` and `data/receipts`.
+
+**The summary line** is one JSON line with: the seconds of each step (`list`, `copy`, `build`, `staging`, `upload`, `pointer`, `clean_up`, `total`; `staging` is the part of `build` spent staging the date folders) and `seconds_left`; the objects and bytes copied; `memory_mb` and `tmp_mb` (the peak and the configured size); `rows` and `table_bytes` for each table; the build id, the model fingerprint and the DuckDB version. Two rules read it ([nightly-model.md](nightly-model.md), "Sizing"):
+
+- A night past 300 s with `seconds.staging` its largest step calls for keeping the stage in S3 between nights.
+- A night past 300 s with the copy its largest step, or, with the stage kept, past 450 s, temp files past 5 GB or memory past 2,400 MB, calls for the step after that.
+
+**The alert** is one healthchecks.io check, period 1 day, grace 1 hour. It gets a start ping and then a success or a failure; a killed night sends no success and is marked down after the grace. It sits outside AWS, so it cannot tell you if healthchecks.io itself is down.
+
+**Cost**: see [nightly-model.md](nightly-model.md), "Cost".
 
 ## Timeline
 
