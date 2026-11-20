@@ -94,7 +94,7 @@ cfn-lint --regions il-central-1 -- template.yaml site-template.yaml model-stack/
 python scripts/mutation_check.py
 ```
 
-The mutation check breaks each rule in turn and expects a test to fail; it is 744 short pytest runs, about 19 minutes on my Mac. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. The tests in `tests/test_timeline_search.py` and `tests/test_timeline_fromhere.py` run the search box's JavaScript and the page script every page loads (`fromhere.js`) under Node; each module is skipped as a whole where Node is missing. CI runs pytest, which includes both Node modules, and `scripts/mutation_check.py` on every push, which costs nothing on GitHub's free tier at this repo's push rate.
+The mutation check breaks each rule in turn and expects a test to fail; it is 840 short pytest runs, about 25 minutes on my Mac. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. The tests in `tests/test_timeline_search.py` and `tests/test_timeline_fromhere.py` run the search box's JavaScript and the page script every page loads (`fromhere.js`) under Node; each module is skipped as a whole where Node is missing. CI runs pytest, which includes both Node modules, and `scripts/mutation_check.py` on every push, which costs nothing on GitHub's free tier at this repo's push rate.
 
 The tests use 38 real rows of the board (see `tests/fixtures/README.md`). Once the collector has stored its first reply, swap those rows for rows from it. `tests/test_template.py` pins the infrastructure settings safety depends on: no retries, the timeout, the lock and the permissions.
 
