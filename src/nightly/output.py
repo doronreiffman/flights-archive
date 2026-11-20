@@ -134,10 +134,20 @@ def newest_receipt(manifest: dict) -> str:
     return newest
 
 
+def pointer_build_id(manifest: dict) -> str:
+    """The manifest's build id; ValueError unless it is a string that begins with a start time, as a build id does.
+    The pointer's is the build the clean-up keeps, so one that is not a build id would leave that build unprotected."""
+    build = manifest.get("build_id")
+    if not isinstance(build, str) or BUILD_START.match(build) is None:
+        raise ValueError(f"the manifest's build_id is not a build id: {build!r}")
+    return build
+
+
 def move_pointer(models: Bucket, manifest: bytes, newest: str, tries: int = POINTER_TRIES) -> tuple[str, str]:
     """("moved", this build's id) once the pointer holds `manifest`, or ("kept", the pointer's build id) when the
     pointer's build read a newer receipt than `newest`. Each try reads the pointer; a refused write (ConditionFailed:
-    412 or 409) leads to the next try. Any other error, an unreadable pointer among them, is raised at once.
+    412 or 409) leads to the next try. Any other error, an unreadable pointer among them (a kept one naming no build
+    id too), is raised at once.
     PointerError after `tries` refusals."""
     build = json.loads(manifest)["build_id"]
     for _ in range(tries):
@@ -150,7 +160,7 @@ def move_pointer(models: Bucket, manifest: bytes, newest: str, tries: int = POIN
             return "moved", build
         pointer, etag = current
         if newest < newest_receipt(pointer):
-            return "kept", pointer["build_id"]
+            return "kept", pointer_build_id(pointer)
         try:
             models.replace(POINTER, manifest, etag)
         except ConditionFailed:  # changed since it was read (412), or another write raced this one (409)

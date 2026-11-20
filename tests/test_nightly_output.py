@@ -252,6 +252,23 @@ def test_an_unreadable_pointer_fails(body):
     assert models.objects == {POINTER: body}
 
 
+@pytest.mark.parametrize("build", [7, None], ids=["build-id-7", "no-build-id"])
+def test_a_kept_pointer_naming_no_build_fails(build):
+    """The kept pointer's build id becomes the clean-up's `keep`: one that is not a build id would leave the pointer's
+    own build unprotected, so the night fails and nothing is written."""
+    doc = json.loads(pointer_body(OTHER, RECEIPT_NEW))
+    if build is None:
+        del doc["build_id"]
+    else:
+        doc["build_id"] = build
+    body = json.dumps(doc).encode()
+    models = MemoryBucket("models", {POINTER: body})
+    with pytest.raises(ValueError):
+        move_pointer(models, pointer_body(BUILD, RECEIPT_MID), RECEIPT_MID)
+    assert models.ops == [("read", POINTER)]
+    assert models.objects == {POINTER: body}
+
+
 NOW = datetime(2026, 11, 20, 1, 40, 3, tzinfo=timezone.utc)
 
 

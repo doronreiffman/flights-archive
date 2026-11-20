@@ -5,8 +5,9 @@ that DuckDB has nothing installed beyond its built-in extensions; list receipts/
 stop if either listing is smaller than the last build's; copy exactly what was listed; build the model on the copy;
 check the extensions again; upload the five tables and the manifest, write-once; move the pointer, only forward;
 delete builds older than 30 days, never the pointer's; log one summary line and send it as the success ping. Anything
-that raises after the start ping is logged, sent to /fail with its reason, and raised: the pointer stays where it was
-and nothing is deleted. The function reads S3 and pings healthchecks.io, nothing else.
+that raises after the start ping is logged, sent to /fail with its reason, and raised. An error before the pointer
+step leaves the pointer where it was and deletes nothing. The function reads S3 and pings healthchecks.io, nothing
+else.
 
 Manual event:
   {"drill": true}  fail on purpose before reading anything, to prove the alert
@@ -33,15 +34,15 @@ from model.stage import fingerprint
 from nightly.archive import DOWNLOAD_WORKERS, check_not_shrunk, copy, list_archive
 from nightly.bucket import Bucket
 from nightly.measure import Sampler, peak_memory_mb, staging_seconds
-from nightly.output import (CODE_SHA256, build_id, clean_up, manifest, move_pointer, newest_receipt, read_pointer,
-                            table_entries, upload_build)
+from nightly.output import (CODE_SHA256, build_id, clean_up, manifest, move_pointer, newest_receipt,
+                            pointer_build_id, read_pointer, table_entries, upload_build)
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 MEMORY_LIMIT = "1GB"  # DuckDB's, as every comparison so far ran (docs/nightly-model.md, "Sizing")
 THREADS = 2
-WORK_DIR = Path("/tmp/nightly")  # under /tmp, the function's only writable disk
+WORK_DIR = Path("/tmp/nightly")  # under /tmp, the disk the template sizes (EphemeralStorage)
 MB = 2**20
 
 
@@ -170,8 +171,9 @@ def _night(cfg: Config, archive: Bucket, models: Bucket, runtime: Runtime, clock
     with _timed(seconds, "list"):
         pointer = read_pointer(models)
         previous = None if pointer is None else pointer[0]
-        if previous is not None:
-            newest_receipt(previous)  # a pointer naming no newest receipt fails here, before the archive is listed
+        if previous is not None:  # a pointer naming no newest receipt or no build id fails here, before any listing
+            newest_receipt(previous)
+            pointer_build_id(previous)
         receipts, raw = list_archive(archive)
         check_not_shrunk(previous, receipts, raw)
 

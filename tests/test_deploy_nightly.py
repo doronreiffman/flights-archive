@@ -109,8 +109,8 @@ def test_a_samconfig_naming_another_stack_deploys_nothing(tmp_path):
     assert calls == []
 
 
-@pytest.mark.parametrize("typed", ["\n", "", "https://healthchecks.io/projects/x\n"],
-                         ids=["an empty line", "no line at all", "the project's page"])
+@pytest.mark.parametrize("typed", ["\n", "", "https://healthchecks.io/projects/x\n", "https://hc-ping.com/\n"],
+                         ids=["an empty line", "no line at all", "the project's page", "the bare address"])
 def test_a_wrong_address_deploys_nothing(tmp_path, typed):
     done, calls = run_deploy(tmp_path, typed=typed)
     assert done.returncode == 1 and done.stderr.rstrip().endswith("nothing deployed")
@@ -163,7 +163,7 @@ def drained(fd):
     while select.select([fd], [], [], 0.2)[0]:
         try:
             chunk = os.read(fd, 4096)
-        except OSError:  # Linux answers EIO once nothing holds the other end
+        except OSError:  # a read may raise OSError once the other end is closed: treated as the end of output
             break
         if not chunk:
             break
@@ -202,7 +202,7 @@ def test_at_a_terminal_the_address_is_not_echoed_and_echo_comes_back(tmp_path):
     assert b"hc-ping.com" not in echoed
     assert restored
     assert [call for _, call in calls] == [IDENTITY, BUILD, deploy("DISABLED")]
-    # back on before sam runs: sam deploy asks for a keypress before it applies the change set
+    # back on before sam runs: sam deploy asks for confirmation before it applies the change set
     assert (tmp_path / "echo.log").read_text().split() == ["on", "on"]
 
 

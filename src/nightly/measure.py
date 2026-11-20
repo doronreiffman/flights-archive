@@ -18,8 +18,8 @@ from model.stage import MARKER
 
 
 def peak_memory_mb() -> float:
-    """The process's peak resident memory so far, in MB (2**20 bytes, as Lambda counts its memory): getrusage's
-    ru_maxrss, which macOS gives in bytes and Linux in kilobytes."""
+    """The process's peak resident memory so far, in MB (2**20 bytes): getrusage's ru_maxrss, which macOS gives in
+    bytes and Linux in kilobytes."""
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return peak / (2**20 if sys.platform == "darwin" else 2**10)
 

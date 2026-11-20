@@ -16,8 +16,9 @@ the repository root:
 --bucket is the model stack's ModelBucketName output, read as profile flights-sam, which must be
 arn:aws:iam::137953273942:user/doron-admin. --work is a new or empty folder outside raw/ and receipts/, both checked
 before any AWS call: the Lambda's tables go to lambda/, the copy of the boards to archive/, the build to mac/ (staged
-in stage/, spilling into tmp/), timeline.record's runs to record/ and its output to record.log. Exit 0 when identical,
-1 on any difference, 2 when it refuses to compare.
+in stage/, spilling into tmp/), timeline.record's runs to record/ and its output to record.log. Exit 0 when identical;
+1 on any difference, or on an unexpected error, with its traceback; 2 when it refuses to compare, or on a usage error
+(argparse's).
 """
 from __future__ import annotations
 

@@ -267,16 +267,24 @@ def test_a_shrunk_archive_fails_the_night(tmp_path, archive):
     assert [op for op, _ in archive.ops] == ["list", "list"] and calls == []
 
 
-def _no_newest_receipt(archive: MemoryBucket) -> bytes:
-    models = MemoryBucket("scratch")
-    earlier_build(models, archive, NOW - timedelta(days=1))
-    doc = json.loads(models.objects[POINTER])
-    del doc["archive"]["receipts"]["newest_key"]
-    return json.dumps(doc).encode()
+def _edited_pointer(edit):
+    """A body maker: last night's pointer, from the archive as it stands, with `edit` applied to its manifest."""
+    def body(archive: MemoryBucket) -> bytes:
+        models = MemoryBucket("scratch")
+        earlier_build(models, archive, NOW - timedelta(days=1))
+        doc = json.loads(models.objects[POINTER])
+        edit(doc)
+        return json.dumps(doc).encode()
+    return body
 
 
-@pytest.mark.parametrize("body", [lambda archive: b"not json", lambda archive: b"[]", _no_newest_receipt],
-                         ids=["not json", "not an object", "no newest receipt"])
+@pytest.mark.parametrize("body", [
+    lambda archive: b"not json",
+    lambda archive: b"[]",
+    _edited_pointer(lambda doc: doc["archive"]["receipts"].pop("newest_key")),
+    _edited_pointer(lambda doc: doc.update(build_id=7)),  # it would become the clean-up's `keep`
+    _edited_pointer(lambda doc: doc.pop("build_id")),
+], ids=["not json", "not an object", "no newest receipt", "build id 7", "no build id"])
 def test_an_unreadable_pointer_fails_the_night(tmp_path, archive, body):
     body = body(archive)
     models, pings = MemoryBucket("models", {POINTER: body}), []

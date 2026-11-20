@@ -152,7 +152,7 @@ def test_the_memory_bucket_answers_as_s3_does(tmp_path):
     assert bucket.list("models/") == [Item("models/a/x.parquet", 3), Item("models/b/y.parquet", 2),
                                       Item("models/c/z.parquet", 1)]
     bucket.delete("models/c/z.parquet")
-    bucket.delete("models/c/z.parquet")  # S3 answers a delete of a missing key without an error
+    bucket.delete("models/c/z.parquet")  # the stand-in deletes a missing key without an error
     assert bucket.list("models/") == [Item("models/a/x.parquet", 3), Item("models/b/y.parquet", 2)]
     assert bucket.list("raw/") == []
 

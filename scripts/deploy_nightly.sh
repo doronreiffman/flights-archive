@@ -4,7 +4,7 @@
 #   sh scripts/deploy_nightly.sh ENABLED    # the schedule switched on
 # This writes to AWS: run it only on the owner's go, in a terminal window, not through the coding agent's ! prefix.
 # It asks for the healthchecks.io ping address, reads it with echo off and never prints it; sam deploy then asks
-# for a keypress before it applies the change set. Nothing is deployed unless every check passes.
+# for confirmation before it applies the change set. Nothing is deployed unless every check passes.
 #
 # The collector's stack is two bare commands away: the root samconfig.toml names flights-archive, and the root
 # .aws-sam/build is the collector's build folder. So this script works in model-stack/ only, names the template and
@@ -36,7 +36,8 @@ if [ "$who" != "$EXPECTED" ]; then
 fi
 
 # The address is the stack's secret parameter (NoEcho in model-stack/template.yaml). At a terminal, echo goes off
-# before the prompt and comes back on after the line is read, for sam deploy's keypress, or at any exit before that.
+# before the prompt and comes back on after the line is read, before sam deploy asks for confirmation, or at any exit
+# before that.
 if [ -t 0 ]; then
   trap 'stty echo' EXIT
   trap 'exit 1' HUP INT TERM  # dash skips the EXIT trap when a signal ends it; bash, macOS's sh, runs it
@@ -49,8 +50,8 @@ if [ -t 0 ]; then
   echo >&2
 fi
 case "$url" in
-  https://hc-ping.com/*) ;;
-  *) echo "the address does not start with https://hc-ping.com/; nothing deployed" >&2; exit 1 ;;
+  https://hc-ping.com/?*) ;;
+  *) echo "the address is not an https address on hc-ping.com with a path; nothing deployed" >&2; exit 1 ;;
 esac
 
 cd "$FOLDER"

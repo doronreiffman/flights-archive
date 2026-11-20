@@ -96,7 +96,7 @@ def test_a_failed_download_fails_the_copy(tmp_path):
 
 @pytest.mark.parametrize("key", ["raw/../../escape.json.gz", "raw/date=2026-10-30/"])
 def test_a_key_the_copy_cannot_place_fails_before_any_download(tmp_path, key):
-    """A key that climbs out of the work folder, and a folder object as the S3 console makes one (Review Focus 2)."""
+    """A key that climbs out of the work folder, and a key ending in / (Review Focus 2)."""
     bucket = archive()
     bucket.force(key, b"")
     with pytest.raises(CopyError, match=re.escape(key)):
