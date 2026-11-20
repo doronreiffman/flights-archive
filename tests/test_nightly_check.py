@@ -66,7 +66,9 @@ def data(lambda_side, tmp_path) -> Path:
     return tmp_path / "data"
 
 
-def run_main(check, capsys, models: MemoryBucket, data: Path, work: Path) -> tuple[int, str, str]:
+def run_main(check, capsys, models: MemoryBucket, data: Path, work: Path, opens: bool = True) -> tuple[int, str, str]:
+    """main() on data/ with an opener that hands over `models`; the opener is called once, or never when not
+    `opens` (a refusal made before any AWS call)."""
     opened = []
 
     def opener(name: str) -> MemoryBucket:
@@ -75,7 +77,7 @@ def run_main(check, capsys, models: MemoryBucket, data: Path, work: Path) -> tup
 
     code = check.main(["--bucket", MODEL_BUCKET, "--work", str(work), "--raw", str(data / "raw"),
                        "--receipts", str(data / "receipts")], opener=opener)
-    assert opened == [MODEL_BUCKET]
+    assert opened == ([MODEL_BUCKET] if opens else [])
     out, err = capsys.readouterr()
     return code, out, err
 
@@ -143,8 +145,27 @@ def test_one_changed_value_is_a_difference(check, models, data, tmp_path, capsys
     code, out, err = run_main(check, capsys, models, data, tmp_path / "work")
     assert code == 1, out + err
     lines = out.splitlines()
-    assert "flights: 1 row only in lambda" in lines and "flights: 1 row only in mac" in lines
-    assert check.IDENTICAL not in lines
+    assert lines[0] == f"build {BUILD}, read from {POINTER} in {MODEL_BUCKET}" and check.IDENTICAL not in lines
+    assert [line.split(":")[0] for line in lines[5:10]] == list(TABLES)  # each table's rows, both sides
+    # the rows both ways (compare_tables), then load() (compare_load); progress.json is the same on both sides
+    assert lines[10:] == ["flights: 1 row only in lambda", "flights: 1 row only in mac", "load(): flights differ"]
+
+
+def test_a_progress_difference_is_a_difference(check, models, data, tmp_path, capsys, monkeypatch):
+    """The tables equal, timeline.record's progress.json not: the script's own name for the check is replaced, never
+    tagged_check's or timeline.record's."""
+    calls = []
+
+    def progress(a: Path, b: Path, work: Path, names: tuple[str, str]) -> list[str]:
+        calls.append((a, b, work, names))
+        return ["progress.json differs"]
+
+    monkeypatch.setattr(check, "compare_progress", progress)
+    work = tmp_path / "work"
+    code, out, err = run_main(check, capsys, models, data, work)
+    assert code == 1, out + err
+    assert calls == [(work / "lambda", work / "mac", work / "record", ("lambda", "mac"))]
+    assert out.splitlines()[10:] == ["progress.json differs"] and check.IDENTICAL not in out
 
 
 def test_inputs_whose_digest_differs_are_refused(check, models, data, tmp_path, capsys):
@@ -250,7 +271,7 @@ def test_a_work_folder_in_use_is_refused(check, models, data, tmp_path, capsys):
     work = tmp_path / "work"
     work.mkdir()
     (work / "notes.txt").write_text("mine\n")
-    code, out, err = run_main(check, capsys, models, data, work)
+    code, out, err = run_main(check, capsys, models, data, work, opens=False)
     assert code == 2
     assert [p.relative_to(work).as_posix() for p in work.rglob("*")] == ["notes.txt"]
     assert err == f"{work} is not an empty folder: give a new folder, or an empty one\n" and out == ""
@@ -269,3 +290,16 @@ def test_select_keeps_the_keys_up_to_the_newest_in_key_order(check, tmp_path):
         (f"raw/{name}", len(name), folder / name)
         for name in ("date=2026-10-30/060000Z-a/page-000.json.gz", "date=2026-10-30/060000Z-a/page-001.json.gz")]
     assert check.select(folder, "raw/", None) == []
+
+
+@pytest.mark.parametrize("folder", ["raw", "receipts"])
+def test_a_work_folder_inside_the_archive_is_refused(check, models, data, capsys, folder):
+    """The copy and the builds would write into the synced archive: refused before any AWS call."""
+    before = sorted(p.relative_to(data).as_posix() for p in data.rglob("*"))
+    work = data / folder / "check"
+    code, out, err = run_main(check, capsys, models, data, work, opens=False)
+    assert code == 2
+    assert err == f"{work.resolve()} is inside {(data / folder).resolve()}: the copy and the builds would write " \
+                  "into the archive they read\n" and out == ""
+    assert sorted(p.relative_to(data).as_posix() for p in data.rglob("*")) == before
+    assert models.ops == []

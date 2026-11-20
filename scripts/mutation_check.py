@@ -1002,7 +1002,10 @@ COLLECTOR_MUTATIONS = {
     "nightly check: table hash not checked": (NIGHTLY_CHECK, '        if size != entry["bytes"] or sha != entry["sha256"]:\n', '        if size != entry["bytes"]:\n'),
     "nightly check: fingerprint not compared": (NIGHTLY_CHECK, "    if found != built:\n", "    if False:\n"),
     "nightly check: rows not compared": (NIGHTLY_CHECK, "    lines = (compare_tables(lambda_model, mac_model, names=NAMES) + compare_load(lambda_model, mac_model)\n", "    lines = (compare_load(lambda_model, mac_model)\n"),
+    "nightly check: load() not compared": (NIGHTLY_CHECK, "    lines = (compare_tables(lambda_model, mac_model, names=NAMES) + compare_load(lambda_model, mac_model)\n", "    lines = (compare_tables(lambda_model, mac_model, names=NAMES)\n"),
+    "nightly check: progress not compared": (NIGHTLY_CHECK, "             + progress)\n", "             + [])\n"),
     "nightly check: exit 0 on a difference": (NIGHTLY_CHECK, "    return 1 if lines else 0\n", "    return 0\n"),
+    "nightly check: a work folder inside the archive accepted": (NIGHTLY_CHECK, "        if work.resolve().is_relative_to(archive):\n", "        if False:\n"),
     "nightly check: identity not checked": (NIGHTLY_CHECK, "    if arn != IDENTITY:\n", "    if False:\n"),
 }
 

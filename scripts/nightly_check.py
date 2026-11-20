@@ -14,9 +14,10 @@ the repository root:
         [--raw data/raw] [--receipts data/receipts]
 
 --bucket is the model stack's ModelBucketName output, read as profile flights-sam, which must be
-arn:aws:iam::137953273942:user/doron-admin. --work is a new or empty folder: the Lambda's tables go to lambda/, the
-copy of the boards to archive/, the build to mac/ (staged in stage/, spilling into tmp/), timeline.record's runs to
-record/ and its output to record.log. Exit 0 when identical, 1 on any difference, 2 when it refuses to compare.
+arn:aws:iam::137953273942:user/doron-admin. --work is a new or empty folder outside raw/ and receipts/, both checked
+before any AWS call: the Lambda's tables go to lambda/, the copy of the boards to archive/, the build to mac/ (staged
+in stage/, spilling into tmp/), timeline.record's runs to record/ and its output to record.log. Exit 0 when identical,
+1 on any difference, 2 when it refuses to compare.
 """
 from __future__ import annotations
 
@@ -142,11 +143,22 @@ def _rows(folder: Path) -> list[int]:
         con.close()
 
 
+def check_work(work: Path, raw: Path, receipts: Path) -> None:
+    """Refused unless work is a new or empty folder outside raw/ and receipts/: the copy and the builds write there,
+    and a folder inside the synced archive would leave files the next local build of data/ cannot read. Paths are
+    compared resolved, as scripts/tagged_check.py compares them."""
+    if work.exists() and (not work.is_dir() or any(work.iterdir())):
+        raise Refused(f"{work} is not an empty folder: give a new folder, or an empty one")
+    for archive in (raw.resolve(), receipts.resolve()):
+        if work.resolve().is_relative_to(archive):
+            raise Refused(f"{work.resolve()} is inside {archive}: the copy and the builds would write into the "
+                          "archive they read")
+
+
 def compare(models: Bucket, raw: Path, receipts: Path, work: Path) -> int:
     """The Lambda's model against this machine's build of the same boards, in work/. Prints what was compared and
     IDENTICAL or each difference; returns 0 when identical, 1 on any difference. Refused when it cannot compare."""
-    if work.exists() and (not work.is_dir() or any(work.iterdir())):
-        raise Refused(f"{work} is not an empty folder: give a new folder, or an empty one")
+    check_work(work, raw, receipts)  # main has checked it before any AWS call; kept for a direct call
     lambda_model, mac_model, archive = work / "lambda", work / "mac", work / "archive"
     manifest = fetch_model(models, lambda_model)
     found, built = fingerprint(), manifest["code"]["model_fingerprint"]
@@ -177,11 +189,13 @@ def compare(models: Bucket, raw: Path, receipts: Path, work: Path) -> int:
 def main(argv: list[str], opener: Callable[[str], Bucket] = open_bucket) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bucket", required=True, help="the model bucket: the model stack's ModelBucketName output")
-    parser.add_argument("--work", type=Path, required=True, help="a new or empty folder for the copy and the builds")
+    parser.add_argument("--work", type=Path, required=True,
+                        help="a new or empty folder outside raw/ and receipts/, for the copy and the builds")
     parser.add_argument("--raw", type=Path, default=Path("data/raw"))
     parser.add_argument("--receipts", type=Path, default=Path("data/receipts"))
     args = parser.parse_args(argv)
     try:
+        check_work(args.work, args.raw, args.receipts)  # both local refusals come before the identity check
         return compare(opener(args.bucket), args.raw, args.receipts, args.work)
     except Refused as refused:
         print(refused, file=sys.stderr)
