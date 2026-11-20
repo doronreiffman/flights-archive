@@ -110,7 +110,7 @@ Built, not deployed: no stack exists yet. Design, sizes and the reasons: [nightl
 2. Lists `receipts/` and `raw/` in the archive bucket and stops if either listing is smaller than the last build's. It then copies exactly what it listed and builds the five model tables on the copy (a 1 GB DuckDB limit, 2 threads).
 3. Uploads the tables and a manifest under `models/<build id>/` in its own bucket, never replacing a file.
 4. Moves the pointer `latest.json` to the new build, only forward, then deletes builds older than 30 days, never the one the pointer names.
-5. Logs one summary line and sends it as the success ping. Any error is logged, sent to `/fail` and raised; the pointer stays where it was and nothing is deleted.
+5. Logs one summary line and sends it as the success ping. Any error is logged, sent to `/fail` and raised. An error before the pointer step leaves the pointer where it was and deletes nothing.
 
 The function only reads the archive bucket (`raw/` and `receipts/`) and writes its own bucket; it never calls data.gov.il. The stack is separate so that a change to the model puts no change set on the collector or the locked archive.
 
@@ -131,12 +131,14 @@ The function name and `ModelBucketName` are the stack's outputs. The summary is 
 PYTHONPATH=src .venv/bin/python scripts/nightly_check.py --bucket <ModelBucketName> --work <a new folder>
 ```
 
-It reads `latest.json` and the five tables from the model bucket, refuses tables that differ from the manifest's sizes or hashes, lays out from `data/` the same receipts and boards, builds the model on them and compares the two by the four checks of `scripts/tagged_check.py` (the tables' columns and types, their rows, `timeline.load.load()`, `progress.json`). Exit 0 when identical, 1 on any difference, 2 when it refuses to compare. `--work` must be a new or empty folder outside `data/raw` and `data/receipts`.
+It reads `latest.json` and the five tables from the model bucket, refuses tables that differ from the manifest's sizes or hashes, lays out from `data/` the same receipts and boards, builds the model on them and compares the two by the four checks of `scripts/tagged_check.py` (the tables' columns and types, their rows, `timeline.load.load()`, `progress.json`). Exit 0 when identical, 1 on any difference or on an unexpected error (with a traceback), 2 when it refuses to compare. `--work` must be a new or empty folder outside `data/raw` and `data/receipts`.
 
 **The summary line** is one JSON line with: the seconds of each step (`list`, `copy`, `build`, `staging`, `upload`, `pointer`, `clean_up`, `total`; `staging` is the part of `build` spent staging the date folders) and `seconds_left`; the objects and bytes copied; `memory_mb` and `tmp_mb` (the peak and the configured size); `rows` and `table_bytes` for each table; the build id, the model fingerprint and the DuckDB version. Two rules read it ([nightly-model.md](nightly-model.md), "Sizing"):
 
-- A night past 300 s with `seconds.staging` its largest step calls for keeping the stage in S3 between nights.
-- A night past 300 s with the copy its largest step, or, with the stage kept, past 450 s, temp files past 5 GB or memory past 2,400 MB, calls for the step after that.
+The steps compared are `list`, `copy`, `staging`, the rest of the build (`build` minus `staging`), `upload`, `pointer` and `clean_up`.
+
+- A night past 300 s with `staging` the largest of those calls for keeping the stage in S3 between nights.
+- A night past 300 s with `copy` the largest of those, or, with the stage kept, past 450 s, temp files past 5 GB or memory past 2,400 MB, calls for the step after that.
 
 **The alert** is one healthchecks.io check, period 1 day, grace 1 hour. It gets a start ping and then a success or a failure; a killed night sends no success and is marked down after the grace. It sits outside AWS, so it cannot tell you if healthchecks.io itself is down.
 
